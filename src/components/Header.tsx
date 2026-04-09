@@ -1,34 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getDataSources } from '../services/datasource';
+import type { DataSourceType } from '../services/datasource';
 import './Header.css';
 
-interface DataSource {
-  id: string;
-  name: string;
-  type: 'microsoft365' | 'azure';
-  status?: string;
-}
-
 interface HeaderProps {
-  selectedSource: DataSource | null;
-  onSelectSource: (source: DataSource | null) => void;
+  selectedSource: DataSourceType | null;
+  onSelectSource: (source: DataSourceType | null) => void;
   onOpenAddSource: () => void;
 }
 
 export default function Header({ selectedSource, onSelectSource, onOpenAddSource }: HeaderProps) {
+  const navigate = useNavigate();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dataSources, setDataSources] = useState<DataSourceType[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    getDataSources().then(setDataSources).catch(console.error);
+  }, []);
+
   const displaySourceName = selectedSource?.name || 'All data sources';
-
-  // Mock data sources
-  const dataSources: DataSource[] = [
-    { id: '1', name: 'Contoso M365', type: 'microsoft365', status: 'ACTIVE' },
-    { id: '2', name: 'Fabrikam Azure', type: 'azure', status: 'ACTIVE' },
-  ];
-
   const filteredDataSources = dataSources.filter(ds =>
     ds.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -36,11 +31,13 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
   const selectAllDataSources = () => {
     onSelectSource(null);
     setIsDropdownOpen(false);
+    navigate('/tenants');
   };
 
-  const selectDataSource = (source: DataSource) => {
+  const selectDataSource = (source: DataSourceType) => {
     onSelectSource(source);
     setIsDropdownOpen(false);
+    navigate(`/tenants/${source.id}/${source.type}/overview`);
   };
 
   const toggleDropdown = () => {
@@ -133,7 +130,7 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                         className={`dropdown-item ${selectedSource?.id === source.id ? 'active' : ''}`}
                         onClick={() => selectDataSource(source)}
                       >
-                        {source.type === 'microsoft365' ? (
+                        {source.type === 'm365' ? (
                           <div className="source-icon microsoft">
                             <svg viewBox="0 0 24 24" fill="currentColor">
                               <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
@@ -142,10 +139,16 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                               <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
                             </svg>
                           </div>
-                        ) : (
+                        ) : source.type === 'azure' ? (
                           <div className="source-icon azure">
                             <svg viewBox="0 0 24 24" fill="currentColor">
                               <path d="M12 2L2 19h20L12 2z"/>
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="source-icon kubernetes">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                             </svg>
                           </div>
                         )}

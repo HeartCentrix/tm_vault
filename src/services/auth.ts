@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+import { API } from '../config/api';
 
 export interface User {
   id: string;
@@ -22,16 +22,26 @@ export interface MicrosoftAuthUrlResponse {
 }
 
 class AuthService {
-  private baseUrl = API_URL;
-
   async getMicrosoftLoginUrl(): Promise<MicrosoftAuthUrlResponse> {
-    const res = await fetch(`${this.baseUrl}/auth/microsoft/url`);
+    const res = await fetch(API.AUTH.LOGIN_URL);
     if (!res.ok) throw new Error(`Failed to get login URL: ${res.statusText}`);
     return res.json();
   }
 
+  async getDatasourceUrl(): Promise<MicrosoftAuthUrlResponse> {
+    const res = await fetch(API.AUTH.DATASOURCE_URL);
+    if (!res.ok) throw new Error(`Failed to get datasource URL: ${res.statusText}`);
+    return res.json();
+  }
+
+  async getAzureDatasourceUrl(): Promise<MicrosoftAuthUrlResponse> {
+    const res = await fetch(API.AUTH.AZURE_DATASOURCE_URL);
+    if (!res.ok) throw new Error(`Failed to get Azure datasource URL: ${res.statusText}`);
+    return res.json();
+  }
+
   async handleOAuthCallback(code: string, state?: string): Promise<LoginResponse> {
-    const res = await fetch(`${this.baseUrl}/auth/callback`, {
+    const res = await fetch(API.AUTH.CALLBACK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),
@@ -42,8 +52,32 @@ class AuthService {
     return data;
   }
 
+  async handleDatasourceCallback(code: string, state?: string): Promise<any> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.DATASOURCE_CALLBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code, state }),
+    });
+    if (!res.ok) throw new Error(`Datasource callback failed: ${res.statusText}`);
+    return res.json();
+  }
+
+  async handleAzureDatasourceCallback(code: string, state?: string): Promise<any> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.AZURE_DATASOURCE_CALLBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code, state }),
+    });
+    if (!res.ok) throw new Error(`Azure datasource callback failed: ${res.statusText}`);
+    return res.json();
+  }
+
   async refreshToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
-    const res = await fetch(`${this.baseUrl}/auth/refresh`, {
+    const res = await fetch(API.AUTH.REFRESH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -57,7 +91,7 @@ class AuthService {
   async logout(): Promise<void> {
     const refreshToken = this.getRefreshToken();
     try {
-      await fetch(`${this.baseUrl}/auth/logout`, {
+      await fetch(API.AUTH.LOGOUT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -71,7 +105,7 @@ class AuthService {
   async getCurrentUser(): Promise<User> {
     const token = this.getToken();
     if (!token) throw new Error('Not authenticated');
-    const res = await fetch(`${this.baseUrl}/auth/me`, {
+    const res = await fetch(API.AUTH.ME, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error(`Failed to get user: ${res.statusText}`);

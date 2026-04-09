@@ -137,7 +137,7 @@
   font-weight: 600;
 }
 
-.service-badge.microsoft {
+.service-badge.m365 {
   background: #fef3c7;
   color: #92400e;
 }
@@ -145,6 +145,11 @@
 .service-badge.azure {
   background: #dbeafe;
   color: #1e40af;
+}
+
+.service-badge.kubernetes {
+  background: #e0e7ff;
+  color: #3730a3;
 }
 
 .status-badge {

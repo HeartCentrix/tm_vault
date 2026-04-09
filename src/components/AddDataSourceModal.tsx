@@ -1,8 +1,28 @@
+import { authService } from '../services/auth';
+
 interface AddDataSourceModalProps {
   onClose: () => void;
 }
 
 export default function AddDataSourceModal({ onClose }: AddDataSourceModalProps) {
+  const handleM365Connect = async () => {
+    try {
+      const { url } = await authService.getDatasourceUrl();
+      window.location.href = url;
+    } catch (err: any) {
+      console.error('Failed to get M365 datasource URL:', err);
+    }
+  };
+
+  const handleAzureConnect = async () => {
+    try {
+      const { url } = await authService.getAzureDatasourceUrl();
+      window.location.href = url;
+    } catch (err: any) {
+      console.error('Failed to get Azure datasource URL:', err);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -29,7 +49,7 @@ export default function AddDataSourceModal({ onClose }: AddDataSourceModalProps)
                 </svg>
               </div>
               <span className="source-name">Microsoft 365</span>
-              <button className="source-btn microsoft">Connect</button>
+              <button className="source-btn microsoft" onClick={handleM365Connect}>Connect</button>
             </div>
 
             <div className="data-source-item">
@@ -39,7 +59,7 @@ export default function AddDataSourceModal({ onClose }: AddDataSourceModalProps)
                 </svg>
               </div>
               <span className="source-name">Azure</span>
-              <button className="source-btn azure">Connect</button>
+              <button className="source-btn azure" onClick={handleAzureConnect}>Connect</button>
             </div>
 
             <div className="data-source-item">

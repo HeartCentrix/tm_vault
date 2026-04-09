@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Signin from './pages/Signin';
 import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
+import DatasourceCallback from './pages/DatasourceCallback';
 import Tenants from './pages/Tenants';
 import Overview from './pages/Overview';
 import Protection from './pages/Protection';
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/signin" element={<Signin />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/datasource-callback" element={<DatasourceCallback />} />
 
         {/* Protected routes with layout */}
         <Route path="/" element={<Layout />}>

@@ -1,33 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AddDataSourceModal from '../components/AddDataSourceModal';
+import { getDataSources, invalidateDataSourceCache } from '../services/datasource';
+import type { DataSourceType } from '../services/datasource';
 import './Tenants.css';
-
-interface Tenant {
-  id: string;
-  name: string;
-  type: 'M365' | 'Azure' | 'Both';
-  protectionStatus: string;
-  backupStatus: string;
-}
-
-const mockTenants: Tenant[] = [
-  { id: '1', name: 'Contoso M365', type: 'M365', protectionStatus: 'Protected', backupStatus: 'Success' },
-  { id: '2', name: 'Fabrikam Azure', type: 'Azure', protectionStatus: 'Protected', backupStatus: 'Success' },
-];
 
 export default function Tenants() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddSource, setShowAddSource] = useState(false);
+  const [tenants, setTenants] = useState<DataSourceType[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredTenants = mockTenants.filter(t =>
+  useEffect(() => {
+    getDataSources()
+      .then(setTenants)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filteredTenants = tenants.filter(t =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleTenantClick = (tenant: Tenant) => {
-    const type = tenant.type === 'Both' ? 'M365' : tenant.type;
-    navigate(`/tenants/${tenant.id}/${type.toLowerCase()}/overview`);
+  const handleTenantClick = (tenant: DataSourceType) => {
+    navigate(`/tenants/${tenant.id}/${tenant.type}/overview`);
   };
 
   return (
@@ -63,40 +60,52 @@ export default function Tenants() {
             </tr>
           </thead>
           <tbody>
-            {filteredTenants.map((tenant) => (
-              <tr key={tenant.id} onClick={() => handleTenantClick(tenant)} className="tenant-row">
-                <td className="tenant-name-cell">
-                  {tenant.type === 'M365' || tenant.type === 'Both' ? (
-                    <div className="service-icon microsoft">
-                      <svg viewBox="0 0 24 24" fill="currentColor">
-                        <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-                        <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
-                        <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
-                        <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
-                      </svg>
-                    </div>
-                  ) : (
-                    <div className="service-icon azure">
-                      <svg viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2L2 19h20L12 2z"/>
-                      </svg>
-                    </div>
-                  )}
-                  <span className="tenant-name">{tenant.name}</span>
-                </td>
-                <td>
-                  <span className={`service-badge ${tenant.type === 'Azure' ? 'azure' : 'microsoft'}`}>
-                    {tenant.type}
-                  </span>
-                </td>
-                <td>
-                  <span className="status-badge success">{tenant.protectionStatus}</span>
-                </td>
-                <td>
-                  <span className="status-badge success">{tenant.backupStatus}</span>
-                </td>
-              </tr>
-            ))}
+            {loading ? (
+              <tr><td colSpan={4} className="tenant-name-cell" style={{textAlign:'center'}}>Loading...</td></tr>
+            ) : filteredTenants.length === 0 ? (
+              <tr><td colSpan={4} className="tenant-name-cell" style={{textAlign:'center'}}>No data sources found. Click "Add data source" to get started.</td></tr>
+            ) : (
+              filteredTenants.map((tenant) => (
+                <tr key={tenant.id} onClick={() => handleTenantClick(tenant)} className="tenant-row">
+                  <td className="tenant-name-cell">
+                    {tenant.type === 'm365' ? (
+                      <div className="service-icon microsoft">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                          <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
+                          <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
+                          <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
+                        </svg>
+                      </div>
+                    ) : tenant.type === 'azure' ? (
+                      <div className="service-icon azure">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2L2 19h20L12 2z"/>
+                        </svg>
+                      </div>
+                    ) : (
+                      <div className="service-icon kubernetes">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                      </div>
+                    )}
+                    <span className="tenant-name">{tenant.name}</span>
+                  </td>
+                  <td>
+                    <span className={`service-badge ${tenant.type}`}>
+                      {tenant.type.toUpperCase()}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="status-badge success">Protected</span>
+                  </td>
+                  <td>
+                    <span className="status-badge success">{tenant.status}</span>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
