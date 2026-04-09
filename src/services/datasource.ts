@@ -46,3 +46,9 @@ export function invalidateDataSourceCache() {
   cachedDataSources = null;
   fetchPromise = null;
 }
+
+// Call this after adding a new datasource
+export async function refreshDataSources(): Promise<DataSourceType[]> {
+  invalidateDataSourceCache();
+  return getDataSources();
+}

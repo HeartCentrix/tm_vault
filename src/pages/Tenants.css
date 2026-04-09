@@ -174,3 +174,55 @@
   background: #fee2e2;
   color: #991b1b;
 }
+
+/* Loading */
+.loading-cell {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+/* Empty State */
+.empty-tenants {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.empty-tenants-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #4a5568;
+  margin: 0 0 8px;
+}
+
+.empty-tenants-text {
+  font-size: 14px;
+  color: #a0aec0;
+  margin: 0 0 24px;
+  max-width: 320px;
+}
+
+.empty-tenants-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.empty-tenants-btn:hover {
+  background: #0f766e;
+}
