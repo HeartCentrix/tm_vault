@@ -29,9 +29,7 @@ export default function Tenants() {
 
   return (
     <div className="tenants-page">
-      <div className="tenants-header">
-        <h1 className="tenants-title">Data Sources</h1>
-        <div className="tenants-actions">
+      <div className="tenants-actions">
           <input
             type="text"
             placeholder="Search data sources..."
@@ -47,7 +45,6 @@ export default function Tenants() {
             Add data source
           </button>
         </div>
-      </div>
 
       {loading ? (
         <div className="tenants-table-container">

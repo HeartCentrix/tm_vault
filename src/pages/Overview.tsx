@@ -45,10 +45,6 @@ export default function Overview() {
 
   return (
     <div className="overview-page">
-      <div className="overview-header">
-        <h1 className="overview-title">Dashboard</h1>
-      </div>
-
       <div className="status-cards">
         {/* 24-hour status */}
         <div className="status-card">

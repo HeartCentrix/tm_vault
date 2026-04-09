@@ -8,10 +8,6 @@ export default function Configuration() {
 
   return (
     <div className="configuration-page">
-      <div className="configuration-header">
-        <h1 className="page-title">Configuration</h1>
-      </div>
-
       <div className="configuration-content">
         {/* Reports Section */}
         <div className="config-section">

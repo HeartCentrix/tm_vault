@@ -22,10 +22,6 @@ export default function GlobalSearch() {
 
   return (
     <div className="global-search-page">
-      <div className="global-search-header">
-        <h1 className="page-title">Global Search</h1>
-      </div>
-
       <div className="search-bar-container">
         <div className="search-bar">
           <input

@@ -1,28 +1,47 @@
-import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getNavigationState } from '../services/navState';
 import './Sidebar.css';
-
-const menuItems = [
-  { label: 'Service', route: '/tenants' },
-  { label: 'Activity', route: '/activity' },
-  { label: 'Alerts', route: '/alerts' },
-  { label: 'Configuration', route: '/configuration' },
-];
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
 
   const isRouteActive = (route: string) => {
-    if (route === '/tenants') {
-      return location.pathname.startsWith('/tenants');
+    if (route === 'service') {
+      return location.pathname.startsWith('/tenants') && !['/activity', '/alerts', '/settings', '/configuration'].some(r => location.pathname.startsWith(r));
     }
     return location.pathname.startsWith(route);
   };
 
   const handleNav = (route: string) => {
-    navigate(route);
+    if (route === 'service') {
+      // Restore last visited service sub-route with current tenant context
+      const state = getNavigationState();
+      if (state && state.tenantId && state.serviceType) {
+        navigate(`/tenants/${state.tenantId}/${state.serviceType}${state.subRoute}`);
+      } else {
+        navigate('/tenants');
+      }
+    } else if (route === '/activity' || route === '/alerts' || route === '/configuration') {
+      // Preserve tenant context by including it in the route
+      const state = getNavigationState();
+      if (state && state.tenantId && state.serviceType) {
+        // Navigate to the global page - tenant context is stored for when returning
+        navigate(route);
+      } else {
+        navigate(route);
+      }
+    } else {
+      navigate(route);
+    }
   };
+
+  const menuItems = [
+    { label: 'Service', route: 'service' },
+    { label: 'Activity', route: '/activity' },
+    { label: 'Alerts', route: '/alerts' },
+    { label: 'Configuration', route: '/configuration' },
+  ];
 
   return (
     <div className="sidebar">

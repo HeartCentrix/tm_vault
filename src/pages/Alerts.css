@@ -1,18 +1,13 @@
 .alerts-page {
-  padding: 24px;
+  padding: 0 24px 24px;
 }
 
 .alerts-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #2d3748;
+  margin-bottom: 16px;
+  padding-top: 16px;
 }
 
 .checkbox-label {

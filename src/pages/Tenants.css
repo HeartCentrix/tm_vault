@@ -1,24 +1,12 @@
 .tenants-page {
-  padding: 24px;
-}
-
-.tenants-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.tenants-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #2d3748;
+  padding: 0 24px 24px;
 }
 
 .tenants-actions {
   display: flex;
   gap: 12px;
   align-items: center;
+  padding: 16px 0;
 }
 
 .search-input {

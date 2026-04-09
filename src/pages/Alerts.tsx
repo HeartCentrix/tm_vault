@@ -32,7 +32,6 @@ export default function Alerts() {
   return (
     <div className="alerts-page">
       <div className="alerts-header">
-        <h1 className="page-title">Alerts</h1>
         <label className="checkbox-label">
           <input
             type="checkbox"

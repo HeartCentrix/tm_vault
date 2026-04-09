@@ -1,15 +1,5 @@
 .overview-page {
-  padding: 24px;
-}
-
-.overview-header {
-  margin-bottom: 24px;
-}
-
-.overview-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #2d3748;
+  padding: 0 24px 24px;
 }
 
 .status-cards {

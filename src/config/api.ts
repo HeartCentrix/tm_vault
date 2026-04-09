@@ -48,6 +48,11 @@ export const API = {
     USERS: `${API_URL}/resources/users`,
     SEARCH: `${API_URL}/resources/search`,
     BY_TYPE: `${API_URL}/resources/by-type`,
+    ASSIGN_POLICY: (id: string) => `${API_URL}/resources/${id}/assign-policy`,
+    UNASSIGN_POLICY: (id: string) => `${API_URL}/resources/${id}/unassign-policy`,
+    ARCHIVE: (id: string) => `${API_URL}/resources/${id}/archive`,
+    UNARCHIVE: (id: string) => `${API_URL}/resources/${id}/unarchive`,
+    DELETE: (id: string) => `${API_URL}/resources/${id}`,
   },
 
   // Jobs

@@ -29,7 +29,6 @@ export default function Activity() {
   return (
     <div className="activity-page">
       <div className="activity-header">
-        <h1 className="page-title">Activity</h1>
         <div className="view-toggle">
           <button
             className={`toggle-btn ${viewType === 'jobs' ? 'active' : ''}`}
