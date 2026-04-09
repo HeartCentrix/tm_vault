@@ -1,0 +1,171 @@
+.tenants-page {
+  padding: 24px;
+}
+
+.tenants-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.tenants-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.tenants-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-input {
+  padding: 10px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2d3748;
+  background: #fff;
+  width: 280px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #0d9488;
+}
+
+.search-input::placeholder {
+  color: #a0aec0;
+}
+
+.add-source-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-source-btn:hover {
+  background: #0f766e;
+}
+
+.tenants-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.tenants-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tenants-table thead {
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tenants-table th {
+  padding: 14px 20px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tenant-row {
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.tenant-row:hover {
+  background: #f7fafc;
+}
+
+.tenant-row td {
+  padding: 16px 20px;
+}
+
+.tenant-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.service-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7fafc;
+  border-radius: 6px;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.service-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.tenant-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2d3748;
+}
+
+.service-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.service-badge.microsoft {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.service-badge.azure {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.error {
+  background: #fee2e2;
+  color: #991b1b;
+}

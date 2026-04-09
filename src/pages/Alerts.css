@@ -1,0 +1,158 @@
+.alerts-page {
+  padding: 24px;
+}
+
+.alerts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #4a5568;
+  cursor: pointer;
+}
+
+.alerts-container {
+  min-height: 200px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.empty-state svg {
+  margin-bottom: 16px;
+  color: #a0aec0;
+}
+
+.empty-state-text {
+  font-size: 14px;
+  color: #a0aec0;
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.alert-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.alert-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.alert-card.resolved {
+  opacity: 0.6;
+}
+
+.alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.severity-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.severity-badge.severity-critical {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.severity-badge.severity-high {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.severity-badge.severity-medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.severity-badge.severity-low {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.alert-time {
+  font-size: 12px;
+  color: #a0aec0;
+}
+
+.alert-message {
+  font-size: 14px;
+  color: #2d3748;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.alert-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.alert-tenant {
+  font-size: 13px;
+  color: #718096;
+  font-weight: 500;
+}
+
+.resolve-btn {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0d9488;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.resolve-btn:hover {
+  background: #e6fffa;
+  border-color: #0d9488;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: #a0aec0;
+}

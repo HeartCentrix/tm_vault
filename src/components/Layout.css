@@ -1,0 +1,8 @@
+.main-content {
+  margin-left: 220px;
+  margin-top: 56px;
+  min-height: calc(100vh - 56px);
+  background: #f7fafc;
+  padding: 0;
+  position: relative;
+}

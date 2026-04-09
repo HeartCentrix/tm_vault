@@ -1,0 +1,371 @@
+.settings-page {
+  padding: 24px;
+}
+
+.settings-header {
+  margin-bottom: 24px;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+
+.settings-tab {
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: #718096;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.settings-tab:hover {
+  color: #2d3748;
+  background: #f7fafc;
+}
+
+.settings-tab.active {
+  color: #0d9488;
+  border-bottom-color: #0d9488;
+}
+
+.settings-content {
+  min-height: 300px;
+}
+
+/* SLA Tab */
+.sla-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.sla-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.create-policy-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.create-policy-btn:hover {
+  background: #0f766e;
+}
+
+.sla-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sla-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.sla-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sla-card-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tier-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.tier-badge.tier-gold {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tier-badge.tier-silver {
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+.tier-badge.tier-bronze {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.tier-badge.tier-manual {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tier-badge.tier-custom {
+  background: #e9d5ff;
+  color: #6b21a8;
+}
+
+.sla-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0;
+}
+
+.sla-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-btn,
+.delete-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #e2e8f0;
+}
+
+.edit-btn {
+  background: #fff;
+  color: #0d9488;
+}
+
+.edit-btn:hover {
+  background: #e6fffa;
+}
+
+.delete-btn {
+  background: #fff;
+  color: #e53e3e;
+}
+
+.delete-btn:hover {
+  background: #fff5f5;
+}
+
+.sla-card-details {
+  display: flex;
+  gap: 32px;
+}
+
+.sla-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sla-detail-label {
+  font-size: 12px;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sla-detail-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2d3748;
+}
+
+/* Info Tab */
+.info-tab .info-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 20px;
+}
+
+.info-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f7fafc;
+}
+
+.info-label {
+  font-size: 14px;
+  color: #718096;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: 14px;
+  color: #2d3748;
+  font-weight: 600;
+}
+
+.download-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 10px 20px;
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.download-btn:hover {
+  background: #0f766e;
+}
+
+/* Access Tab */
+.access-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.access-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.create-group-btn {
+  padding: 10px 20px;
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.create-group-btn:hover {
+  background: #0f766e;
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: #a0aec0;
+  font-size: 14px;
+}
+
+/* SLA Modal */
+.modal-overlay .sla-modal {
+  max-width: 500px;
+}
+
+.modal-overlay .sla-modal .modal-body {
+  padding: 24px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 8px;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2d3748;
+  background: #fff;
+}
+
+.form-input:focus,
+.form-select:focus {
+  outline: none;
+  border-color: #0d9488;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.cancel-btn {
+  padding: 10px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2d3748;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background: #f7fafc;
+}
+
+.save-btn-modal {
+  padding: 10px 20px;
+  background: #0d9488;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.save-btn-modal:hover {
+  background: #0f766e;
+}

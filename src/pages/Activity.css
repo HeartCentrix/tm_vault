@@ -1,0 +1,148 @@
+.activity-page {
+  padding: 24px;
+}
+
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.view-toggle {
+  display: flex;
+  background: #f7fafc;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.toggle-btn {
+  padding: 8px 20px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #718096;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn.active {
+  background: #fff;
+  color: #0d9488;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.activity-filters {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #4a5568;
+  cursor: pointer;
+}
+
+.download-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #2d3748;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.download-btn:hover {
+  background: #f7fafc;
+}
+
+.activity-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.activity-table thead {
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.activity-table th {
+  padding: 14px 20px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activity-table td {
+  padding: 14px 20px;
+  font-size: 14px;
+  color: #2d3748;
+  border-bottom: 1px solid #f7fafc;
+}
+
+.activity-tenant {
+  font-weight: 500;
+}
+
+.activity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.activity-status.done {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.activity-status.in-progress {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.activity-status.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.spinner-small {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(146, 64, 14, 0.3);
+  border-top-color: #92400e;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
