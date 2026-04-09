@@ -6,8 +6,7 @@ export default function Signin() {
   const navigate = useNavigate();
 
   const handleMicrosoftLogin = () => {
-    // Redirect to Microsoft OAuth
-    alert('Redirecting to Microsoft OAuth...');
+    // Redirect to Microsoft OAuth - to be connected to backend
   };
 
   useEffect(() => {

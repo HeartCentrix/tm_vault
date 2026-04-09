@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AddDataSourceModal from '../components/AddDataSourceModal';
 import './Tenants.css';
 
 interface Tenant {
@@ -18,6 +19,7 @@ const mockTenants: Tenant[] = [
 export default function Tenants() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAddSource, setShowAddSource] = useState(false);
 
   const filteredTenants = mockTenants.filter(t =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -40,7 +42,7 @@ export default function Tenants() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <button className="add-source-btn" onClick={() => alert('Open modal')}>
+          <button className="add-source-btn" onClick={() => setShowAddSource(true)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -98,6 +100,10 @@ export default function Tenants() {
           </tbody>
         </table>
       </div>
+
+      {showAddSource && (
+        <AddDataSourceModal onClose={() => setShowAddSource(false)} />
+      )}
     </div>
   );
 }
