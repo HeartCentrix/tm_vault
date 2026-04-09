@@ -1,20 +1,58 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authService } from '../services/auth';
 import './Auth.css';
 
 export default function Signin() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleMicrosoftLogin = () => {
-    // Redirect to Microsoft OAuth - to be connected to backend
+  const handleMicrosoftLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { url } = await authService.getMicrosoftLoginUrl();
+      window.location.href = url;
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(`Failed to initiate login: ${err.message}`);
+      setLoading(false);
+    }
   };
 
+  // Handle OAuth callback when redirected back
   useEffect(() => {
-    const error = localStorage.getItem('auth_error');
-    if (error) {
-      // Show error
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state') || undefined;
+    const authError = params.get('error');
+
+    if (authError) {
+      setError(`Microsoft login error: ${authError}`);
+      return;
     }
-  }, []);
+
+    if (code) {
+      (async () => {
+        setLoading(true);
+        try {
+          await authService.handleOAuthCallback(code, state);
+          // Tokens are stored - try to get user info but don't block navigation
+          try {
+            await authService.getCurrentUser();
+          } catch (e) {
+            console.warn('Could not fetch user info, proceeding anyway:', e);
+          }
+          navigate('/tenants');
+        } catch (err: any) {
+          console.error('OAuth callback error:', err);
+          setError(`Authentication failed: ${err.message}`);
+          setLoading(false);
+        }
+      })();
+    }
+  }, [navigate]);
 
   return (
     <div className="auth-page">
@@ -32,20 +70,16 @@ export default function Signin() {
 
         <p className="auth-subtitle">Sign in to your account</p>
 
-        <button className="microsoft-btn" onClick={handleMicrosoftLogin}>
+        {error && <div style={{color: '#dc2626', fontSize: 14, marginBottom: 16}}>{error}</div>}
+
+        <button className="microsoft-btn" onClick={handleMicrosoftLogin} disabled={loading}>
           <svg viewBox="0 0 24 24" fill="currentColor" style={{width: 20, height: 20}}>
             <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
             <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
             <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
             <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
           </svg>
-          Sign in with Microsoft
-        </button>
-
-        <div className="auth-divider">or</div>
-
-        <button className="sso-btn" onClick={() => navigate('/signup')}>
-          Sign up with SSO
+          {loading ? 'Connecting...' : 'Sign in with Microsoft'}
         </button>
       </div>
     </div>

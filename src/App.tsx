@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Signin from './pages/Signin';
 import Signup from './pages/Signup';
+import AuthCallback from './pages/AuthCallback';
 import Tenants from './pages/Tenants';
 import Overview from './pages/Overview';
 import Protection from './pages/Protection';
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/" element={<AutoRedirect />} />
         <Route path="/signin" element={<Signin />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* Protected routes with layout */}
         <Route path="/" element={<Layout />}>
