@@ -677,45 +677,30 @@
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 
-/* Modal Styles */
+/* ==================== Modal Overlay ==================== */
+
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn 0.15s ease;
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.audit-modal {
-  background: #fff;
-  border-radius: 8px;
-  padding: 24px;
-  min-width: 500px;
-  max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  animation: modalSlideIn 0.3s ease;
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes modalSlideIn {
   from {
-    transform: translateY(-20px);
+    transform: translateY(-10px);
     opacity: 0;
   }
   to {
@@ -724,68 +709,105 @@
   }
 }
 
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+/* ==================== Compact Audit Modal (screenshot style) ==================== */
+
+.audit-modal-compact {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px 24px 20px 20px;
+  min-width: 420px;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  position: relative;
+  animation: modalSlideIn 0.2s ease;
 }
 
-.modal-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-.modal-close {
+.modal-close-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   background: none;
   border: none;
   cursor: pointer;
   padding: 4px;
-  color: #6b7280;
+  color: #9ca3af;
   transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.modal-close:hover {
+.modal-close-x:hover {
   color: #374151;
 }
 
-.modal-close svg {
-  width: 20px;
-  height: 20px;
+.modal-close-x svg {
+  width: 18px;
+  height: 18px;
 }
 
-.modal-content {
+.modal-compact-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 6px;
 }
 
-.detail-row {
+.compact-row {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: 12px;
+  padding: 3px 0;
 }
 
-.detail-label {
-  min-width: 120px;
-  font-size: 12px;
+.compact-label {
+  min-width: 110px;
+  font-size: 13px;
   color: #9ca3af;
-  font-weight: 500;
-  padding-top: 2px;
+  font-weight: 400;
+  flex-shrink: 0;
+  text-align: right;
 }
 
-.detail-value {
+.compact-value {
   flex: 1;
   font-size: 13px;
+  color: #1a1a1a;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.object-type-inline {
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.view-raw-btn-compact {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.view-raw-btn-compact:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
   color: #374151;
 }
 
-.object-type {
-  color: #9ca3af;
-  font-size: 12px;
-  margin-left: 4px;
+/* Risk badge in compact modal */
+.compact-value .risk-badge {
+  font-size: 10px;
+  padding: 2px 8px;
 }
 
 /* Responsive Design */

@@ -550,97 +550,97 @@ export default function Activity() {
       {/* ==================== AUDIT DETAIL MODAL ==================== */}
       {showModal && selectedAudit && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="audit-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Audit Event Details</h3>
-              <button className="modal-close" onClick={closeModal}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="modal-content">
-              <div className="detail-row">
-                <span className="detail-label">Operation:</span>
-                <span className="detail-value"><span className="operation-badge">{selectedAudit.operation}</span></span>
+          <div className="audit-modal-compact" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-x" onClick={closeModal}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <div className="modal-compact-content">
+              <div className="compact-row">
+                <span className="compact-label">Operation:</span>
+                <span className="compact-value">{selectedAudit.operation}</span>
               </div>
-              <div className="detail-row">
-                <span className="detail-label">Actor:</span>
-                <span className="detail-value">
+              <div className="compact-row">
+                <span className="compact-label">Actor:</span>
+                <span className="compact-value">
                   {selectedAudit.actor}
-                  {selectedAudit.actor_email && <span className="actor-email">{selectedAudit.actor_email}</span>}
+                  {selectedAudit.actor_email && ` ${selectedAudit.actor_email}`}
                 </span>
               </div>
-              <div className="detail-row">
-                <span className="detail-label">Object:</span>
-                <span className="detail-value">
-                  {selectedAudit.object}
-                  {selectedAudit.object_type && <span className="object-type">({selectedAudit.object_type})</span>}
-                </span>
-              </div>
-              <div className="detail-row">
-                <span className="detail-label">Date:</span>
-                <span className="detail-value">{formatDate(selectedAudit.date)}</span>
-              </div>
-
-              {/* Enrichment section */}
-              {selectedAudit.enrichment && Object.keys(selectedAudit.enrichment).length > 0 && (
-                <div className="enrichment-section">
-                  <h4>Enrichment Data</h4>
-                  {selectedAudit.enrichment.sla_policy && (
-                    <div className="detail-row">
-                      <span className="detail-label">SLA Policy:</span>
-                      <span className="detail-value">{selectedAudit.enrichment.sla_policy}</span>
-                    </div>
-                  )}
-                  {selectedAudit.enrichment.last_backup_at && (
-                    <div className="detail-row">
-                      <span className="detail-label">Last Backup:</span>
-                      <span className="detail-value">{formatDate(selectedAudit.enrichment.last_backup_at)}</span>
-                    </div>
-                  )}
-                  {selectedAudit.enrichment.resource_email && (
-                    <div className="detail-row">
-                      <span className="detail-label">Resource Email:</span>
-                      <span className="detail-value">{selectedAudit.enrichment.resource_email}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Risk signals section */}
-              {selectedAudit.risk_signals && (
-                <div className="risk-section">
-                  <h4>Risk Analysis</h4>
-                  <div className="detail-row">
-                    <span className="detail-label">Risk Level:</span>
-                    <span className="detail-value">{getRiskBadge(selectedAudit.risk_level || 'N/A', selectedAudit.risk_score || 0)}</span>
-                  </div>
-                  {selectedAudit.risk_signals.investigation_urgency && (
-                    <div className="detail-row">
-                      <span className="detail-label">Urgency:</span>
-                      <span className="detail-value urgency-{selectedAudit.risk_signals.investigation_urgency}">
-                        {selectedAudit.risk_signals.investigation_urgency.replace('_', ' ')}
-                      </span>
-                    </div>
-                  )}
-                  <div className="signal-list">
-                    {Object.entries(selectedAudit.risk_signals)
-                      .filter(([key]) => !['risk_level', 'risk_score', 'investigation_urgency'].includes(key))
-                      .map(([key, value]) => (
-                        <div key={key} className="signal-detail-row">
-                          <span className="signal-name">{key.replace(/_/g, ' ')}:</span>
-                          <span className="signal-value">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+              {selectedAudit.details && (() => {
+                try {
+                  const parsed = typeof selectedAudit.details === 'string' ? JSON.parse(selectedAudit.details) : selectedAudit.details;
+                  const actorIp = parsed?.ipAddress || parsed?.clientIP || parsed?.actor_ip;
+                  const actorLocation = parsed?.location?.countryOrRegion || parsed?.actor_location || parsed?.city || parsed?.country;
+                  return (
+                    <>
+                      {actorIp && (
+                        <div className="compact-row">
+                          <span className="compact-label">Actor IP:</span>
+                          <span className="compact-value">{actorIp}</span>
                         </div>
-                      ))}
-                  </div>
+                      )}
+                      {actorLocation && (
+                        <div className="compact-row">
+                          <span className="compact-label">Actor location:</span>
+                          <span className="compact-value">{actorLocation}</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+              <div className="compact-row">
+                <span className="compact-label">Object:</span>
+                <span className="compact-value">
+                  {selectedAudit.object}
+                  {selectedAudit.object_type && (
+                    <span className="object-type-inline">({selectedAudit.object_type})</span>
+                  )}
+                </span>
+              </div>
+              <div className="compact-row">
+                <span className="compact-label">Date:</span>
+                <span className="compact-value">{formatDate(selectedAudit.date)}</span>
+              </div>
+              {selectedAudit.details && (() => {
+                try {
+                  const parsed = typeof selectedAudit.details === 'string' ? JSON.parse(selectedAudit.details) : selectedAudit.details;
+                  const showContent = parsed?.showContent !== undefined ? parsed.showContent : parsed?.show_content;
+                  return showContent !== undefined ? (
+                    <div className="compact-row">
+                      <span className="compact-label">Show content:</span>
+                      <span className="compact-value">{showContent ? 'On' : 'Off'}</span>
+                    </div>
+                  ) : null;
+                } catch {
+                  return null;
+                }
+              })()}
+              {selectedAudit.enrichment?.sla_policy && (
+                <div className="compact-row">
+                  <span className="compact-label">SLA Policy:</span>
+                  <span className="compact-value">{selectedAudit.enrichment.sla_policy}</span>
                 </div>
               )}
-
-              {/* Raw JSON */}
+              {selectedAudit.enrichment?.last_backup_at && (
+                <div className="compact-row">
+                  <span className="compact-label">Last Backup:</span>
+                  <span className="compact-value">{formatDate(selectedAudit.enrichment.last_backup_at)}</span>
+                </div>
+              )}
+              {selectedAudit.risk_signals && (
+                <div className="compact-row">
+                  <span className="compact-label">Risk Level:</span>
+                  <span className="compact-value">{getRiskBadge(selectedAudit.risk_level || 'N/A', selectedAudit.risk_score || 0)}</span>
+                </div>
+              )}
               {selectedAudit.details && (
-                <button className="view-raw-btn" onClick={() => handleViewRawDetails(selectedAudit)}>
+                <button className="view-raw-btn-compact" onClick={() => handleViewRawDetails(selectedAudit)}>
                   View Raw JSON
                 </button>
               )}
