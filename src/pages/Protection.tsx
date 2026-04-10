@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
+import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
+import { RestoreModal } from '../components/RestoreModal';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic';
@@ -143,6 +145,17 @@ export default function Protection() {
   }
   const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>({});
   const [backingUp, setBackingUp] = useState<Set<string>>(new Set()); // resourceIds currently backing up
+
+  // Snapshot browsing state
+  const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
+  const [selectedResource, setSelectedResource] = useState<ResourceItem | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+
+  // Restore modal state
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [restoreItemIds, setRestoreItemIds] = useState<string[]>([]);
+  const [restoreSnapshotIds, setRestoreSnapshotIds] = useState<string[]>([]);
 
   useEffect(() => {
     function handleSlaClick(e: MouseEvent) {
@@ -321,6 +334,34 @@ export default function Protection() {
         return updated;
       });
     }
+  };
+
+  const handleViewSnapshots = async (resource: ResourceItem) => {
+    setSelectedResource(resource);
+    setSnapshotModalOpen(true);
+    setSnapshotsLoading(true);
+    try {
+      const response = await SnapshotService.listByResource(resource.id, 1, 20);
+      setSnapshots(response.content);
+    } catch (err) {
+      console.error('Failed to fetch snapshots:', err);
+      setSnapshots([]);
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  };
+
+  const handleRecover = (resource: ResourceItem) => {
+    // Open restore modal for the resource's snapshots
+    setRestoreItemIds([]);
+    setRestoreSnapshotIds([]);
+    setRestoreModalOpen(true);
+  };
+
+  const handleRecoverFromSnapshot = (snapshotId: string) => {
+    setRestoreSnapshotIds([snapshotId]);
+    setRestoreItemIds([]);
+    setRestoreModalOpen(true);
   };
 
   return (
@@ -516,13 +557,88 @@ export default function Protection() {
                   <button className="action-btn-sm" onClick={() => handleBackupNow(resource.id)} disabled={backingUp.has(resource.id)}>
                     {backingUp.has(resource.id) ? 'Backing up...' : 'Backup now'}
                   </button>
-                  <button className="action-btn-sm">Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg></button>
+                  <button className="action-btn-sm" onClick={() => handleRecover(resource)}>
+                    Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                  <button className="action-btn-sm" onClick={() => handleViewSnapshots(resource)}>
+                    Snapshots
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Snapshot Modal */}
+      {snapshotModalOpen && selectedResource && (
+        <div className="modal-overlay" onClick={() => setSnapshotModalOpen(false)}>
+          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Snapshots for {selectedResource.name}</h2>
+              <button className="modal-close" onClick={() => setSnapshotModalOpen(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {snapshotsLoading ? (
+                <div className="loading-container">
+                  <div className="spinner" />
+                  <p>Loading snapshots...</p>
+                </div>
+              ) : snapshots.length === 0 ? (
+                <div className="empty-state">
+                  <p>No snapshots found for this resource</p>
+                </div>
+              ) : (
+                <table className="snapshots-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Label</th>
+                      <th>Items</th>
+                      <th>Size</th>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshots.map(snap => (
+                      <tr key={snap.id}>
+                        <td>{snap.type}</td>
+                        <td>{snap.label || '-'}</td>
+                        <td>{snap.itemCount}</td>
+                        <td>{formatSize(snap.size)}</td>
+                        <td>{new Date(snap.createdAt).toLocaleString()}</td>
+                        <td>
+                          <span className={`status-badge ${snap.status.toLowerCase()}`}>{snap.status}</span>
+                        </td>
+                        <td>
+                          <button
+                            className="action-btn-sm"
+                            onClick={() => handleRecoverFromSnapshot(snap.id)}
+                          >
+                            Restore
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore Modal */}
+      {restoreModalOpen && (
+        <RestoreModal
+          isOpen={restoreModalOpen}
+          onClose={() => setRestoreModalOpen(false)}
+          itemIds={restoreItemIds}
+          snapshotIds={restoreSnapshotIds}
+        />
+      )}
     </div>
   );
 }

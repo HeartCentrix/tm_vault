@@ -69,8 +69,35 @@ export const API = {
 
   // Snapshots
   SNAPSHOTS: {
-    LIST: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots`,
-    ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
+    LIST: (resourceId: string) => `${API_URL}/snapshots?resourceId=${resourceId}`,
+    DETAIL: (snapshotId: string) => `${API_URL}/snapshots/${snapshotId}`,
+    ITEMS: (snapshotId: string) => `${API_URL}/snapshots/${snapshotId}/items`,
+    ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/snapshots/${snapshotId}/items/${itemId}`,
+  },
+
+  // Restore
+  RESTORE: {
+    TRIGGER: `${API_URL}/jobs/restore`,
+    MAILBOX: `${API_URL}/jobs/restore/mailbox`,
+    ONEDRIVE: `${API_URL}/jobs/restore/onedrive`,
+    SHAREPOINT: `${API_URL}/jobs/restore/sharepoint`,
+    ENTRA_OBJECT: `${API_URL}/jobs/restore/entra-object`,
+    STATUS: (jobId: string) => `${API_URL}/jobs/restore/${jobId}/status`,
+    HISTORY: `${API_URL}/jobs/restore/history`,
+  },
+
+  // Export
+  EXPORT: {
+    TRIGGER: `${API_URL}/jobs/export`,
+    STATUS: (jobId: string) => `${API_URL}/jobs/export/${jobId}/status`,
+    DOWNLOAD: (jobId: string) => `${API_URL}/jobs/export/${jobId}/download`,
+  },
+
+  // Search (full-text search service on port 8013, proxied via API gateway)
+  SEARCH: {
+    SEARCH: `${API_URL}/search`,
+    SUGGESTIONS: `${API_URL}/search/suggestions`,
+    REINDEX: `${API_URL}/search/reindex`,
   },
 
   // SLA Policies
