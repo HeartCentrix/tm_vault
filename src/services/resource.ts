@@ -2,31 +2,43 @@ import { API } from '../config/api';
 
 export interface ResourceItem {
   id: string;
+  tenant_id: string;
+  owner: string | null;
+  kind: string;
+  provider: string;
+  external_id: string;
   name: string;
   email?: string;
-  type: string;
-  sla?: string;
-  totalSize: string;
-  lastBackup?: string;
-  status: string;
-  tenantId?: string;
+  data: Record<string, any>;
   archived: boolean;
+  deleted: boolean;
+  protections: { policy_id: string }[] | null;
+  usage: {
+    resource_id: string;
+    tenant_id: string;
+    backups: number;
+    size: number;
+    size_delta_year: number;
+    size_delta_month: number;
+    size_delta_week: number;
+  };
+  status: string;
+  sla?: string;
+  last_backup?: string;
+  group_ids: string[];
 }
 
 export interface ResourceListResponse {
-  content: ResourceItem[];
-  totalPages: number;
-  totalElements: number;
-  size: number;
-  number: number;
-  first: boolean;
-  last: boolean;
+  item_number: number;
+  page_number: number;
+  next_page_token: string | null;
+  items: ResourceItem[];
 }
 
-// Map Protection tabs to backend resource types
+// Map Protection tabs to backend resource types (must match ResourceType enum in DB)
 const TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
-  users: ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'TEAMS_CHAT'],
+  users: ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'ENTRA_USER'],
   shared: ['SHARED_MAILBOX'],
   rooms: ['ROOM_MAILBOX'],
   sharepoint: ['SHAREPOINT_SITE'],
@@ -52,51 +64,35 @@ export async function getResources(
   let url: string;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-  if (tab === 'users') {
-    // Use the /users endpoint for the Users tab
-    url = `${API.RESOURCES.USERS}?tenantId=${tenantId}`;
-  } else if (tab === 'all' && !searchQuery && !slaFilter && !resourceFilter) {
-    url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}`;
-  } else if (types.length === 1) {
+  if (types.length === 1) {
+    // Single type - use /by-type endpoint
     url = `${API.RESOURCES.BY_TYPE}?type=${types[0]}&tenantId=${tenantId}&page=${page}&size=${size}`;
-  } else {
+  } else if (types.length === 0) {
+    // All resources
     url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}`;
-    if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
-    if (resourceFilter === 'active') url += `&status=ACTIVE`;
-    if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
+  } else {
+    // Multiple types - fetch all and filter client-side
+    url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=500`;
   }
+
+  if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
+  if (resourceFilter === 'active') url += `&status=ACTIVE`;
+  if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
 
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`Failed to fetch resources: ${res.statusText}`);
 
   const data = await res.json();
 
-  // If endpoint returns paginated structure, use it; otherwise wrap
-  if (data.content !== undefined) {
-    return data as ResourceListResponse;
-  }
-  // If it's a plain array (from /by-type or /search), wrap it
-  if (Array.isArray(data)) {
-    return {
-      content: data,
-      totalPages: 1,
-      totalElements: data.length,
-      size: data.length,
-      number: 1,
-      first: true,
-      last: true,
-    };
+  // If multiple types were requested, filter client-side
+  if (types.length > 1 && data.items) {
+    data.items = data.items.filter((item: ResourceItem) =>
+      types.some(t => item.kind === t.toLowerCase())
+    );
+    data.item_number = data.items.length;
   }
 
-  return {
-    content: [],
-    totalPages: 0,
-    totalElements: 0,
-    size,
-    number: page,
-    first: true,
-    last: true,
-  };
+  return data;
 }
 
 export async function assignPolicy(resourceId: string, policyId: string): Promise<void> {

@@ -50,15 +50,20 @@ export default function Protection() {
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
+    setResources([]); // Clear previous tab's data
     getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter, resourceFilter)
       .then((data: ResourceListResponse) => {
-        setResources(data.content || []);
-        setTotalPages(data.totalPages || 1);
-        setPage(data.number || 1);
+        setResources(data.items || []);
+        setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter]);
+
+  // Reset page when tab changes
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
   // Close filter dropdown on outside click
   useEffect(() => {
@@ -75,12 +80,40 @@ export default function Protection() {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'ACTIVE': return 'Protected';
-      case 'DISCOVERED': return 'Discovered';
-      case 'ARCHIVED': return 'Archived';
-      case 'SUSPENDED': return 'Suspended';
+      case 'protected': return 'Protected';
+      case 'discovered': return 'Discovered';
+      case 'archived': return 'Archived';
+      case 'suspended': return 'Suspended';
       default: return status;
     }
+  };
+
+  const formatKind = (kind: string) => {
+    const map: Record<string, string> = {
+      office_user: 'Mailbox', shared_mailbox: 'Shared Mailbox', room_mailbox: 'Room Mailbox',
+      onedrive: 'OneDrive', sharepoint_site: 'SharePoint Site',
+      teams_channel: 'Teams Channel', teams_chat: 'Teams Chat',
+      entra_user: 'Entra User', entra_group: 'Entra Group', entra_app: 'Entra App',
+      azure_vm: 'Azure VM', azure_sql: 'Azure SQL', azure_postgresql: 'Azure PostgreSQL',
+    };
+    return map[kind] || kind;
+  };
+
+  const getEmptyMessage = () => {
+    const labels: Record<string, string> = {
+      all: 'resources',
+      users: 'users',
+      shared: 'shared mailboxes',
+      rooms: 'rooms',
+      sharepoint: 'SharePoint sites',
+      groups: 'groups & teams',
+      entra: 'Entra ID resources',
+      power: 'Power Platform resources',
+      dynamic: 'dynamic groups',
+      'entra-groups': 'Entra ID groups',
+    };
+    const label = labels[activeTab] || 'resources';
+    return `No ${label} found.`;
   };
 
   const toggleSelectAll = () => {
@@ -393,7 +426,7 @@ export default function Protection() {
               <tr><td colSpan={7} className="text-muted" style={{textAlign:'center', padding: 32}}>Loading...</td></tr>
             )}
             {!loading && resources.length === 0 && (
-              <tr><td colSpan={7} className="text-muted" style={{textAlign:'center', padding: 32}}>No resources found. Add a data source to get started.</td></tr>
+              <tr><td colSpan={7} className="text-muted" style={{textAlign:'center', padding: 32}}>{getEmptyMessage()}</td></tr>
             )}
             {!loading && resources.map((resource) => (
               <tr key={resource.id}>
@@ -405,7 +438,7 @@ export default function Protection() {
                   />
                 </td>
                 <td className="resource-name">{resource.name}</td>
-                <td>{resource.type}</td>
+                <td>{formatKind(resource.kind)}</td>
                 <td>
                   {resource.sla ? (
                     <span className={`sla-badge sla-${resource.sla.toLowerCase()}`}>{resource.sla}</span>
@@ -414,11 +447,11 @@ export default function Protection() {
                   )}
                 </td>
                 <td>
-                  <span className={`status-badge ${resource.status === 'ACTIVE' ? 'success' : 'warning'}`}>
+                  <span className={`status-badge ${resource.status === 'protected' ? 'success' : 'warning'}`}>
                     {getStatusLabel(resource.status)}
                   </span>
                 </td>
-                <td className="text-muted">{resource.lastBackup || '-'}</td>
+                <td className="text-muted">{resource.last_backup ? 'Available' : '-'}</td>
                 <td>
                   <div className="row-actions">
                     <button className="row-action-btn">Backup</button>
