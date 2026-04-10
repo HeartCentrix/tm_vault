@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 import './Protection.css';
 
@@ -131,6 +131,8 @@ export default function Protection() {
 
   const [showSlaDropdown, setShowSlaDropdown] = useState(false);
   const slaDropdownRef = useRef<HTMLDivElement>(null);
+  const [backupProgress, setBackupProgress] = useState<Record<string, number>>({}); // resourceId -> progress%
+  const [backingUp, setBackingUp] = useState<Set<string>>(new Set()); // resourceIds currently backing up
 
   useEffect(() => {
     function handleSlaClick(e: MouseEvent) {
@@ -141,6 +143,41 @@ export default function Protection() {
     document.addEventListener('mousedown', handleSlaClick);
     return () => document.removeEventListener('mousedown', handleSlaClick);
   }, []);
+
+  // Poll progress for resources that are backing up
+  useEffect(() => {
+    if (backingUp.size === 0) return;
+    const interval = setInterval(async () => {
+      const updates: Record<string, number> = {};
+      const done: string[] = [];
+      for (const rid of backingUp) {
+        try {
+          const p = await getResourceProgress(rid);
+          updates[rid] = p.progress_pct;
+          if (p.status === 'COMPLETED' || p.status === 'FAILED') {
+            done.push(rid);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setBackupProgress(prev => ({ ...prev, ...updates }));
+      if (done.length > 0) {
+        setBackingUp(prev => {
+          const next = new Set(prev);
+          done.forEach(d => next.delete(d));
+          return next;
+        });
+        // Refresh resources to show updated backup status
+        if (tenantId) {
+          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter, resourceFilter)
+            .then((data: ResourceListResponse) => setResources(data.items || []))
+            .catch(console.error);
+        }
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [backingUp, tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -210,6 +247,50 @@ export default function Protection() {
     }
   };
 
+  const handleBackupNow = async (resourceId: string) => {
+    if (backingUp.has(resourceId)) return; // Already backing up
+    try {
+      setBackingUp(prev => new Set(prev).add(resourceId));
+      setBackupProgress(prev => ({ ...prev, [resourceId]: 0 }));
+      await triggerBackup(resourceId);
+    } catch (err) {
+      console.error('Failed to trigger backup:', err);
+      setBackingUp(prev => {
+        const next = new Set(prev);
+        next.delete(resourceId);
+        return next;
+      });
+    }
+  };
+
+  const handleBatchBackup = async () => {
+    if (selectedResources.length === 0) return;
+    try {
+      // Add all selected to backing up state
+      setBackingUp(prev => {
+        const next = new Set(prev);
+        selectedResources.forEach(r => next.add(r));
+        return next;
+      });
+      // Initialize progress for all
+      const initialProgress: Record<string, number> = {};
+      selectedResources.forEach(r => { initialProgress[r] = 0; });
+      setBackupProgress(prev => ({ ...prev, ...initialProgress }));
+
+      // Trigger batch backup
+      const results = await triggerBatchBackup(selectedResources);
+      console.log(`Triggered batch backup for ${results.length} resources`);
+    } catch (err) {
+      console.error('Failed to trigger batch backup:', err);
+      // Remove from backing up on failure
+      setBackingUp(prev => {
+        const next = new Set(prev);
+        selectedResources.forEach(r => next.delete(r));
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="protection-page">
       <div className="resource-tabs">
@@ -236,7 +317,10 @@ export default function Protection() {
             <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </div>
           <div className="action-buttons">
-            <button className="action-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polygon points="5 3 19 12 5 21 5 3" /></svg>Backup now</button>
+            <button className="action-btn" disabled={selectedResources.length === 0} onClick={handleBatchBackup}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polygon points="5 3 19 12 5 21 5 3" /></svg>
+              Backup now{selectedResources.length > 0 ? ` (${selectedResources.length})` : ''}
+            </button>
             <div className="sla-assign-wrapper" ref={slaDropdownRef} style={{ position: 'relative' }}>
               <button className="action-btn" disabled={selectedResources.length === 0} onClick={() => setShowSlaDropdown(!showSlaDropdown)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
@@ -348,7 +432,16 @@ export default function Protection() {
                   ) : <span className="backup-status never">Never backed up</span>}
                 </td>
                 <td className="actions-cell">
-                  <button className="action-btn-sm">Backup now</button>
+                  {backingUp.has(resource.id) ? (
+                    <div className="backup-progress-inline">
+                      <div className="backup-progress-bar">
+                        <div style={{ width: `${backupProgress[resource.id] || 0}%` }}></div>
+                      </div>
+                      <span className="backup-progress-text">{backupProgress[resource.id] || 0}%</span>
+                    </div>
+                  ) : (
+                    <button className="action-btn-sm" onClick={() => handleBackupNow(resource.id)}>Backup now</button>
+                  )}
                   <button className="action-btn-sm">Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg></button>
                 </td>
               </tr>

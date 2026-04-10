@@ -183,3 +183,49 @@ export async function deleteResource(resourceId: string): Promise<void> {
   });
   if (!res.ok) throw new Error(`Failed to delete resource: ${res.statusText}`);
 }
+
+export async function triggerBackup(resourceId: string, fullBackup: boolean = false): Promise<{ jobId: string; status: string; resourceId: string }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.JOBS.TRIGGER_BACKUP, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ resourceId, fullBackup, priority: 1 }),
+  });
+  if (!res.ok) throw new Error(`Failed to trigger backup: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getResourceProgress(resourceId: string): Promise<{
+  resource_id: string;
+  status: string;
+  progress_pct: number;
+  total_bytes: number;
+  processed_bytes: number;
+  total_items: number;
+  processed_items: number;
+  eta_seconds: number | null;
+}> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(`${API.BASE_URL}/progress/resource/${resourceId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to get progress: ${res.statusText}`);
+  return res.json();
+}
+
+export async function triggerBatchBackup(resourceIds: string[]): Promise<{ jobId: string; status: string; resourceId: string }[]> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.JOBS.TRIGGER_BULK, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ resourceIds, priority: 1 }),
+  });
+  if (!res.ok) throw new Error(`Failed to trigger batch backup: ${res.statusText}`);
+  return res.json();
+}
