@@ -541,7 +541,8 @@
 
 /* Backup column */
 .backup-cell {
-  white-space: nowrap;
+  min-width: 180px;
+  padding: 8px 12px;
 }
 
 .backup-date {
@@ -568,6 +569,16 @@
 .backup-status.done {
   background: #d1fae5;
   color: #065f46;
+}
+
+.backup-status.running {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.backup-status.failed {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .backup-status.never {
@@ -657,34 +668,66 @@
   cursor: not-allowed;
 }
 
-/* Inline backup progress in actions cell */
-.backup-progress-inline {
+/* Backup progress in backup cell */
+.backup-progress-cell {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  min-width: 120px;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
 }
 
-.backup-progress-bar {
-  flex: 1;
-  height: 6px;
+.backup-progress-track {
+  width: 100%;
+  height: 8px;
   background: #e2e8f0;
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
-.backup-progress-bar > div {
+.backup-progress-fill {
   height: 100%;
-  background: #3b82f6;
-  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  position: relative;
 }
 
-.backup-progress-text {
-  font-size: 12px;
-  color: #64748b;
-  white-space: nowrap;
-  min-width: 32px;
-  text-align: right;
+.backup-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: shimmer 1.5s infinite;
 }
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.backup-progress-label {
+  font-size: 12px;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+/* Size cell updates */
+.size-cell {
+  position: relative;
+}
+
+.size-sub span[style] {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* Action button disabled state */
+.action-btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 

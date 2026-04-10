@@ -25,6 +25,7 @@ export interface ResourceItem {
   status: string;
   sla?: string;
   last_backup?: string;
+  last_backup_status?: string;
   group_ids: string[];
 }
 
