@@ -90,4 +90,15 @@ export const API = {
   ACCESS_GROUPS: {
     LIST: `${API_URL}/access-groups`,
   },
+
+  // Activity
+  ACTIVITY: {
+    LIST: `${API_URL}/activity`,
+  },
+
+  // Audit
+  AUDIT: {
+    LIST: `${API_URL}/audit`,
+    DETAILS: (id: string) => `${API_URL}/audit/${id}`,
+  },
 };
