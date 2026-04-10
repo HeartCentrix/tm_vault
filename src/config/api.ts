@@ -125,7 +125,7 @@ export const API = {
 
   // Audit
   AUDIT: {
-    LIST: `${API_URL}/audit`,
-    DETAILS: (id: string) => `${API_URL}/audit/${id}`,
+    LIST: `${API_URL}/audit/events`,
+    DETAILS: (id: string) => `${API_URL}/audit/events/${id}`,
   },
 };

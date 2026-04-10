@@ -46,17 +46,15 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
 
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`Failed to fetch activities: ${res.statusText}`);
-  return res.json();
-}
+  const data = await res.json();
 
-export async function getActivityById(id: string): Promise<ActivityItem> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
-  const url = `${API.ACTIVITY.LIST}/${id}`;
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`Failed to fetch activity: ${res.statusText}`);
-  return res.json();
+  return {
+    items: data.items || [],
+    total: data.total || 0,
+    page: data.page || 1,
+    size: data.size || 50,
+    has_more: data.has_more || false,
+  };
 }
 
 export async function downloadActivityCSV(params?: ActivityListParams): Promise<Blob> {
