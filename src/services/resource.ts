@@ -121,6 +121,34 @@ export async function unassignPolicy(resourceId: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to unassign policy: ${res.statusText}`);
 }
 
+export async function bulkAssignPolicy(resourceIds: string[], policyId: string): Promise<{ assigned: number; not_found: string[] }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.RESOURCES.BULK_ASSIGN, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ resourceIds, policyId }),
+  });
+  if (!res.ok) throw new Error(`Failed to bulk assign policy: ${res.statusText}`);
+  return res.json();
+}
+
+export async function bulkUnassignPolicy(resourceIds: string[]): Promise<{ unassigned: number; not_found: string[] }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.RESOURCES.BULK_UNASSIGN, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ resourceIds }),
+  });
+  if (!res.ok) throw new Error(`Failed to bulk unassign policy: ${res.statusText}`);
+  return res.json();
+}
+
 export async function archiveResource(resourceId: string): Promise<void> {
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.ARCHIVE(resourceId)}`, {

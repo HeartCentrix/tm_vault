@@ -50,6 +50,8 @@ export const API = {
     BY_TYPE: `${API_URL}/resources/by-type`,
     ASSIGN_POLICY: (id: string) => `${API_URL}/resources/${id}/assign-policy`,
     UNASSIGN_POLICY: (id: string) => `${API_URL}/resources/${id}/unassign-policy`,
+    BULK_ASSIGN: `${API_URL}/resources/bulk-assign-policy`,
+    BULK_UNASSIGN: `${API_URL}/resources/bulk-unassign-policy`,
     ARCHIVE: (id: string) => `${API_URL}/resources/${id}/archive`,
     UNARCHIVE: (id: string) => `${API_URL}/resources/${id}/unarchive`,
     DELETE: (id: string) => `${API_URL}/resources/${id}`,

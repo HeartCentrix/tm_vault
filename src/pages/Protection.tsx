@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 import './Protection.css';
 
@@ -129,6 +129,19 @@ export default function Protection() {
   const [sizeFilter, setSizeFilter] = useState<string | null>(null);
   const [slaFilter, setSlaFilter] = useState<string | null>(null);
 
+  const [showSlaDropdown, setShowSlaDropdown] = useState(false);
+  const slaDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleSlaClick(e: MouseEvent) {
+      if (slaDropdownRef.current && !slaDropdownRef.current.contains(e.target as Node)) {
+        setShowSlaDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleSlaClick);
+    return () => document.removeEventListener('mousedown', handleSlaClick);
+  }, []);
+
   useEffect(() => {
     if (!tenantId) return;
     getSlaPolicies(tenantId).then(setPolicies).catch(console.error);
@@ -179,12 +192,30 @@ export default function Protection() {
     }
   };
 
+  const handleBulkSlaAssign = async (policyId: string) => {
+    if (selectedResources.length === 0) return;
+    try {
+      const result = await bulkAssignPolicy(selectedResources, policyId);
+      // Update local state
+      setResources(prev => prev.map(r =>
+        selectedResources.includes(r.id)
+          ? { ...r, protections: policyId ? [{ policy_id: policyId }] : null }
+          : r
+      ));
+      setSelectedResources([]);
+      setShowSlaDropdown(false);
+      console.log(`Assigned SLA to ${result.assigned} resources`);
+    } catch (err) {
+      console.error('Failed to bulk assign SLA:', err);
+    }
+  };
+
   return (
     <div className="protection-page">
       <div className="resource-tabs">
         {tabs.map(tab => (
           tab.key === 'sharepoint' ? (
-            <><div className="tab-divider" key={`d-${tab.key}`} /><button key={tab.key} className={`resource-tab pill ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button></>
+            <Fragment key={`d-${tab.key}`}><div className="tab-divider" /><button className={`resource-tab pill ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button></Fragment>
           ) : tab.key !== 'dynamic' && tab.key !== 'entra-groups' ? (
             <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
           ) : null
@@ -206,7 +237,31 @@ export default function Protection() {
           </div>
           <div className="action-buttons">
             <button className="action-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polygon points="5 3 19 12 5 21 5 3" /></svg>Backup now</button>
-            <button className="action-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>Assign SLA</button>
+            <div className="sla-assign-wrapper" ref={slaDropdownRef} style={{ position: 'relative' }}>
+              <button className="action-btn" disabled={selectedResources.length === 0} onClick={() => setShowSlaDropdown(!showSlaDropdown)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                Assign SLA{selectedResources.length > 0 ? ` (${selectedResources.length})` : ''}
+              </button>
+              {showSlaDropdown && (
+                <div className="sla-dropdown-menu">
+                  <button className="sla-dropdown-item" onClick={() => handleBulkSlaAssign('')}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 8, flexShrink: 0 }}>
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <line x1="2" y1="2" x2="22" y2="22" stroke="#dc2626" strokeWidth="2" />
+                    </svg>
+                    Not protected
+                  </button>
+                  {policies.map(p => (
+                    <button key={p.id} className="sla-dropdown-item" onClick={() => handleBulkSlaAssign(p.id)}>
+                      <div className="sla-item-text">
+                        <span className="sla-item-name">{p.name}</span>
+                        <span className="sla-item-desc">{getSlaDescription(p)}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="filter-wrapper" ref={filterRef}>
               <button className={`action-btn filter-btn ${activeFilterCount > 0 ? 'has-filters' : ''}`} onClick={() => setShowFilter(!showFilter)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>Filter
