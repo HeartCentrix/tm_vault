@@ -75,6 +75,7 @@ export const API = {
   POLICIES: {
     LIST: `${API_URL}/policies`,
     CREATE: `${API_URL}/policies`,
+    DELETE: (id: string) => `${API_URL}/policies/${id}`,
   },
 
   // Alerts

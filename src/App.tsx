@@ -71,6 +71,22 @@ export default function App() {
             }
           />
           <Route
+            path="/tenants/:tenantId/:serviceType/protection/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tenants/:tenantId/:serviceType/global-search"
+            element={
+              <ProtectedRoute>
+                <GlobalSearch />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/activity"
             element={
               <ProtectedRoute>
@@ -91,14 +107,6 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Settings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/tenants/:tenantId/:serviceType/global-search"
-            element={
-              <ProtectedRoute>
-                <GlobalSearch />
               </ProtectedRoute>
             }
           />
