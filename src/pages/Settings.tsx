@@ -35,7 +35,7 @@ const BACKUP_ITEMS_RIGHT: BackupItem[] = [
 ];
 
 export default function Settings() {
-  const { tenantId } = useParams<{ tenantId: string }>();
+  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const [activeTab, setActiveTab] = useState<SettingsTab>('sla');
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,15 +59,18 @@ export default function Settings() {
   const [formArchiving, setFormArchiving] = useState('INDEFINITE');
   const [showEmailSettings, setShowEmailSettings] = useState(false);
 
-  const tabs: { key: SettingsTab; label: string }[] = [
+  const sharedTabs: { key: SettingsTab; label: string }[] = [
     { key: 'sla', label: 'SLA' },
     { key: 'info', label: 'Info' },
     { key: 'admin', label: 'Admin consent' },
     { key: 'apps', label: 'Apps' },
     { key: 'access', label: 'Access groups' },
     { key: 'secrets', label: 'Secrets' },
-    { key: 'saml', label: 'SAML/Okta' },
   ];
+
+  const tabs: { key: SettingsTab; label: string }[] = serviceType === 'azure' 
+    ? sharedTabs 
+    : [...sharedTabs, { key: 'saml' as SettingsTab, label: 'SAML/Okta' }];
 
   useEffect(() => {
     if (activeTab === 'sla' && tenantId) {

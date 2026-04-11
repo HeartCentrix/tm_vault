@@ -5,9 +5,9 @@ import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import './Protection.css';
 
-type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups';
+type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
 
-const tabs: { key: ResourceTab; label: string }[] = [
+const m365Tabs: { key: ResourceTab; label: string }[] = [
   { key: 'all', label: 'All resources' },
   { key: 'users', label: 'Users' },
   { key: 'shared', label: 'Shared mailboxes' },
@@ -18,6 +18,15 @@ const tabs: { key: ResourceTab; label: string }[] = [
   { key: 'power', label: 'Power Platform' },
   { key: 'dynamic', label: 'Dynamic groups' },
   { key: 'entra-groups', label: 'Entra ID groups' },
+];
+
+const azureTabs: { key: ResourceTab; label: string }[] = [
+  { key: 'all', label: 'All resources' },
+  { key: 'virtual-machines', label: 'Virtual machines' },
+  { key: 'sql-databases', label: 'Azure SQL databases' },
+  { key: 'postgresql-servers', label: 'Azure PostgreSQL servers' },
+  { key: 'resource-groups', label: 'Resource groups' },
+  { key: 'dynamic-groups', label: 'Dynamic groups' },
 ];
 
 function getInitials(name: string): string {
@@ -115,6 +124,7 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
 export default function Protection() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const navigate = useNavigate();
+  const tabs = serviceType === 'azure' ? azureTabs : m365Tabs;
   const [activeTab, setActiveTab] = useState<ResourceTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
@@ -194,7 +204,7 @@ export default function Protection() {
         });
         // Refresh resources to show updated backup status and size
         if (tenantId) {
-          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined)
+          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
             .then((data: ResourceListResponse) => setResources(data.items || []))
             .catch(console.error);
         }
@@ -212,14 +222,14 @@ export default function Protection() {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-    getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined)
+    getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
       .then((data: ResourceListResponse) => {
         setResources(data.items || []);
         setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter]);
+  }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
@@ -388,20 +398,36 @@ export default function Protection() {
   return (
     <div className="protection-page">
       <div className="resource-tabs">
-        {tabs.map(tab => (
-          tab.key === 'sharepoint' ? (
-            <Fragment key={`d-${tab.key}`}><div className="tab-divider" /><button className={`resource-tab pill ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button></Fragment>
-          ) : tab.key !== 'dynamic' && tab.key !== 'entra-groups' ? (
-            <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
-          ) : null
-        ))}
-        <fieldset className="auto-protection-group">
-          <legend className="auto-protection-label">Auto-protection</legend>
-          <div className="auto-protection-tabs">
-            <button className={`resource-tab ${activeTab === 'entra-groups' ? 'active' : ''}`} onClick={() => setActiveTab('entra-groups')}>Entra ID groups</button>
-            <button className={`resource-tab ${activeTab === 'dynamic' ? 'active' : ''}`} onClick={() => setActiveTab('dynamic')}>Dynamic groups</button>
-          </div>
-        </fieldset>
+        {serviceType === 'azure' ? (
+          // Azure-specific tabs layout
+          <>
+            {tabs.map(tab => (
+              tab.key === 'resource-groups' ? (
+                <Fragment key={`d-${tab.key}`}><div className="tab-divider" /><button className={`resource-tab pill ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button></Fragment>
+              ) : (
+                <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
+              )
+            ))}
+          </>
+        ) : (
+          // M365 tabs layout
+          <>
+            {tabs.map(tab => (
+              tab.key === 'sharepoint' ? (
+                <Fragment key={`d-${tab.key}`}><div className="tab-divider" /><button className={`resource-tab pill ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button></Fragment>
+              ) : tab.key !== 'dynamic' && tab.key !== 'entra-groups' ? (
+                <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
+              ) : null
+            ))}
+            <fieldset className="auto-protection-group">
+              <legend className="auto-protection-label">Auto-protection</legend>
+              <div className="auto-protection-tabs">
+                <button className={`resource-tab ${activeTab === 'entra-groups' ? 'active' : ''}`} onClick={() => setActiveTab('entra-groups')}>Entra ID groups</button>
+                <button className={`resource-tab ${activeTab === 'dynamic' ? 'active' : ''}`} onClick={() => setActiveTab('dynamic')}>Dynamic groups</button>
+              </div>
+            </fieldset>
+          </>
+        )}
       </div>
 
       <div className="action-bar">
@@ -546,7 +572,7 @@ export default function Protection() {
                   </div>
                 </td>
                 <td className="sla-cell">
-                  <SlaCell resource={resource} policies={policies} onChange={handleSlaChange} onSettings={() => navigate(`/tenants/${tenantId}/settings`)} />
+                  <SlaCell resource={resource} policies={policies} onChange={handleSlaChange} onSettings={() => navigate(`/tenants/${tenantId}/${serviceType}/protection/settings`)} />
                 </td>
                 <td className="size-cell">
                   {(() => {

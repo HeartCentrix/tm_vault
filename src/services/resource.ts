@@ -37,7 +37,8 @@ export interface ResourceListResponse {
 }
 
 // Map Protection tabs to backend resource types (must match ResourceType enum in DB)
-const TAB_TYPE_MAP: Record<string, string[]> = {
+// M365 resource types
+const M365_TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
   users: ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'ENTRA_USER'],
   shared: ['SHARED_MAILBOX'],
@@ -50,6 +51,23 @@ const TAB_TYPE_MAP: Record<string, string[]> = {
   'entra-groups': ['ENTRA_GROUP'],
 };
 
+// Azure resource types
+const AZURE_TAB_TYPE_MAP: Record<string, string[]> = {
+  all: [],
+  'virtual-machines': ['VIRTUAL_MACHINE'],
+  'sql-databases': ['AZURE_SQL_DATABASE'],
+  'postgresql-servers': ['AZURE_POSTGRESQL_SERVER'],
+  'resource-groups': ['RESOURCE_GROUP'],
+  'dynamic-groups': ['DYNAMIC_GROUP'],
+};
+
+export function getTabTypeMap(serviceType?: string): Record<string, string[]> {
+  if (serviceType === 'azure') {
+    return AZURE_TAB_TYPE_MAP;
+  }
+  return M365_TAB_TYPE_MAP;
+}
+
 export async function getResources(
   tenantId: string,
   tab: string,
@@ -57,10 +75,12 @@ export async function getResources(
   size: number = 50,
   searchQuery?: string,
   _slaFilter?: string,
-  resourceFilter?: string
+  resourceFilter?: string,
+  serviceType?: string
 ): Promise<ResourceListResponse> {
   const token = localStorage.getItem('access_token');
-  const types = TAB_TYPE_MAP[tab] || [];
+  const tabTypeMap = getTabTypeMap(serviceType);
+  const types = tabTypeMap[tab] || [];
 
   let url: string;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
