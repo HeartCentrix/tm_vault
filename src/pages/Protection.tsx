@@ -487,8 +487,8 @@ export default function Protection() {
           <thead>
             <tr>
               <th className="checkbox-cell"><input type="checkbox" checked={selectedResources.length === resources.filter(r => r.protections?.[0]?.policy_id).length && resources.filter(r => r.protections?.[0]?.policy_id).length > 0} onChange={toggleSelectAll} /></th>
-              <th>Resources <span className="th-icon">⌄</span></th>
-              <th>SLA <span className="th-icon">⌄</span></th>
+              <th>Resources <span className="th-icon"></span></th>
+              <th>SLA <span className="th-icon"></span></th>
               <th className="size-col"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4, verticalAlign: 'middle' }}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>Total size</th>
               <th>Last backup</th>
               <th></th>
