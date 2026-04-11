@@ -274,20 +274,31 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: transparent;
+  background: transparent !important;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
   color: #475569;
+  padding: 0 !important;
+}
+
+.pagination-btn svg {
+  width: 1em;
+  height: 1em;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: #f8fafc;
+  background: #f1f5f9 !important;
 }
 
 .pagination-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 

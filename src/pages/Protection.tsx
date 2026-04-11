@@ -599,14 +599,14 @@ export default function Protection() {
                   >
                     Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg>
                   </button>
-                  <button
+                  {/* <button
                     className="action-btn-sm"
                     onClick={() => handleViewSnapshots(resource)}
                     disabled={!resource.protections?.[0]?.policy_id}
                     title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before viewing snapshots' : ''}
                   >
                     Snapshots
-                  </button>
+                  </button> */}
                 </td>
               </tr>
             ))}
