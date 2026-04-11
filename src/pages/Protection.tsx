@@ -6,7 +6,7 @@ import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../servi
 import { RestoreModal } from '../components/RestoreModal';
 import './Protection.css';
 
-type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic';
+type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups';
 
 const tabs: { key: ResourceTab; label: string }[] = [
   { key: 'all', label: 'All resources' },
@@ -114,7 +114,7 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
 }
 
 export default function Protection() {
-  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
+  const { tenantId } = useParams<{ tenantId: string; serviceType: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ResourceTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,7 +128,6 @@ export default function Protection() {
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
 
   const [resourceFilter, setResourceFilter] = useState<string | null>(null);
-  const [sizeFilter, setSizeFilter] = useState<string | null>(null);
   const [slaFilter, setSlaFilter] = useState<string | null>(null);
 
   const [showSlaDropdown, setShowSlaDropdown] = useState(false);
@@ -200,7 +199,7 @@ export default function Protection() {
         });
         // Refresh resources to show updated backup status and size
         if (tenantId) {
-          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter, resourceFilter)
+          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined)
             .then((data: ResourceListResponse) => setResources(data.items || []))
             .catch(console.error);
         }
@@ -218,7 +217,7 @@ export default function Protection() {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-    getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter, resourceFilter)
+    getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined)
       .then((data: ResourceListResponse) => {
         setResources(data.items || []);
         setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
@@ -237,7 +236,7 @@ export default function Protection() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const activeFilterCount = (resourceFilter ? 1 : 0) + (sizeFilter ? 1 : 0) + (slaFilter ? 1 : 0);
+  const activeFilterCount = (resourceFilter ? 1 : 0) + (slaFilter ? 1 : 0);
 
   const toggleSelectAll = () => {
     setSelectedResources(selectedResources.length === resources.length ? [] : resources.map(r => r.id));
@@ -351,7 +350,7 @@ export default function Protection() {
     }
   };
 
-  const handleRecover = (resource: ResourceItem) => {
+  const handleRecover = (_resource: ResourceItem) => {
     // Open restore modal for the resource's snapshots
     setRestoreItemIds([]);
     setRestoreSnapshotIds([]);

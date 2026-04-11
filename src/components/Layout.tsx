@@ -5,19 +5,13 @@ import Header from './Header';
 import ServiceNav from './ServiceNav';
 import AddDataSourceModal from './AddDataSourceModal';
 import { useTrackNavigation } from '../hooks/useTrackNavigation';
+import type { DataSourceType } from '../services/datasource';
 import './Layout.css';
-
-interface DataSource {
-  id: string;
-  name: string;
-  type: 'microsoft365' | 'azure';
-  status?: string;
-}
 
 export default function Layout() {
   useTrackNavigation();
 
-  const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
+  const [selectedSource, setSelectedSource] = useState<DataSourceType | null>(null);
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
 
   return (

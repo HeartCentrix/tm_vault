@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import './GlobalSearch.css';
 import { SearchService, type SearchResult } from '../services/search';
 import { RestoreModal } from '../components/RestoreModal';
@@ -17,14 +17,6 @@ const workloads: { key: WorkloadType; label: string; backendType?: string }[] = 
   { key: 'exchange', label: 'Exchange tasks', backendType: 'exchange' },
   { key: 'planner', label: 'Planner tasks' },
 ];
-
-const WORKLOAD_TO_ITEM_TYPE: Record<string, string[]> = {
-  exchange: ['EMAIL', 'CALENDAR', 'CONTACT'],
-  onedrive: ['FILE', 'ONEDRIVE_FILE'],
-  teams: ['TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY', 'TEAMS_CHAT_MESSAGE'],
-  sharepoint: ['SHAREPOINT_FILE', 'SHAREPOINT_LIST_ITEM'],
-  entra: ['ENTRA_USER_PROFILE', 'ENTRA_GROUP_META'],
-};
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);

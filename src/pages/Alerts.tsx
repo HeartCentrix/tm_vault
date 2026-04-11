@@ -66,8 +66,6 @@ export default function Alerts() {
     }
   };
 
-  const unresolvedCount = alerts.filter(a => a.status === 'ACTIVE').length;
-
   return (
     <div className="alerts-page">
       <div className="alerts-header">

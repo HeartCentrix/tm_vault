@@ -272,8 +272,8 @@ export default function Settings() {
                       )}
                     </div>
                     <div className="sla-retention">
-                      <div className="sla-sched-row"><span className="sla-sched-label">Retention:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType)}</span></div>
-                      <div className="sla-sched-row"><span className="sla-sched-label">Archiving:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType)}</span></div>
+                      <div className="sla-sched-row"><span className="sla-sched-label">Retention:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType || '')}</span></div>
+                      <div className="sla-sched-row"><span className="sla-sched-label">Archiving:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType || '')}</span></div>
                     </div>
                     <div className="sla-actions">
                       <button className="sla-action-btn" onClick={() => handleDelete(policy.id)}>
@@ -385,7 +385,7 @@ export default function Settings() {
                   <div className="sla-modal-schedule-row">
                     <span className="sla-modal-schedule-label">Day:</span>
                     <div className="sla-modal-day-btns">
-                      {DAYS.map((d, i) => (
+                      {DAYS.map((d) => (
                         <button key={`day-${d}`} className={`sla-modal-day-btn ${formDays.has(d) ? 'active' : ''}`} onClick={() => toggleDay(d)}>{DAY_LABELS[d]}</button>
                       ))}
                     </div>
@@ -407,7 +407,7 @@ export default function Settings() {
                 <div className="sla-modal-schedule-row">
                   <span className="sla-modal-schedule-label">Day:</span>
                   <div className="sla-modal-day-btns">
-                    {DAYS.map((d, i) => (
+                    {DAYS.map((d) => (
                       <button key={`day3-${d}`} className={`sla-modal-day-btn ${formDays.has(d) ? 'active' : ''}`} onClick={() => toggleDay(d)}>{DAY_LABELS[d]}</button>
                     ))}
                   </div>

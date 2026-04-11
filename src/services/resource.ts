@@ -56,7 +56,7 @@ export async function getResources(
   page: number = 1,
   size: number = 50,
   searchQuery?: string,
-  slaFilter?: string,
+  _slaFilter?: string,
   resourceFilter?: string
 ): Promise<ResourceListResponse> {
   const token = localStorage.getItem('access_token');
@@ -208,6 +208,7 @@ export async function getResourceProgress(resourceId: string): Promise<{
   total_items: number;
   processed_items: number;
   eta_seconds: number | null;
+  started_at?: string;
 }> {
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.BASE_URL}/progress/resource/${resourceId}`, {

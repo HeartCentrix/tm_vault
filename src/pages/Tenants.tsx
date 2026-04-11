@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AddDataSourceModal from '../components/AddDataSourceModal';
-import { getDataSources, invalidateDataSourceCache } from '../services/datasource';
-import type { DataSourceType } from '../services/datasource';
+import { getDataSources, type DataSourceType } from '../services/datasource';
 import './Tenants.css';
 
 export default function Tenants() {
