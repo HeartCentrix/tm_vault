@@ -239,10 +239,13 @@ export default function Protection() {
   const activeFilterCount = (resourceFilter ? 1 : 0) + (slaFilter ? 1 : 0);
 
   const toggleSelectAll = () => {
-    setSelectedResources(selectedResources.length === resources.length ? [] : resources.map(r => r.id));
+    const resourcesWithSla = resources.filter(r => r.protections?.[0]?.policy_id);
+    setSelectedResources(selectedResources.length === resourcesWithSla.length ? [] : resourcesWithSla.map(r => r.id));
   };
 
   const toggleSelect = (id: string) => {
+    const resource = resources.find(r => r.id === id);
+    if (!resource?.protections?.[0]?.policy_id) return; // Can't select without SLA
     setSelectedResources(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
@@ -302,34 +305,53 @@ export default function Protection() {
 
   const handleBatchBackup = async () => {
     if (selectedResources.length === 0) return;
+
+    // Filter out resources without SLA policy
+    const resourcesWithSla = selectedResources.filter(id => {
+      const resource = resources.find(r => r.id === id);
+      return resource?.protections?.[0]?.policy_id;
+    });
+
+    if (resourcesWithSla.length === 0) {
+      alert('Cannot trigger backup: Selected resources must have an SLA policy assigned first.');
+      return;
+    }
+
+    if (resourcesWithSla.length < selectedResources.length) {
+      const skipped = selectedResources.length - resourcesWithSla.length;
+      if (!confirm(`${skipped} resource(s) don't have an SLA policy and will be skipped. Continue with ${resourcesWithSla.length} resource(s)?`)) {
+        return;
+      }
+    }
+
     try {
       // Add all selected to backing up state
       setBackingUp(prev => {
         const next = new Set(prev);
-        selectedResources.forEach(r => next.add(r));
+        resourcesWithSla.forEach(r => next.add(r));
         return next;
       });
       // Initialize status for all
       const initialStatus: Record<string, BackupStatus> = {};
-      selectedResources.forEach(r => {
+      resourcesWithSla.forEach(r => {
         initialStatus[r] = { progress_pct: 0, status: 'RUNNING', processed_bytes: 0, total_bytes: 0, started_at: new Date().toISOString() };
       });
       setBackupStatus(prev => ({ ...prev, ...initialStatus }));
 
       // Trigger batch backup
-      const results = await triggerBatchBackup(selectedResources);
+      const results = await triggerBatchBackup(resourcesWithSla);
       console.log(`Triggered batch backup for ${results.length} resources`);
     } catch (err) {
       console.error('Failed to trigger batch backup:', err);
       // Remove from backing up on failure
       setBackingUp(prev => {
         const next = new Set(prev);
-        selectedResources.forEach(r => next.delete(r));
+        resourcesWithSla.forEach(r => next.delete(r));
         return next;
       });
       setBackupStatus(prev => {
         const updated = { ...prev };
-        selectedResources.forEach(r => delete updated[r]);
+        resourcesWithSla.forEach(r => delete updated[r]);
         return updated;
       });
     }
@@ -464,7 +486,7 @@ export default function Protection() {
         <table className="resources-table">
           <thead>
             <tr>
-              <th className="checkbox-cell"><input type="checkbox" checked={selectedResources.length === resources.length && resources.length > 0} onChange={toggleSelectAll} /></th>
+              <th className="checkbox-cell"><input type="checkbox" checked={selectedResources.length === resources.filter(r => r.protections?.[0]?.policy_id).length && resources.filter(r => r.protections?.[0]?.policy_id).length > 0} onChange={toggleSelectAll} /></th>
               <th>Resources <span className="th-icon">⌄</span></th>
               <th>SLA <span className="th-icon">⌄</span></th>
               <th className="size-col"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4, verticalAlign: 'middle' }}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>Total size</th>
@@ -477,7 +499,15 @@ export default function Protection() {
             {!loading && resources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
             {!loading && resources.map(resource => (
               <tr key={resource.id}>
-                <td className="checkbox-cell"><input type="checkbox" checked={selectedResources.includes(resource.id)} onChange={() => toggleSelect(resource.id)} /></td>
+                <td className="checkbox-cell">
+                  <input
+                    type="checkbox"
+                    checked={selectedResources.includes(resource.id)}
+                    onChange={() => toggleSelect(resource.id)}
+                    disabled={!resource.protections?.[0]?.policy_id}
+                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before selecting for backup' : ''}
+                  />
+                </td>
                 <td className="resource-name-cell">
                   <div className="resource-avatar">{getInitials(resource.name)}</div>
                   <div className="resource-info">
@@ -553,13 +583,28 @@ export default function Protection() {
                   })()}
                 </td>
                 <td className="actions-cell">
-                  <button className="action-btn-sm" onClick={() => handleBackupNow(resource.id)} disabled={backingUp.has(resource.id)}>
+                  <button
+                    className="action-btn-sm"
+                    onClick={() => handleBackupNow(resource.id)}
+                    disabled={backingUp.has(resource.id) || !resource.protections?.[0]?.policy_id}
+                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before triggering backup' : ''}
+                  >
                     {backingUp.has(resource.id) ? 'Backing up...' : 'Backup now'}
                   </button>
-                  <button className="action-btn-sm" onClick={() => handleRecover(resource)}>
+                  <button
+                    className="action-btn-sm"
+                    onClick={() => handleRecover(resource)}
+                    disabled={!resource.protections?.[0]?.policy_id}
+                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before recovering' : ''}
+                  >
                     Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg>
                   </button>
-                  <button className="action-btn-sm" onClick={() => handleViewSnapshots(resource)}>
+                  <button
+                    className="action-btn-sm"
+                    onClick={() => handleViewSnapshots(resource)}
+                    disabled={!resource.protections?.[0]?.policy_id}
+                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before viewing snapshots' : ''}
+                  >
                     Snapshots
                   </button>
                 </td>

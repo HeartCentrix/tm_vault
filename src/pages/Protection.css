@@ -342,6 +342,11 @@
   width: 40px;
 }
 
+.resources-table td.checkbox-cell input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .resources-table tbody tr:hover {
   background: #f8fafc;
 }
