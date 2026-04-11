@@ -101,10 +101,27 @@ export default function Settings() {
     if (!formName.trim() || !tenantId) return;
     setSaving(true);
     try {
+      // Map frontend day codes to backend day codes
+      const DAY_MAP: Record<string, string> = {
+        M: 'MON', T: 'TUE', W: 'WED', R: 'THU', F: 'FRI', S: 'SAT', U: 'SUN',
+      };
+      const allDays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+      const backupDays = Array.from(formDays).map(d => DAY_MAP[d]).filter(Boolean);
+
+      // Determine frequency: if all 7 days + 1x → DAILY, if all 7 days + 3x → THREE_DAILY, otherwise → CUSTOM
+      const allDaysSelected = backupDays.length === 7 && allDays.every(d => backupDays.includes(d));
+      let frequency: string;
+      if (!allDaysSelected) {
+        frequency = 'CUSTOM';
+      } else {
+        frequency = formFrequency === '3x' ? 'THREE_DAILY' : 'DAILY';
+      }
+
       const data: Partial<SlaPolicy> = {
         tenantId,
         name: formName.trim(),
-        frequency: formFrequency === '3x' ? 'THREE_DAILY' : 'DAILY',
+        frequency,
+        backupDays,
         backupWindowStart: formStartTime,
         backupExchange: formBackups.backup_exchange,
         backupExchangeArchive: false,
@@ -158,8 +175,22 @@ export default function Settings() {
     });
   };
 
-  const frequencyLabel = (freq: string) => freq === 'THREE_DAILY' ? '3x per day' : '1x per day';
-  const scheduleLabel = (policy: SlaPolicy) => policy.frequency === 'THREE_DAILY' ? 'Every day' : 'Every day';
+  const DAY_LABELS_FULL: Record<string, string> = {
+    MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun',
+  };
+  const frequencyLabel = (freq: string) => {
+    if (freq === 'THREE_DAILY') return '3x per day';
+    if (freq === 'CUSTOM') return 'Custom days';
+    return '1x per day';
+  };
+  const scheduleLabel = (policy: SlaPolicy) => {
+    if (policy.frequency === 'THREE_DAILY') return 'Every day (00:00, 08:00, 16:00)';
+    if (policy.frequency === 'CUSTOM' && policy.backupDays?.length) {
+      const days = policy.backupDays.map(d => DAY_LABELS_FULL[d] || d).join(', ');
+      return days;
+    }
+    return 'Every day';
+  };
   const retentionLabel = (type: string) => type === 'INDEFINITE' ? 'Unlimited' : type;
 
   return (

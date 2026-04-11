@@ -5,6 +5,7 @@ export interface SlaPolicy {
   tenantId: string;
   name: string;
   frequency: string;
+  backupDays?: string[];
   backupWindowStart?: string;
   backupExchange?: boolean;
   backupExchangeArchive?: boolean;
