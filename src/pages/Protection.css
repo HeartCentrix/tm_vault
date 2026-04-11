@@ -341,6 +341,13 @@
   width: 40px;
 }
 
+.resources-table th.checkbox-cell input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #0d9488;
+}
+
 .resources-table td {
   padding: 10px 16px;
   font-size: 14px;
@@ -351,6 +358,20 @@
 
 .resources-table td.checkbox-cell {
   width: 40px;
+}
+
+.resources-table td.checkbox-cell .checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.resources-table td.checkbox-cell input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #0d9488;
 }
 
 .resources-table td.checkbox-cell input[type="checkbox"]:disabled {
@@ -682,6 +703,42 @@
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.action-btn-wrapper {
+  position: relative;
+}
+
+.action-btn-wrapper .tooltip-box {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
+.action-btn-wrapper .tooltip-box::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: #1e293b;
+}
+
+.action-btn-wrapper:hover .tooltip-box {
+  display: block;
 }
 
 /* Backup progress in backup cell */

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
@@ -127,6 +127,7 @@ export default function Protection() {
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
 
   const [resourceFilter, setResourceFilter] = useState<string | null>(null);
+  const [sizeFilter, setSizeFilter] = useState<string | null>(null); // 'all' | 'top_total' | 'top_7d' | 'top_30d' | 'top_365d'
   const [slaFilter, setSlaFilter] = useState<string | null>(null);
 
   const [showSlaDropdown, setShowSlaDropdown] = useState(false);
@@ -222,6 +223,49 @@ export default function Protection() {
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
+  // Apply size-based sorting/filtering and SLA filtering to resources
+  const sortedResources = useMemo(() => {
+    let filtered = [...resources];
+
+    // Apply SLA filter first
+    if (slaFilter) {
+      if (slaFilter === 'Not protected') {
+        filtered = filtered.filter(r => !r.protections || r.protections.length === 0 || !r.protections[0]?.policy_id);
+      } else {
+        filtered = filtered.filter(r => {
+          const policyId = r.protections?.[0]?.policy_id;
+          if (!policyId) return false;
+          const policy = policies.find(p => p.id === policyId);
+          return policy?.name === slaFilter;
+        });
+      }
+    }
+
+    // Apply size filter (sorting)
+    if (!sizeFilter || sizeFilter === null) return filtered;
+
+    switch (sizeFilter) {
+      case 'top_total':
+        // Sort by total size (descending)
+        return filtered.sort((a, b) => (b.usage?.size || 0) - (a.usage?.size || 0));
+      
+      case 'top_7d':
+        // Sort by 7-day growth (descending)
+        return filtered.sort((a, b) => (b.usage?.size_delta_week || 0) - (a.usage?.size_delta_week || 0));
+      
+      case 'top_30d':
+        // Sort by 30-day growth (descending)
+        return filtered.sort((a, b) => (b.usage?.size_delta_month || 0) - (a.usage?.size_delta_month || 0));
+      
+      case 'top_365d':
+        // Sort by yearly growth (descending)
+        return filtered.sort((a, b) => (b.usage?.size_delta_year || 0) - (a.usage?.size_delta_year || 0));
+      
+      default:
+        return filtered;
+    }
+  }, [resources, sizeFilter, slaFilter, policies]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (filterRef.current && !filterRef.current.contains(event.target as Node)) setShowFilter(false);
@@ -230,16 +274,19 @@ export default function Protection() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const activeFilterCount = (resourceFilter ? 1 : 0) + (slaFilter ? 1 : 0);
+  const activeFilterCount = (resourceFilter ? 1 : 0) + (sizeFilter ? 1 : 0) + (slaFilter ? 1 : 0);
+
+  // Check if any selected resources don't have an SLA policy
+  const hasUnprotectedSelected = selectedResources.some(id => {
+    const resource = sortedResources.find(r => r.id === id);
+    return !resource?.protections?.[0]?.policy_id;
+  });
 
   const toggleSelectAll = () => {
-    const resourcesWithSla = resources.filter(r => r.protections?.[0]?.policy_id);
-    setSelectedResources(selectedResources.length === resourcesWithSla.length ? [] : resourcesWithSla.map(r => r.id));
+    setSelectedResources(selectedResources.length === sortedResources.length ? [] : sortedResources.map(r => r.id));
   };
 
   const toggleSelect = (id: string) => {
-    const resource = resources.find(r => r.id === id);
-    if (!resource?.protections?.[0]?.policy_id) return; // Can't select without SLA
     setSelectedResources(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
@@ -300,52 +347,34 @@ export default function Protection() {
   const handleBatchBackup = async () => {
     if (selectedResources.length === 0) return;
 
-    // Filter out resources without SLA policy
-    const resourcesWithSla = selectedResources.filter(id => {
-      const resource = resources.find(r => r.id === id);
-      return resource?.protections?.[0]?.policy_id;
-    });
-
-    if (resourcesWithSla.length === 0) {
-      alert('Cannot trigger backup: Selected resources must have an SLA policy assigned first.');
-      return;
-    }
-
-    if (resourcesWithSla.length < selectedResources.length) {
-      const skipped = selectedResources.length - resourcesWithSla.length;
-      if (!confirm(`${skipped} resource(s) don't have an SLA policy and will be skipped. Continue with ${resourcesWithSla.length} resource(s)?`)) {
-        return;
-      }
-    }
-
     try {
       // Add all selected to backing up state
       setBackingUp(prev => {
         const next = new Set(prev);
-        resourcesWithSla.forEach(r => next.add(r));
+        selectedResources.forEach(r => next.add(r));
         return next;
       });
       // Initialize status for all
       const initialStatus: Record<string, BackupStatus> = {};
-      resourcesWithSla.forEach(r => {
+      selectedResources.forEach(r => {
         initialStatus[r] = { progress_pct: 0, status: 'RUNNING', processed_bytes: 0, total_bytes: 0, started_at: new Date().toISOString() };
       });
       setBackupStatus(prev => ({ ...prev, ...initialStatus }));
 
       // Trigger batch backup
-      const results = await triggerBatchBackup(resourcesWithSla);
+      const results = await triggerBatchBackup(selectedResources);
       console.log(`Triggered batch backup for ${results.length} resources`);
     } catch (err) {
       console.error('Failed to trigger batch backup:', err);
       // Remove from backing up on failure
       setBackingUp(prev => {
         const next = new Set(prev);
-        resourcesWithSla.forEach(r => next.delete(r));
+        selectedResources.forEach(r => next.delete(r));
         return next;
       });
       setBackupStatus(prev => {
         const updated = { ...prev };
-        resourcesWithSla.forEach(r => delete updated[r]);
+        selectedResources.forEach(r => delete updated[r]);
         return updated;
       });
     }
@@ -382,10 +411,21 @@ export default function Protection() {
             <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </div>
           <div className="action-buttons">
-            <button className="action-btn" disabled={selectedResources.length === 0} onClick={handleBatchBackup}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polygon points="5 3 19 12 5 21 5 3" /></svg>
-              Backup now{selectedResources.length > 0 ? ` (${selectedResources.length})` : ''}
-            </button>
+            <div className="action-btn-wrapper" style={{ position: 'relative' }}>
+              <button
+                className="action-btn"
+                disabled={selectedResources.length === 0 || hasUnprotectedSelected}
+                onClick={handleBatchBackup}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                Backup now{selectedResources.length > 0 ? ` (${selectedResources.length})` : ''}
+              </button>
+              {hasUnprotectedSelected && selectedResources.length > 0 && (
+                <div className="tooltip-box">
+                  Resources that are not protected can't get data backups
+                </div>
+              )}
+            </div>
             <div className="sla-assign-wrapper" ref={slaDropdownRef} style={{ position: 'relative' }}>
               <button className="action-btn" disabled={selectedResources.length === 0} onClick={() => setShowSlaDropdown(!showSlaDropdown)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
@@ -431,6 +471,24 @@ export default function Protection() {
                   </div>
                   <div className="filter-divider" />
                   <div className="filter-section">
+                    <div className={`filter-section-header ${sizeFilter === null ? 'active' : ''}`} onClick={() => setSizeFilter(null)}>
+                      <span className="section-check" style={{ visibility: sizeFilter === null ? 'visible' : 'hidden' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12" /></svg></span>All sizes
+                    </div>
+                    <div className={`filter-section-item ${sizeFilter === 'top_total' ? 'active' : ''}`} onClick={() => setSizeFilter('top_total')}>
+                      <span className="section-check" style={{ visibility: sizeFilter === 'top_total' ? 'visible' : 'hidden' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12" /></svg></span>Top by total size
+                    </div>
+                    <div className={`filter-section-item ${sizeFilter === 'top_7d' ? 'active' : ''}`} onClick={() => setSizeFilter('top_7d')}>
+                      <span className="section-check" style={{ visibility: sizeFilter === 'top_7d' ? 'visible' : 'hidden' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12" /></svg></span>Top by storage growth (7d)
+                    </div>
+                    <div className={`filter-section-item ${sizeFilter === 'top_30d' ? 'active' : ''}`} onClick={() => setSizeFilter('top_30d')}>
+                      <span className="section-check" style={{ visibility: sizeFilter === 'top_30d' ? 'visible' : 'hidden' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12" /></svg></span>Top by storage growth (30d)
+                    </div>
+                    <div className={`filter-section-item ${sizeFilter === 'top_365d' ? 'active' : ''}`} onClick={() => setSizeFilter('top_365d')}>
+                      <span className="section-check" style={{ visibility: sizeFilter === 'top_365d' ? 'visible' : 'hidden' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12" /></svg></span>Top by storage growth (365d)
+                    </div>
+                  </div>
+                  <div className="filter-divider" />
+                  <div className="filter-section">
                     <div className={`filter-section-header ${slaFilter === null ? 'active' : ''}`} onClick={() => setSlaFilter(null)}>
                       <span className="section-check" style={{ visibility: slaFilter === null ? 'visible' : 'hidden' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12" /></svg></span>All SLAs
                     </div>
@@ -457,7 +515,7 @@ export default function Protection() {
         <table className="resources-table">
           <thead>
             <tr>
-              <th className="checkbox-cell"><input type="checkbox" checked={selectedResources.length === resources.filter(r => r.protections?.[0]?.policy_id).length && resources.filter(r => r.protections?.[0]?.policy_id).length > 0} onChange={toggleSelectAll} /></th>
+              <th className="checkbox-cell"><input type="checkbox" checked={sortedResources.length > 0 && selectedResources.length === sortedResources.length} onChange={toggleSelectAll} /></th>
               <th>Resources <span className="th-icon"></span></th>
               <th>SLA <span className="th-icon"></span></th>
               <th className="size-col"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4, verticalAlign: 'middle' }}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>Total size</th>
@@ -468,16 +526,16 @@ export default function Protection() {
           <tbody>
             {loading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>Loading...</td></tr>}
             {!loading && resources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
-            {!loading && resources.map(resource => (
+            {!loading && sortedResources.map(resource => (
               <tr key={resource.id}>
                 <td className="checkbox-cell">
-                  <input
-                    type="checkbox"
-                    checked={selectedResources.includes(resource.id)}
-                    onChange={() => toggleSelect(resource.id)}
-                    disabled={!resource.protections?.[0]?.policy_id}
-                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before selecting for backup' : ''}
-                  />
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={selectedResources.includes(resource.id)}
+                      onChange={() => toggleSelect(resource.id)}
+                    />
+                  </label>
                 </td>
                 <td className="resource-name-cell">
                   <div className="resource-avatar">{getInitials(resource.name)}</div>
@@ -513,7 +571,7 @@ export default function Protection() {
                   {(() => {
                     const status = backupStatus[resource.id];
                     const isBackingUp = backingUp.has(resource.id);
-                    
+
                     if (isBackingUp && status) {
                       // Show progress bar during backup
                       return (
@@ -533,7 +591,7 @@ export default function Protection() {
                         </div>
                       );
                     }
-                    
+
                     if (resource.last_backup) {
                       return (
                         <>
@@ -549,7 +607,7 @@ export default function Protection() {
                         </>
                       );
                     }
-                    
+
                     return <span className="backup-status never">Never backed up</span>;
                   })()}
                 </td>
