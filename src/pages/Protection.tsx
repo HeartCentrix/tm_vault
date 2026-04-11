@@ -2,8 +2,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
-import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
-import { RestoreModal } from '../components/RestoreModal';
+// import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups';
@@ -114,7 +113,7 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
 }
 
 export default function Protection() {
-  const { tenantId } = useParams<{ tenantId: string; serviceType: string }>();
+  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ResourceTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -145,16 +144,11 @@ export default function Protection() {
   const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>({});
   const [backingUp, setBackingUp] = useState<Set<string>>(new Set()); // resourceIds currently backing up
 
-  // Snapshot browsing state
-  const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
-  const [selectedResource, setSelectedResource] = useState<ResourceItem | null>(null);
-  const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([]);
-  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
-
-  // Restore modal state
-  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
-  const [restoreItemIds, setRestoreItemIds] = useState<string[]>([]);
-  const [restoreSnapshotIds, setRestoreSnapshotIds] = useState<string[]>([]);
+  // Snapshot browsing state (currently unused - Snapshots button is commented out)
+  // const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
+  // const [selectedResource, setSelectedResource] = useState<ResourceItem | null>(null);
+  // const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([]);
+  // const [snapshotsLoading, setSnapshotsLoading] = useState(false);
 
   useEffect(() => {
     function handleSlaClick(e: MouseEvent) {
@@ -357,32 +351,9 @@ export default function Protection() {
     }
   };
 
-  const handleViewSnapshots = async (resource: ResourceItem) => {
-    setSelectedResource(resource);
-    setSnapshotModalOpen(true);
-    setSnapshotsLoading(true);
-    try {
-      const response = await SnapshotService.listByResource(resource.id, 1, 20);
-      setSnapshots(response.content);
-    } catch (err) {
-      console.error('Failed to fetch snapshots:', err);
-      setSnapshots([]);
-    } finally {
-      setSnapshotsLoading(false);
-    }
-  };
-
-  const handleRecover = (_resource: ResourceItem) => {
-    // Open restore modal for the resource's snapshots
-    setRestoreItemIds([]);
-    setRestoreSnapshotIds([]);
-    setRestoreModalOpen(true);
-  };
-
-  const handleRecoverFromSnapshot = (snapshotId: string) => {
-    setRestoreSnapshotIds([snapshotId]);
-    setRestoreItemIds([]);
-    setRestoreModalOpen(true);
+  const handleRecover = (resource: ResourceItem) => {
+    // Navigate to Recovery page with the selected resource
+    navigate(`/tenants/${tenantId}/${serviceType}/protection/recovery?resourceId=${resource.id}`);
   };
 
   return (
@@ -594,8 +565,8 @@ export default function Protection() {
                   <button
                     className="action-btn-sm"
                     onClick={() => handleRecover(resource)}
-                    disabled={!resource.protections?.[0]?.policy_id}
-                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before recovering' : ''}
+                    disabled={!resource.protections?.[0]?.policy_id || !resource.last_backup || resource.usage?.backups === 0}
+                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before recovering' : !resource.last_backup ? 'No backups available' : 'Recover from backup'}
                   >
                     Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg>
                   </button>
@@ -614,7 +585,7 @@ export default function Protection() {
         </table>
       </div>
 
-      {/* Snapshot Modal */}
+      {/* Snapshot Modal - Currently disabled
       {snapshotModalOpen && selectedResource && (
         <div className="modal-overlay" onClick={() => setSnapshotModalOpen(false)}>
           <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
@@ -673,16 +644,7 @@ export default function Protection() {
           </div>
         </div>
       )}
-
-      {/* Restore Modal */}
-      {restoreModalOpen && (
-        <RestoreModal
-          isOpen={restoreModalOpen}
-          onClose={() => setRestoreModalOpen(false)}
-          itemIds={restoreItemIds}
-          snapshotIds={restoreSnapshotIds}
-        />
-      )}
+      */}
     </div>
   );
 }

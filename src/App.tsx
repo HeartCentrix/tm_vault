@@ -8,6 +8,7 @@ import AzureDatasourceCallback from './pages/AzureDatasourceCallback';
 import Tenants from './pages/Tenants';
 import Overview from './pages/Overview';
 import Protection from './pages/Protection';
+import Recovery from './pages/Recovery';
 import Activity from './pages/Activity';
 import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
@@ -67,6 +68,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Protection />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tenants/:tenantId/:serviceType/protection/recovery"
+            element={
+              <ProtectedRoute>
+                <Recovery />
               </ProtectedRoute>
             }
           />
