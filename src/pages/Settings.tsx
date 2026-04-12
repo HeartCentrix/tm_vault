@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
+import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
 import './Settings.css';
 
 type SettingsTab = 'sla' | 'info' | 'admin' | 'apps' | 'access' | 'secrets' | 'saml';
@@ -41,6 +42,11 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  
+  // Tenant info state
+  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
+  const [infoLoading, setInfoLoading] = useState(true);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   // Modal form state
   const [formName, setFormName] = useState('');
@@ -81,6 +87,33 @@ export default function Settings() {
         .finally(() => setLoading(false));
     }
   }, [activeTab, tenantId]);
+
+  useEffect(() => {
+    if (activeTab === 'info' && tenantId) {
+      setInfoLoading(true);
+      getTenantInfo(tenantId)
+        .then(setTenantInfo)
+        .catch(console.error)
+        .finally(() => setInfoLoading(false));
+    }
+  }, [activeTab, tenantId]);
+
+  const handleDownloadReport = async () => {
+    if (!tenantId) return;
+    setDownloadingReport(true);
+    try {
+      await downloadUsageReport(tenantId, 'qfion.com');
+    } catch (err) {
+      console.error('Failed to download report:', err);
+      alert('Failed to download usage report');
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).catch(console.error);
+  };
 
   const resetForm = () => {
     setFormName('');
@@ -293,7 +326,55 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab !== 'sla' && <div className="empty-state"><p>{tabs.find(t => t.key === activeTab)?.label} - Coming soon</p></div>}
+      {activeTab === 'info' && (
+        <div className="info-tab">
+          {infoLoading ? (
+            <div className="empty-state"><p>Loading tenant info...</p></div>
+          ) : tenantInfo ? (
+            <div className="info-content">
+              <div className="info-row">
+                <span className="info-label">Customer ID:</span>
+                <span className="info-value">{tenantInfo.customerId}</span>
+                <button className="copy-btn" onClick={() => copyToClipboard(tenantInfo.customerId)} title="Copy to clipboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Tenant ID:</span>
+                <span className="info-value">{tenantInfo.tenantId}</span>
+                <button className="copy-btn" onClick={() => copyToClipboard(tenantInfo.tenantId)} title="Copy to clipboard">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Region:</span>
+                <span className="info-value">{tenantInfo.region}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Usage report:</span>
+                <button className="download-csv-btn" onClick={handleDownloadReport} disabled={downloadingReport}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  {downloadingReport ? 'Downloading...' : 'Download CSV'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state"><p>Failed to load tenant info</p></div>
+          )}
+        </div>
+      )}
+
+      {activeTab !== 'sla' && activeTab !== 'info' && <div className="empty-state"><p>{tabs.find(t => t.key === activeTab)?.label} - Coming soon</p></div>}
 
       {/* Add SLA Modal */}
       {showModal && (

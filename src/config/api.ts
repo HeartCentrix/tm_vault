@@ -35,6 +35,8 @@ export const API = {
   TENANTS: {
     LIST: `${API_URL}/tenants`,
     CREATE: `${API_URL}/tenants`,
+    INFO: (id: string) => `${API_URL}/tenants/${id}/info`,
+    USAGE_REPORT: (id: string) => `${API_URL}/tenants/${id}/usage-report`,
   },
 
   // Organizations

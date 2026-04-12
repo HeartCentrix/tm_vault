@@ -78,6 +78,81 @@
 
 .empty-state { display: flex; align-items: center; justify-content: center; min-height: 200px; color: #94a3b8; font-size: 14px; }
 
+/* ===== Info Tab ===== */
+.info-tab { padding: 20px 0; }
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 600px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.info-label {
+  min-width: 120px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.info-value {
+  color: #334155;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.copy-btn:hover {
+  background: #e2e8f0;
+  color: #0d9488;
+}
+
+.download-csv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.download-csv-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.download-csv-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ===== SLA Modal - exact match to reference image ===== */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4);
