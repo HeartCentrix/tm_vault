@@ -33,7 +33,7 @@ export default function ServiceNav() {
     { label: 'Overview', route: buildRoute('/overview') },
     { label: 'Protection', route: buildRoute('/protection'), exact: true },
     { label: 'Settings', route: buildRoute('/protection/settings') },
-    { label: 'Global search', route: buildRoute('/protection/global-search') },
+    { label: 'Global search', route: buildRoute('/global-search') },
   ];
 
   const isActive = (route: string, exact?: boolean) => {
