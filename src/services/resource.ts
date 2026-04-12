@@ -40,7 +40,7 @@ export interface ResourceListResponse {
 // M365 resource types
 const M365_TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
-  users: ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'ENTRA_USER'],
+  users: ['ENTRA_USER'],
   shared: ['SHARED_MAILBOX'],
   rooms: ['ROOM_MAILBOX'],
   sharepoint: ['SHAREPOINT_SITE'],
@@ -249,5 +249,18 @@ export async function triggerBatchBackup(resourceIds: string[]): Promise<{ jobId
     body: JSON.stringify({ resourceIds, priority: 1 }),
   });
   if (!res.ok) throw new Error(`Failed to trigger batch backup: ${res.statusText}`);
+  return res.json();
+}
+
+export async function triggerDiscovery(tenantId: string): Promise<{ discoveryId: string; resourcesFound: number }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/discover-m365`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) throw new Error(`Failed to trigger discovery: ${res.statusText}`);
   return res.json();
 }

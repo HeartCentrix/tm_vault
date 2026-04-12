@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import './Protection.css';
@@ -142,6 +142,8 @@ export default function Protection() {
 
   const [showSlaDropdown, setShowSlaDropdown] = useState(false);
   const slaDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [refreshing, setRefreshing] = useState(false);
 
   // Store complete backup status per resource
   interface BackupStatus {
@@ -395,6 +397,52 @@ export default function Protection() {
     navigate(`/tenants/${tenantId}/${serviceType}/protection/recovery?resourceId=${resource.id}`);
   };
 
+  const handleRefresh = async () => {
+    if (refreshing || !tenantId) return;
+    try {
+      setRefreshing(true);
+      // Trigger discovery
+      await triggerDiscovery(tenantId);
+      
+      // Wait for discovery to complete by polling
+      const pollDiscovery = async (attempts = 0) => {
+        if (attempts >= 100) { // Timeout after 5 minutes
+          setRefreshing(false);
+          return;
+        }
+        
+        try {
+          // Fetch resources to check if discovery completed
+          const data = await getResources(
+            tenantId, 
+            activeTab, 
+            page, 
+            50, 
+            searchQuery, 
+            slaFilter || undefined, 
+            resourceFilter || undefined, 
+            serviceType
+          );
+          
+          // Update resources
+          setResources(data.items || []);
+          setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
+          setRefreshing(false);
+        } catch (err) {
+          console.error('Error fetching resources during discovery poll:', err);
+          // Continue polling
+          setTimeout(() => pollDiscovery(attempts + 1), 3000);
+        }
+      };
+      
+      // Start polling after a short delay to allow discovery to run
+      setTimeout(() => pollDiscovery(), 3000);
+    } catch (err) {
+      console.error('Failed to trigger discovery:', err);
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="protection-page">
       <div className="resource-tabs">
@@ -527,7 +575,18 @@ export default function Protection() {
                 </div>
               )}
             </div>
-            <button className="action-btn icon-only" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg></button>
+            <button 
+              className="action-btn icon-only" 
+              title="Refresh" 
+              disabled={refreshing}
+              onClick={handleRefresh}
+              style={refreshing ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16, animation: refreshing ? 'spin 1s linear infinite' : 'none' }}>
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+            </button>
           </div>
         </div>
         <div className="pagination">
