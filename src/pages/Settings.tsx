@@ -4,7 +4,7 @@ import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
 import './Settings.css';
 
-type SettingsTab = 'sla' | 'info' | 'admin' | 'apps' | 'access' | 'secrets' | 'saml';
+type SettingsTab = 'sla' | 'info';
 
 interface BackupItem {
   key: string;
@@ -36,7 +36,7 @@ const BACKUP_ITEMS_RIGHT: BackupItem[] = [
 ];
 
 export default function Settings() {
-  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
+  const { tenantId } = useParams<{ tenantId: string }>();
   const [activeTab, setActiveTab] = useState<SettingsTab>('sla');
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,18 +65,10 @@ export default function Settings() {
   const [formArchiving, setFormArchiving] = useState('INDEFINITE');
   const [showEmailSettings, setShowEmailSettings] = useState(false);
 
-  const sharedTabs: { key: SettingsTab; label: string }[] = [
+  const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'sla', label: 'SLA' },
     { key: 'info', label: 'Info' },
-    { key: 'admin', label: 'Admin consent' },
-    { key: 'apps', label: 'Apps' },
-    { key: 'access', label: 'Access groups' },
-    { key: 'secrets', label: 'Secrets' },
   ];
-
-  const tabs: { key: SettingsTab; label: string }[] = serviceType === 'azure' 
-    ? sharedTabs 
-    : [...sharedTabs, { key: 'saml' as SettingsTab, label: 'SAML/Okta' }];
 
   useEffect(() => {
     if (activeTab === 'sla' && tenantId) {
@@ -374,7 +366,7 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab !== 'sla' && activeTab !== 'info' && <div className="empty-state"><p>{tabs.find(t => t.key === activeTab)?.label} - Coming soon</p></div>}
+      {/* No other tabs needed */}
 
       {/* Add SLA Modal */}
       {showModal && (
