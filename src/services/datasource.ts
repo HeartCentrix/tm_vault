@@ -22,23 +22,31 @@ export async function getDataSources(): Promise<DataSourceType[]> {
     });
     if (!res.ok) throw new Error(`Failed to fetch data sources: ${res.statusText}`);
     const tenants: any[] = await res.json();
-    cachedDataSources = tenants.map((t: any): DataSourceType => ({
-      id: t.id,
-      name: t.displayName,
-      type: mapType(t.type),
-      status: t.status,
-    }));
+    const sources: DataSourceType[] = [];
+    for (const t of tenants) {
+      const types = mapType(t.type);
+      for (const type of types) {
+        sources.push({
+          id: t.id,
+          name: t.displayName,
+          type,
+          status: t.status,
+        });
+      }
+    }
+    cachedDataSources = sources;
     return cachedDataSources;
   })();
 
   return fetchPromise;
 }
 
-function mapType(type: string): 'm365' | 'azure' | 'kubernetes' {
+function mapType(type: string): ('m365' | 'azure' | 'kubernetes')[] {
   switch (type?.toUpperCase()) {
-    case 'AZURE': return 'azure';
-    case 'M365': return 'm365';
-    default: return 'm365';
+    case 'AZURE': return ['azure'];
+    case 'M365': return ['m365'];
+    case 'BOTH': return ['m365', 'azure'];
+    default: return ['m365'];
   }
 }
 
