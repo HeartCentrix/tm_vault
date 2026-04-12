@@ -14,26 +14,31 @@ export default function DatasourceCallback() {
     handled.current = true;
 
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    const tenant = params.get('tenant');
+    const adminConsent = params.get('admin_consent');
     const state = params.get('state') || undefined;
     const authError = params.get('error');
 
     if (authError) {
-      setError(`Connection error: ${authError}`);
+      const errorDesc = params.get('error_description') || authError;
+      setError(`Connection error: ${errorDesc}`);
       return;
     }
 
-    if (code) {
+    if (tenant && adminConsent === 'True') {
+      // Admin consent was granted — call backend to store credentials and trigger discovery
       (async () => {
         try {
-          await authService.handleDatasourceCallback(code, state);
+          await authService.handleDatasourceConsentCallback(tenant, state);
           await refreshDataSources();
           navigate('/tenants');
         } catch (err: any) {
-          console.error('Datasource callback error:', err);
+          console.error('Datasource consent callback error:', err);
           setError(`Failed to connect data source: ${err.message}`);
         }
       })();
+    } else {
+      setError('Admin consent was not granted or required parameters are missing.');
     }
   }, [navigate]);
 

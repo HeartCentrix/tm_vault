@@ -64,6 +64,25 @@ class AuthService {
     return res.json();
   }
 
+  async handleDatasourceConsentCallback(externalTenantId: string, state?: string): Promise<any> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.DATASOURCE_CALLBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        external_tenant_id: externalTenantId,
+        admin_consent: true,
+        state: state || '',
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Datasource consent callback failed: ${res.status} ${errText}`);
+    }
+    return res.json();
+  }
+
   async handleAzureDatasourceCallback(code: string, state?: string): Promise<any> {
     const token = this.getToken();
     if (!token) throw new Error('Not authenticated');
