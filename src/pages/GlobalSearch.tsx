@@ -9,7 +9,7 @@ import type { ResourceItem } from '../services/resource';
 type WorkloadType = 'emails' | 'files' | 'chats' | 'channel' | 'copilot' | 'calendar' | 'contacts' | 'exchange' | 'planner';
 
 interface WorkloadOption {
-  key: WorkloadType | 'all';
+  key: WorkloadType;
   label: string;
   icon: React.ReactNode;
   backendType?: string;
@@ -98,7 +98,6 @@ export default function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [page, setPage] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,7 +171,6 @@ export default function GlobalSearch() {
         size: 20,
       });
       setResults(response.results);
-      setTotalResults(response.totalResults);
       setTotalPages(response.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
