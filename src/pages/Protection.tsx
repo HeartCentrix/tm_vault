@@ -708,7 +708,7 @@ export default function Protection() {
                   <button
                     className="action-btn-sm"
                     onClick={() => handleRecover(resource)}
-                    disabled={!resource.protections?.[0]?.policy_id || !resource.last_backup || resource.usage?.backups === 0}
+                    disabled={!resource.protections?.[0]?.policy_id || !resource.last_backup}
                     title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before recovering' : !resource.last_backup ? 'No backups available' : 'Recover from backup'}
                   >
                     Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg>
