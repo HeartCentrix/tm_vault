@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authService } from '../services/auth';
 import { refreshDataSources } from '../services/datasource';
 import './Auth.css';
 
 export default function AzureDatasourceCallback() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const handled = useRef(false);
   const [error, setError] = useState('');
 
@@ -13,10 +14,11 @@ export default function AzureDatasourceCallback() {
     if (handled.current) return;
     handled.current = true;
 
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const state = params.get('state') || undefined;
-    const authError = params.get('error');
+    const code = searchParams.get('code');
+    const state = searchParams.get('state') || undefined;
+    const authError = searchParams.get('error');
+    const returnTo = searchParams.get('return_to') || localStorage.getItem('consent_return_to') || '/tenants';
+    localStorage.removeItem('consent_return_to');
 
     if (authError) {
       setError(`Connection error: ${authError}`);
@@ -28,14 +30,14 @@ export default function AzureDatasourceCallback() {
         try {
           await authService.handleAzureDatasourceCallback(code, state);
           await refreshDataSources();
-          navigate('/tenants');
+          navigate(returnTo);
         } catch (err: any) {
           console.error('Azure datasource callback error:', err);
           setError(`Failed to connect Azure: ${err.message}`);
         }
       })();
     }
-  }, [navigate]);
+  }, [navigate, searchParams]);
 
   return (
     <div className="auth-page">

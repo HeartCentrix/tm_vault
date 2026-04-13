@@ -22,6 +22,12 @@ export const API = {
     ME: `${API_URL}/auth/me`,
   },
 
+  // Admin Consent (status only - URL/callback use existing datasource APIs)
+  ADMIN_CONSENT: {
+    M365_STATUS: `${API_URL}/admin-consent/m365/status`,
+    AZURE_STATUS: `${API_URL}/admin-consent/azure/status`,
+  },
+
   // Dashboard
   DASHBOARD: {
     OVERVIEW: `${API_URL}/dashboard/overview`,
