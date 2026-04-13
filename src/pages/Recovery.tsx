@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { getResources, type ResourceItem } from '../services/resource';
 import { SnapshotService, type SnapshotItem } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
+import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Recovery.css';
 
 type ContentType = 'mail' | 'onedrive' | 'contacts' | 'calendar' | 'chats';
@@ -49,7 +50,8 @@ export default function Recovery() {
   const [resource, setResource] = useState<ResourceItem | null>(null);
   const [resourceLoading, setResourceLoading] = useState(true);
   const [noBackups, setNoBackups] = useState(false);
-  const [activeContentType, setActiveContentType] = useState<ContentType>('mail');
+  const contentTabKeys = ['mail', 'onedrive', 'contacts', 'calendar', 'chats'] as const;
+  const [activeContentType, setActiveContentType] = usePersistentTab<ContentType>('/recovery', 'mail', contentTabKeys);
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
 import { authService, type AdminConsentStatus } from '../services/auth';
+import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Settings.css';
 
 type SettingsTab = 'sla' | 'info' | 'admin-consent';
@@ -38,7 +39,9 @@ const BACKUP_ITEMS_RIGHT: BackupItem[] = [
 
 export default function Settings() {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('sla');
+  const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
+  const subRouteKey = tenantId ? '/protection/settings' : '/settings';
+  const [activeTab, setActiveTab] = usePersistentTab<SettingsTab>(subRouteKey, 'sla', settingsTabKeys);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);

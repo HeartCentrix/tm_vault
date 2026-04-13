@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getActivities, downloadActivityCSV, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
+import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Activity.css';
 
 type ViewType = 'tasks' | 'audit' | 'risk';
 
 export default function Activity() {
-  const [viewType, setViewType] = useState<ViewType>('tasks');
+  const viewTabKeys = ['tasks', 'audit', 'risk'] as const;
+  const [viewType, setViewType] = usePersistentTab<ViewType>('/activity', 'tasks', viewTabKeys);
 
   // Date filters
   const [startDate, setStartDate] = useState('');

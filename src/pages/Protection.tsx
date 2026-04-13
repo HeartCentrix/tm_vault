@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
+import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
@@ -137,7 +138,12 @@ export default function Protection() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const navigate = useNavigate();
   const tabs = serviceType === 'azure' ? azureTabs : m365Tabs;
-  const [activeTab, setActiveTab] = useState<ResourceTab>('all');
+  const tabKeys = tabs.map(t => t.key) as ResourceTab[];
+  const [activeTab, setActiveTab] = usePersistentTab<ResourceTab>(
+    '/protection',
+    'all',
+    tabKeys,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
   const [showFilter, setShowFilter] = useState(false);
