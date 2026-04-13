@@ -3,19 +3,10 @@ interface NavigationState {
   serviceType: string | null;
   subRoute: string; // e.g. '/overview', '/protection', '/protection/settings'
   /** Per-page tab states keyed by subRoute, e.g. { '/protection': 'shared', '/protection/settings': 'info' } */
-  tabStates: Record<string, string>;
+  tabStates?: Record<string, string>;
 }
 
 const STORAGE_KEY = 'tm_vault_nav_state';
-
-/**
- * Resolve the storage key for a page's tab state.
- * Maps subRoute to a key. For nested routes like /protection/settings,
- * we use the full path as the key.
- */
-function tabKey(subRoute: string): string {
-  return subRoute || '/overview';
-}
 
 export function saveNavigationState(state: NavigationState): void {
   try {

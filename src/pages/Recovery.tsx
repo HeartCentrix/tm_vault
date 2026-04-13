@@ -196,7 +196,7 @@ export default function Recovery() {
 
   const handleRecover = () => {
     if (!selectedSnapshotId || selectedItems.size === 0) return;
-    RecoveryService.triggerRecover({
+    RecoveryService.triggerRecovery({
       restoreType: 'IN_PLACE',
       snapshotIds: [selectedSnapshotId],
       itemIds: Array.from(selectedItems),

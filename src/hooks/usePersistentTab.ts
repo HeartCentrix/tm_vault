@@ -19,7 +19,7 @@ export function usePersistentTab<T extends string>(
 ): [T, (tab: T) => void] {
   const [activeTab, setActiveTab] = useState<T>(() => {
     const saved = getSavedTab(subRouteKey);
-    if (saved && (allowedTabs as string[]).includes(saved)) {
+    if (saved && (allowedTabs as readonly string[]).includes(saved)) {
       return saved as T;
     }
     return defaultTab;
@@ -33,7 +33,7 @@ export function usePersistentTab<T extends string>(
   // When the current tab is not in the allowed tabs (e.g. switching serviceType),
   // fall back to the default tab and persist it.
   useEffect(() => {
-    if (!(allowedTabs as string[]).includes(activeTab)) {
+    if (!(allowedTabs as readonly string[]).includes(activeTab)) {
       setActiveTab(defaultTab);
       saveTabState(subRouteKey, defaultTab);
     }
