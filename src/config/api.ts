@@ -77,10 +77,17 @@ export const API = {
 
   // Snapshots
   SNAPSHOTS: {
-    LIST: (resourceId: string) => `${API_URL}/snapshots?resourceId=${resourceId}`,
-    DETAIL: (snapshotId: string) => `${API_URL}/snapshots/${snapshotId}`,
-    ITEMS: (snapshotId: string) => `${API_URL}/snapshots/${snapshotId}/items`,
-    ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/snapshots/${snapshotId}/items/${itemId}`,
+    LIST: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots`,
+    DETAIL: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}`,
+    ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
+    ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
+    FOLDERS: `${API_URL}/resources/snapshots/folders`,
+  },
+
+  // Recovery
+  RECOVERY: {
+    RESOURCES_WITH_BACKUPS: `${API_URL}/resources/with-backups`,
+    SEARCH_ITEMS: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots/search`,
   },
 
   // Restore
