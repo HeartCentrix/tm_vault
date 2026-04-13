@@ -61,6 +61,8 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const policyId = resource.protections?.[0]?.policy_id;
   const selected = policies.find(p => p.id === policyId);
   const isProtected = !!policyId;
@@ -72,6 +74,16 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setMenuStyle({
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    }
+  }, [open]);
 
   return (
     <div className="sla-dropdown" ref={ref}>
@@ -90,7 +102,7 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
         </svg>
       </button>
       {open && (
-        <div className="sla-menu">
+        <div className="sla-menu" ref={menuRef} style={menuStyle}>
           <button className="sla-item" onClick={() => { onChange(resource.id, ''); setOpen(false); }}>
             <div>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 8, flexShrink: 0, marginTop: 2 }}>
