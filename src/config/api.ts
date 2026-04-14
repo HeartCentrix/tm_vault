@@ -131,3 +131,4 @@ export const API = {
     DETAILS: (id: string) => `${API_URL}/audit/events/${id}`,
   },
 };
+

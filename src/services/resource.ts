@@ -61,6 +61,10 @@ const AZURE_TAB_TYPE_MAP: Record<string, string[]> = {
   'dynamic-groups': ['DYNAMIC_GROUP'],
 };
 
+// Full resource type lists for filtering "all" tab by service type
+const M365_ALL_TYPES = ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'SHAREPOINT_SITE', 'TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE', 'POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'];
+const AZURE_ALL_TYPES = ['AZURE_VM', 'AZURE_SQL_DB', 'AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE', 'RESOURCE_GROUP'];
+
 export function getTabTypeMap(serviceType?: string): Record<string, string[]> {
   if (serviceType === 'azure') {
     return AZURE_TAB_TYPE_MAP;
@@ -80,7 +84,14 @@ export async function getResources(
 ): Promise<ResourceListResponse> {
   const token = localStorage.getItem('access_token');
   const tabTypeMap = getTabTypeMap(serviceType);
-  const types = tabTypeMap[tab] || [];
+  let types = tabTypeMap[tab] || [];
+
+  // When "all" tab is selected and serviceType is known, filter by that service's resource types
+  if (tab === 'all' && serviceType === 'azure') {
+    types = AZURE_ALL_TYPES;
+  } else if (tab === 'all' && serviceType === 'm365') {
+    types = M365_ALL_TYPES;
+  }
 
   let url: string;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -89,11 +100,11 @@ export async function getResources(
     // Single type - use /by-type endpoint
     url = `${API.RESOURCES.BY_TYPE}?type=${types[0]}&tenantId=${tenantId}&page=${page}&size=${size}`;
   } else if (types.length === 0) {
-    // All resources
+    // All resources (no filtering)
     url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}`;
   } else {
-    // Multiple types - fetch all and filter client-side
-    url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=500`;
+    // Multiple types - send types to backend for server-side filtering with proper pagination
+    url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}&types=${types.join(',')}`;
   }
 
   if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
@@ -104,14 +115,6 @@ export async function getResources(
   if (!res.ok) throw new Error(`Failed to fetch resources: ${res.statusText}`);
 
   const data = await res.json();
-
-  // If multiple types were requested, filter client-side
-  if (types.length > 1 && data.items) {
-    data.items = data.items.filter((item: ResourceItem) =>
-      types.some(t => item.kind === t.toLowerCase())
-    );
-    data.item_number = data.items.length;
-  }
 
   return data;
 }
