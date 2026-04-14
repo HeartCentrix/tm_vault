@@ -2,13 +2,6 @@ import { useEffect, useState } from 'react';
 import './Overview.css';
 import { API } from '../config/api';
 
-interface StatusCard {
-  label: string;
-  value: string;
-  change?: string;
-  positive?: boolean;
-}
-
 interface ActivityItem {
   id: string;
   tenant: string;
@@ -34,6 +27,17 @@ interface ProtectionStatus {
   groupsAndTeams: { protectedCount: number; total: number };
   entraId: { protectedCount: number; total: number };
   powerPlatform: { protectedCount: number; total: number };
+}
+
+interface Status24hResponse {
+  success: number;
+  warnings: number;
+  failures: number;
+}
+
+interface Status7dResponse {
+  dailyStatus: { date: string; success: number; warnings: number; failures: number }[];
+  summary: { totalBackups: number; successRate: number; avgDuration: string };
 }
 
 function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: number; totalCount: number; percentage: number } {
@@ -62,52 +66,61 @@ const mockActivities: ActivityItem[] = [
   { id: '5', tenant: 'Fabrikam Azure', type: 'Incremental', status: 'Done', time: '6 hours ago' },
 ];
 
-function getDayName(dateStr: string): string {
+function formatDateShort(dateStr: string): string {
   const date = new Date(dateStr);
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return days[date.getDay()];
-}
-
-function formatBytesToDisplay(bytes: number): { value: number; unit: string } {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return { value: Math.round(bytes / (1024 * 1024 * 1024)), unit: 'GB' };
-  } else if (bytes >= 1024 * 1024) {
-    return { value: Math.round(bytes / (1024 * 1024)), unit: 'MB' };
-  } else if (bytes >= 1024) {
-    return { value: Math.round(bytes / 1024), unit: 'KB' };
-  }
-  return { value: bytes, unit: 'B' };
+  return `Apr ${date.getDate()}`;
 }
 
 function formatBytesToGB(bytes: number): number {
-  // Return decimal GB for accurate graph scaling
   return bytes / (1024 * 1024 * 1024);
+}
+
+function formatGB(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    const gb = bytes / (1024 * 1024 * 1024);
+    return gb < 10 ? `${gb.toFixed(1)} GB` : `${Math.round(gb)} GB`;
+  } else if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  }
+  return '0 GB';
 }
 
 export default function Overview() {
   const [backupSize, setBackupSize] = useState<BackupSizeResponse | null>(null);
   const [protection, setProtection] = useState<ProtectionStatus | null>(null);
+  const [status24h, setStatus24h] = useState<Status24hResponse | null>(null);
+  const [status7d, setStatus7d] = useState<Status7dResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     Promise.all([
       fetch(API.DASHBOARD.BACKUP_SIZE, { headers }).then(r => r.json()),
       fetch(API.DASHBOARD.PROTECTION, { headers }).then(r => r.json()),
+      fetch(API.DASHBOARD.STATUS_24H, { headers }).then(r => r.json()),
+      fetch(API.DASHBOARD.STATUS_7D, { headers }).then(r => r.json()),
     ])
-      .then(([backupData, protectionData]) => {
+      .then(([backupData, protectionData, data24h, data7d]) => {
         setBackupSize(backupData);
         setProtection(protectionData);
+        setStatus24h(data24h);
+        setStatus7d(data7d);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  const maxBackupSize = backupSize?.dailyData 
-    ? Math.max(...backupSize.dailyData.map(d => formatBytesToGB(d.bytes)))
-    : 0;
+  const maxBackupSize = backupSize?.dailyData
+    ? Math.max(...backupSize.dailyData.map(d => formatBytesToGB(d.bytes)), 0.1)
+    : 0.1;
+
+  const hasFailures24h = (status24h?.failures || 0) > 0;
+
+  const maxDailyBackups = status7d?.dailyStatus.length
+    ? Math.max(...status7d.dailyStatus.map(d => d.success + d.failures), 1)
+    : 1;
 
   return (
     <div className="overview-page">
@@ -115,163 +128,203 @@ export default function Overview() {
         {/* 24-hour status */}
         <div className="status-card">
           <div className="status-card-header">
-            <span className="status-label">Last 24 hours</span>
+            <span className="status-label">24-hour status</span>
           </div>
           <div className="status-card-value">
-            <div className="progress-ring-container">
-              <svg className="progress-ring" width="80" height="80">
-                <circle
-                  className="progress-ring-bg"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#e2e8f0"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="progress-ring-progress"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#38a169"
-                  strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - 0.985)}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <span className="progress-value">{loading ? '...' : '98.5%'}</span>
-            </div>
+            {loading ? (
+              <span style={{ color: '#94a3b8' }}>Loading...</span>
+            ) : (
+              <div style={{ textAlign: 'center', width: '100%' }}>
+                <div style={{ fontSize: 32, fontWeight: 700, color: hasFailures24h ? '#dc2626' : '#059669' }}>
+                  {hasFailures24h ? 'Failures' : 'Success'}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                    <span style={{ color: '#059669' }}>✓ Success</span>
+                    <span>{status24h?.success || 0}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                    <span style={{ color: '#dc2626' }}>✗ Failures</span>
+                    <span>{status24h?.failures || 0}</span>
+                  </div>
+                </div>
+                <button className="backup-all-btn" style={{ marginTop: 12 }}>
+                  Backup all now
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* 7-day status */}
         <div className="status-card">
           <div className="status-card-header">
-            <span className="status-label">Last 7 days</span>
+            <span className="status-label">7-day status</span>
           </div>
           <div className="status-card-value">
-            <div className="progress-ring-container">
-              <svg className="progress-ring" width="80" height="80">
-                <circle
-                  className="progress-ring-bg"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#e2e8f0"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="progress-ring-progress"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#38a169"
-                  strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - 0.972)}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <span className="progress-value">{loading ? '...' : '97.2%'}</span>
-            </div>
+            {loading ? (
+              <span style={{ color: '#94a3b8' }}>Loading...</span>
+            ) : (
+              <div style={{ width: '100%' }}>
+                {/* Legend */}
+                <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 8 }}>
+                  <span style={{ color: '#059669' }}>✓ Success {status7d?.summary.totalBackups || 0}</span>
+                  <span style={{ color: '#f59e0b' }}>⚠ Warnings 0</span>
+                  <span style={{ color: '#dc2626' }}>✗ Failures {(status7d?.dailyStatus || []).reduce((s, d) => s + d.failures, 0)}</span>
+                </div>
+                {/* Bar chart */}
+                <div style={{ position: 'relative', height: 100, marginTop: 8 }}>
+                  {/* Y-axis labels */}
+                  <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8' }}>
+                    <span>{maxDailyBackups}</span>
+                    <span>{Math.round(maxDailyBackups / 2)}</span>
+                    <span>0</span>
+                  </div>
+                  {/* Bars */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, marginLeft: 30, height: '100%', paddingBottom: 24 }}>
+                    {status7d?.dailyStatus.slice(-7).map((d) => {
+                      const successH = maxDailyBackups > 0 ? (d.success / maxDailyBackups) * 100 : 0;
+                      const failH = maxDailyBackups > 0 ? (d.failures / maxDailyBackups) * 100 : 0;
+                      return (
+                        <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                            {d.failures > 0 && (
+                              <div style={{ backgroundColor: '#fb7185', height: `${failH}%`, minHeight: d.failures > 0 ? 4 : 0, borderRadius: '2px 2px 0 0' }} />
+                            )}
+                            <div style={{ backgroundColor: d.failures > 0 ? '#059669' : '#14b8a6', height: `${successH}%`, minHeight: d.success > 0 ? 4 : 0, borderRadius: d.failures > 0 ? '0' : '2px 2px 0 0' }} />
+                          </div>
+                          <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>{formatDateShort(d.date)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Protection status */}
         <div className="status-card">
           <div className="status-card-header">
-            <span className="status-label">Protected</span>
+            <span className="status-label">Protection status</span>
           </div>
           <div className="status-card-value">
-            <div className="progress-ring-container">
-              <svg className="progress-ring" width="80" height="80">
-                <circle
-                  className="progress-ring-bg"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#e2e8f0"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="progress-ring-progress"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#38a169"
-                  strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={
-                    protection && protection.totalCount > 0
-                      ? `${2 * Math.PI * 34 * (1 - protection.percentage / 100)}`
-                      : `${2 * Math.PI * 34}`
-                  }
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <span className="progress-value">
-                {loading ? '...' : (protection ? `${Math.round(protection.percentage)}%` : '0%')}
-              </span>
-            </div>
-          </div>
-          <div className="status-detail">
-            {loading 
-              ? 'Loading...' 
-              : protection 
-                ? (() => {
-                    const totals = calculateProtectionTotals(protection);
-                    return `${totals.protectedCount} of ${totals.totalCount} resources protected`;
-                  })()
-                : '0 of 0 resources protected'}
+            {loading ? (
+              <span style={{ color: '#94a3b8' }}>Loading...</span>
+            ) : (() => {
+              const totals = protection ? calculateProtectionTotals(protection) : { protectedCount: 0, totalCount: 0, percentage: 0 };
+              return (
+                <div style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: '#0d9488' }}>
+                      {totals.totalCount > 0 ? `${Math.round(totals.percentage)}%` : '0%'}
+                    </div>
+                    {/* Mini donut */}
+                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="20" cy="20" r="16" fill="none" stroke="#e2e8f0" strokeWidth="4" />
+                      <circle cx="20" cy="20" r="16" fill="none" stroke="#0d9488" strokeWidth="4"
+                        strokeDasharray={`${2 * Math.PI * 16}`}
+                        strokeDashoffset={`${2 * Math.PI * 16 * (1 - totals.percentage / 100)}`}
+                        strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  {/* Granular breakdown */}
+                  {protection && (
+                    <div style={{ marginTop: 12, fontSize: 12, color: '#64748b', lineHeight: 1.8 }}>
+                      {protection.users.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Users</span>
+                          <span style={{ color: '#f59e0b' }}>{protection.users.protectedCount} / {protection.users.total}</span>
+                        </div>
+                      )}
+                      {protection.sharedMailboxes.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Shared mailboxes</span>
+                          <span>{protection.sharedMailboxes.protectedCount} / {protection.sharedMailboxes.total}</span>
+                        </div>
+                      )}
+                      {protection.rooms.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Rooms</span>
+                          <span>{protection.rooms.protectedCount} / {protection.rooms.total}</span>
+                        </div>
+                      )}
+                      {protection.sharepointSites.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>SharePoint sites</span>
+                          <span style={{ color: '#f59e0b' }}>{protection.sharepointSites.protectedCount} / {protection.sharepointSites.total}</span>
+                        </div>
+                      )}
+                      {protection.groupsAndTeams.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Groups & Teams</span>
+                          <span style={{ color: '#f59e0b' }}>{protection.groupsAndTeams.protectedCount} / {protection.groupsAndTeams.total}</span>
+                        </div>
+                      )}
+                      {protection.entraId.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Entra ID</span>
+                          <span>{protection.entraId.protectedCount} / {protection.entraId.total}</span>
+                        </div>
+                      )}
+                      {protection.powerPlatform.total > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Power Platform</span>
+                          <span>{protection.powerPlatform.protectedCount} / {protection.powerPlatform.total}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
         {/* Backup size */}
         <div className="status-card">
           <div className="status-card-header">
-            <span className="status-label">Backup Size</span>
+            <span className="status-label">Backup size</span>
           </div>
           <div className="status-card-value">
-            <div className="backup-size-value">
-              <span className="backup-size-text">
-                {loading ? 'Loading...' : (backupSize?.total || '0 B')}
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: '#0f172a' }}>
+                  {loading ? 'Loading...' : (backupSize?.total || '0 GB')}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, fontSize: 10 }}>
+                {backupSize?.oneMonthChange && (
+                  <div style={{ backgroundColor: '#f0fdf4', padding: '4px 8px', borderRadius: 4, color: '#16a34a' }}>
+                    7 days<br />{backupSize.oneMonthChange}
+                  </div>
+                )}
+                {backupSize?.oneYearChange && (
+                  <div style={{ backgroundColor: '#f8fafc', padding: '4px 8px', borderRadius: 4, color: '#64748b' }}>
+                    All time<br />{backupSize.oneYearChange}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          {backupSize?.oneDayChange && (
-            <div className="status-detail" style={{ textAlign: 'center', marginTop: 4, fontSize: 12, color: '#94a3b8' }}>
-              {backupSize.oneDayChange} from yesterday
-            </div>
-          )}
           {/* Bar chart */}
           {backupSize?.dailyData && backupSize.dailyData.length > 0 && (
-            <div className="bar-chart">
-              <div className="bar-chart-y-axis">
-                {(() => {
-                  const maxData = formatBytesToDisplay(maxBackupSize * 1024 * 1024 * 1024);
-                  const halfData = formatBytesToDisplay((maxBackupSize / 2) * 1024 * 1024 * 1024);
-                  return (
-                    <>
-                      <span className="y-tick">{maxData.value}{maxData.unit}</span>
-                      <span className="y-tick">{halfData.value}{halfData.unit}</span>
-                      <span className="y-tick">0</span>
-                    </>
-                  );
-                })()}
+            <div style={{ marginTop: 8, position: 'relative', height: 100 }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8' }}>
+                <span>{formatGB(maxBackupSize * 1024 * 1024 * 1024)}</span>
+                <span>{formatGB((maxBackupSize / 2) * 1024 * 1024 * 1024)}</span>
+                <span>0 GB</span>
               </div>
-              <div className="bar-chart-bars">
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, marginLeft: 35, height: '100%', paddingBottom: 24 }}>
                 {backupSize.dailyData.slice(-7).map((d) => {
                   const sizeGB = formatBytesToGB(d.bytes);
-                  const displaySize = formatBytesToDisplay(d.bytes);
+                  const pct = maxBackupSize > 0 ? (sizeGB / maxBackupSize) * 100 : 0;
                   return (
-                    <div key={d.date} className="bar-chart-column">
-                      <div
-                        className="bar-chart-bar"
-                        style={{ 
-                          height: `${maxBackupSize > 0 ? (sizeGB / maxBackupSize) * 100 : (d.bytes > 0 ? 10 : 0)}%`,
-                          minHeight: d.bytes > 0 ? '4px' : '0'
-                        }}
-                        title={`${displaySize.value} ${displaySize.unit}`}
-                      />
-                      <span className="bar-chart-label">{getDayName(d.date)}</span>
+                    <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ width: '100%', backgroundColor: '#14b8a6', height: `${Math.max(pct, d.bytes > 0 ? 3 : 0)}%`, minHeight: d.bytes > 0 ? 6 : 0, borderRadius: '2px 2px 0 0', transition: 'height 0.3s' }}
+                           title={formatGB(d.bytes)} />
+                      <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>{formatDateShort(d.date)}</span>
                     </div>
                   );
                 })}
