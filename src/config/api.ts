@@ -82,6 +82,7 @@ export const API = {
     ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
     FOLDERS: `${API_URL}/resources/snapshots/folders`,
+    CONTENT_TYPES: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/content-types`,
   },
 
   // Recovery

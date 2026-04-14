@@ -138,6 +138,17 @@ export const SnapshotService = {
   },
 
   /**
+   * Get distinct content types available in a snapshot.
+   */
+  async getContentTypes(snapshotId: string): Promise<string[]> {
+    const url = API.SNAPSHOTS.CONTENT_TYPES(snapshotId);
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch content types');
+    const data = await res.json();
+    return data.contentTypes || [];
+  },
+
+  /**
    * Search snapshot items for a resource with optional filters.
    */
   async searchItems(

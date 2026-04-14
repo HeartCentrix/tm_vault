@@ -2,18 +2,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
-import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Recovery.css';
 
-type ContentType = 'mail' | 'onedrive' | 'contacts' | 'calendar' | 'chats';
+type ContentType = string;
 
-const CONTENT_TYPES: { key: ContentType; label: string }[] = [
-  { key: 'mail', label: 'Mail' },
-  { key: 'onedrive', label: 'OneDrive' },
-  { key: 'contacts', label: 'Contacts' },
-  { key: 'calendar', label: 'Calendar' },
-  { key: 'chats', label: 'Chats' },
-];
+function formatContentTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    'USER_PROFILE': 'User Profile',
+    'ONEDRIVE': 'OneDrive',
+  };
+  
+  if (labels[type]) return labels[type];
+  
+  // Convert to title case: replace underscores with spaces, capitalize first letter, lowercase rest
+  return type
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
 
 function formatSize(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -48,8 +55,11 @@ export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const contentTabKeys = ['mail', 'onedrive', 'contacts', 'calendar', 'chats'] as const;
-  const [activeContentType, setActiveContentType] = usePersistentTab<ContentType>('/recovery', 'mail', contentTabKeys);
+  
+  // Dynamic content types from snapshot items
+  const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
+  const [contentTypesLoading, setContentTypesLoading] = useState(false);
+  const [activeContentType, setActiveContentType] = useState<ContentType>('');
 
   // Resource selection
   const [resources, setResources] = useState<ResourceWithBackups[]>([]);
@@ -67,7 +77,8 @@ export default function Recovery() {
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [foldersLoading, setFoldersLoading] = useState(false);
 
-  // Recovery items
+  // Recovery items - loaded once, filtered locally
+  const [allRecoveryItems, setAllRecoveryItems] = useState<RecoveryItem[]>([]);
   const [recoveryItems, setRecoveryItems] = useState<RecoveryItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemCount, setItemCount] = useState(0);
@@ -123,7 +134,78 @@ export default function Recovery() {
       .finally(() => setSnapshotsLoading(false));
   }, [selectedResource]);
 
-  // Load folders for selected snapshot and content type
+  // Load content types for selected snapshot
+  useEffect(() => {
+    if (!selectedSnapshotId) {
+      setContentTypes([]);
+      setActiveContentType('');
+      return;
+    }
+
+    setContentTypesLoading(true);
+    SnapshotService.getContentTypes(selectedSnapshotId)
+      .then((types) => {
+        setContentTypes(types);
+        if (types.length > 0) {
+          setActiveContentType(types[0]);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setContentTypesLoading(false));
+  }, [selectedSnapshotId]);
+
+  // Load ALL recovery items once when snapshot changes
+  useEffect(() => {
+    if (!selectedSnapshotId || !selectedResource) {
+      setAllRecoveryItems([]);
+      setRecoveryItems([]);
+      setItemCount(0);
+      return;
+    }
+
+    setItemsLoading(true);
+    // Load all items without contentType filter - we'll filter locally
+    SnapshotService.listItems(selectedSnapshotId, 1, 500)
+      .then((data) => {
+        setAllRecoveryItems(data.content);
+      })
+      .catch((error) => {
+        console.error('Failed to load items:', error);
+        setAllRecoveryItems([]);
+      })
+      .finally(() => setItemsLoading(false));
+  }, [selectedSnapshotId, selectedResource]);
+
+  // Filter items locally when content type, folder, or search changes
+  const filterItemsLocally = useCallback(() => {
+    let filtered = allRecoveryItems;
+
+    // Filter by content type
+    if (activeContentType) {
+      filtered = filtered.filter(item => item.itemType === activeContentType);
+    }
+
+    // Filter by folder
+    if (selectedFolder && selectedFolder !== 'all') {
+      filtered = filtered.filter(item => item.folderPath === selectedFolder);
+    }
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item =>
+        item.name?.toLowerCase().includes(query) ||
+        item.externalId?.toLowerCase().includes(query) ||
+        item.subject?.toLowerCase().includes(query) ||
+        item.itemType?.toLowerCase().includes(query)
+      );
+    }
+
+    setRecoveryItems(filtered);
+    setItemCount(filtered.length);
+  }, [allRecoveryItems, activeContentType, selectedFolder, searchQuery]);
+
+  // Load folders for selected snapshot (all folders, not filtered by content type)
   useEffect(() => {
     if (!selectedSnapshotId) {
       setFolders([]);
@@ -132,7 +214,8 @@ export default function Recovery() {
     }
 
     setFoldersLoading(true);
-    SnapshotService.getFolders(selectedSnapshotId, activeContentType)
+    // Load folders without contentType filter to show all available folders
+    SnapshotService.getFolders(selectedSnapshotId)
       .then((data) => {
         const folderList = [{ path: '', count: data.reduce((sum, f) => sum + f.count, 0) }, ...data];
         setFolders(folderList);
@@ -140,36 +223,12 @@ export default function Recovery() {
       })
       .catch(console.error)
       .finally(() => setFoldersLoading(false));
-  }, [selectedSnapshotId, activeContentType]);
+  }, [selectedSnapshotId]);
 
-  // Load recovery items
-  const loadRecoveryItems = useCallback(() => {
-    if (!selectedSnapshotId || !selectedResource) return;
-
-    setItemsLoading(true);
-    RecoveryService.listItems(
-      selectedSnapshotId,
-      selectedFolder === 'all' ? '' : selectedFolder,
-      activeContentType,
-      1,
-      50,
-      searchQuery || undefined
-    )
-      .then((data) => {
-        setRecoveryItems(data.content);
-        setItemCount(data.totalElements);
-      })
-      .catch((error) => {
-        console.error('Failed to load items:', error);
-        setRecoveryItems([]);
-        setItemCount(0);
-      })
-      .finally(() => setItemsLoading(false));
-  }, [selectedSnapshotId, selectedFolder, activeContentType, searchQuery, selectedResource]);
-
+  // Filter items locally when filters change
   useEffect(() => {
-    loadRecoveryItems();
-  }, [loadRecoveryItems]);
+    filterItemsLocally();
+  }, [filterItemsLocally]);
 
   const handleResourceSelect = (resource: ResourceWithBackups) => {
     setSelectedResource(resource);
@@ -362,15 +421,24 @@ export default function Recovery() {
 
               {/* Content Type Tabs */}
               <div className="content-type-tabs">
-                {CONTENT_TYPES.map(tab => (
-                  <button
-                    key={tab.key}
-                    className={`content-tab ${activeContentType === tab.key ? 'active' : ''}`}
-                    onClick={() => setActiveContentType(tab.key)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                {contentTypesLoading ? (
+                  <div className="tabs-loading">
+                    <div className="spinner-sm" />
+                    Loading content types...
+                  </div>
+                ) : contentTypes.length === 0 ? (
+                  <div className="tabs-empty">No content types found</div>
+                ) : (
+                  contentTypes.map(type => (
+                    <button
+                      key={type}
+                      className={`content-tab ${activeContentType === type ? 'active' : ''}`}
+                      onClick={() => setActiveContentType(type)}
+                    >
+                      {formatContentTypeLabel(type)}
+                    </button>
+                  ))
+                )}
               </div>
 
               {/* Toolbar */}
