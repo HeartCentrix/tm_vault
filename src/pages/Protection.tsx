@@ -224,9 +224,19 @@ export default function Protection() {
         });
         // Refresh resources to show updated backup status and size
         if (tenantId) {
-          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-            .then((data: ResourceListResponse) => setResources(data.items || []))
-            .catch(console.error);
+          if (searchQuery) {
+            // When searching, fetch all results
+            getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+              .then((data: ResourceListResponse) => {
+                const filtered = data.items || [];
+                setResources(filtered);
+              })
+              .catch(console.error);
+          } else {
+            getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+              .then((data: ResourceListResponse) => setResources(data.items || []))
+              .catch(console.error);
+          }
         }
       }
     }, 2000);
@@ -242,20 +252,50 @@ export default function Protection() {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-    getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-      .then((data: ResourceListResponse) => {
-        setResources(data.items || []);
-        setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    
+    // If there's a search query, fetch all resources and filter client-side
+    if (searchQuery) {
+      getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+        .then((data: ResourceListResponse) => {
+          const filtered = data.items || [];
+          setResources(filtered);
+          setTotalPages(filtered.length > 0 ? Math.ceil(filtered.length / 50) : 1);
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    } else {
+      // No search query - use normal pagination
+      getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+        .then((data: ResourceListResponse) => {
+          setResources(data.items || []);
+          setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
+  // Apply client-side search filtering
+  const filteredResources = useMemo(() => {
+    if (!searchQuery.trim()) return resources;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return resources.filter(resource => {
+      // Search in name
+      if (resource.name.toLowerCase().includes(query)) return true;
+      // Search in email
+      if (resource.email && resource.email.toLowerCase().includes(query)) return true;
+      // Search in kind
+      if (resource.kind && resource.kind.toLowerCase().includes(query)) return true;
+      return false;
+    });
+  }, [resources, searchQuery]);
+
   // Apply size-based sorting/filtering and SLA filtering to resources
   const sortedResources = useMemo(() => {
-    let filtered = [...resources];
+    let filtered = [...filteredResources];
 
     // Apply SLA filter first
     if (slaFilter) {
@@ -278,23 +318,32 @@ export default function Protection() {
       case 'top_total':
         // Sort by total size (descending)
         return filtered.sort((a, b) => (b.usage?.size || 0) - (a.usage?.size || 0));
-      
+
       case 'top_7d':
         // Sort by 7-day growth (descending)
         return filtered.sort((a, b) => (b.usage?.size_delta_week || 0) - (a.usage?.size_delta_week || 0));
-      
+
       case 'top_30d':
         // Sort by 30-day growth (descending)
         return filtered.sort((a, b) => (b.usage?.size_delta_month || 0) - (a.usage?.size_delta_month || 0));
-      
+
       case 'top_365d':
         // Sort by yearly growth (descending)
         return filtered.sort((a, b) => (b.usage?.size_delta_year || 0) - (a.usage?.size_delta_year || 0));
-      
+
       default:
         return filtered;
     }
   }, [resources, sizeFilter, slaFilter, policies]);
+
+  // Apply client-side pagination when searching
+  const displayedResources = useMemo(() => {
+    if (searchQuery) {
+      const startIndex = (page - 1) * 50;
+      return sortedResources.slice(startIndex, startIndex + 50);
+    }
+    return sortedResources;
+  }, [sortedResources, searchQuery, page]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -308,12 +357,12 @@ export default function Protection() {
 
   // Check if any selected resources don't have an SLA policy
   const hasUnprotectedSelected = selectedResources.some(id => {
-    const resource = sortedResources.find(r => r.id === id);
+    const resource = displayedResources.find(r => r.id === id);
     return !resource?.protections?.[0]?.policy_id;
   });
 
   const toggleSelectAll = () => {
-    setSelectedResources(selectedResources.length === sortedResources.length ? [] : sortedResources.map(r => r.id));
+    setSelectedResources(selectedResources.length === displayedResources.length ? [] : displayedResources.map(r => r.id));
   };
 
   const toggleSelect = (id: string) => {
@@ -432,19 +481,25 @@ export default function Protection() {
         try {
           // Fetch resources to check if discovery completed
           const data = await getResources(
-            tenantId, 
-            activeTab, 
-            page, 
-            50, 
-            searchQuery, 
-            slaFilter || undefined, 
-            resourceFilter || undefined, 
+            tenantId,
+            activeTab,
+            searchQuery ? 1 : page,
+            searchQuery ? 10000 : 50,
+            searchQuery,
+            slaFilter || undefined,
+            resourceFilter || undefined,
             serviceType
           );
-          
+
           // Update resources
-          setResources(data.items || []);
-          setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
+          if (searchQuery) {
+            const filtered = data.items || [];
+            setResources(filtered);
+            setTotalPages(filtered.length > 0 ? Math.ceil(filtered.length / 50) : 1);
+          } else {
+            setResources(data.items || []);
+            setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
+          }
           setRefreshing(false);
         } catch (err) {
           console.error('Error fetching resources during discovery poll:', err);
@@ -618,7 +673,7 @@ export default function Protection() {
         <table className="resources-table">
           <thead>
             <tr>
-              <th className="checkbox-cell"><input type="checkbox" checked={sortedResources.length > 0 && selectedResources.length === sortedResources.length} onChange={toggleSelectAll} /></th>
+              <th className="checkbox-cell"><input type="checkbox" checked={displayedResources.length > 0 && selectedResources.length === displayedResources.length} onChange={toggleSelectAll} /></th>
               <th>Resources <span className="th-icon"></span></th>
               <th>SLA <span className="th-icon"></span></th>
               <th className="size-col"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4, verticalAlign: 'middle' }}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>Total size</th>
@@ -628,8 +683,8 @@ export default function Protection() {
           </thead>
           <tbody>
             {loading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>Loading...</td></tr>}
-            {!loading && resources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
-            {!loading && sortedResources.map(resource => (
+            {!loading && displayedResources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
+            {!loading && displayedResources.map(resource => (
               <tr key={resource.id}>
                 <td className="checkbox-cell">
                   <label className="checkbox-label">
