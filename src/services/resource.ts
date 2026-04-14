@@ -22,6 +22,7 @@ export interface ResourceItem {
     size_delta_month: number;
     size_delta_week: number;
   };
+  backupSize?: string;  // Formatted size string from backend (e.g., "1.15 GB")
   status: string;
   sla?: string;
   last_backup?: string;
