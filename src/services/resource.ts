@@ -93,18 +93,54 @@ export async function getResources(
     types = M365_ALL_TYPES;
   }
 
-  let url: string;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+  // For tabs with multiple types (groups, entra, power), fetch each type separately
+  if (types.length > 1) {
+    const allItems: ResourceItem[] = [];
+    let totalItems = 0;
+
+    // Fetch each type separately
+    const fetchPromises = types.map(async (type) => {
+      let url = `${API.RESOURCES.BY_TYPE}?type=${type}&tenantId=${tenantId}&page=1&size=500`;
+      if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
+      if (resourceFilter === 'active') url += `&status=ACTIVE`;
+      if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`Failed to fetch resources for type ${type}: ${res.statusText}`);
+      return res.json();
+    });
+
+    const results = await Promise.all(fetchPromises);
+    results.forEach((data: ResourceListResponse) => {
+      if (data.items) {
+        allItems.push(...data.items);
+        totalItems += data.item_number || 0;
+      }
+    });
+
+    // Apply pagination on the combined results
+    const startIndex = (page - 1) * size;
+    const paginatedItems = allItems.slice(startIndex, startIndex + size);
+
+    return {
+      item_number: totalItems,
+      page_number: page,
+      next_page_token: startIndex + size < totalItems ? String(page + 1) : null,
+      items: paginatedItems,
+    };
+  }
+
+  // Single type or no type - use existing logic
+  let url: string;
 
   if (types.length === 1) {
     // Single type - use /by-type endpoint
     url = `${API.RESOURCES.BY_TYPE}?type=${types[0]}&tenantId=${tenantId}&page=${page}&size=${size}`;
-  } else if (types.length === 0) {
+  } else {
     // All resources (no filtering)
     url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}`;
-  } else {
-    // Multiple types - send types to backend for server-side filtering with proper pagination
-    url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}&types=${types.join(',')}`;
   }
 
   if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
@@ -115,7 +151,6 @@ export async function getResources(
   if (!res.ok) throw new Error(`Failed to fetch resources: ${res.statusText}`);
 
   const data = await res.json();
-
   return data;
 }
 

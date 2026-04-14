@@ -231,6 +231,10 @@ export default function Recovery() {
   }, [filterItemsLocally]);
 
   const handleResourceSelect = (resource: ResourceWithBackups) => {
+    if (selectedResource?.id === resource.id) {
+      // Already selected, do nothing
+      return;
+    }
     setSelectedResource(resource);
     setSelectedSnapshotId('');
     setSelectedItem(null);
