@@ -1,184 +1,491 @@
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import './Overview.css';
+import { API } from '../config/api';
+import { getActivities, type ActivityItem as ActivityRow } from '../services/activity';
+import { triggerDatasourceBackup } from '../services/resource';
 
-interface StatusCard {
-  label: string;
-  value: string;
-  change?: string;
-  positive?: boolean;
+interface BackupSizeResponse {
+  total: string;
+  oneDayChange: string;
+  oneMonthChange: string;
+  allTimeTotal: string;
+  dailyData: { date: string; bytes: number }[];
 }
 
-interface ActivityItem {
-  id: string;
-  tenant: string;
-  type: string;
-  status: 'Done' | 'In Progress' | 'Failed';
-  time: string;
+interface ProtectionStatus {
+  percentage: number;
+  users: { protectedCount: number; total: number };
+  sharedMailboxes: { protectedCount: number; total: number };
+  rooms: { protectedCount: number; total: number };
+  sharepointSites: { protectedCount: number; total: number };
+  groupsAndTeams: { protectedCount: number; total: number };
+  entraId: { protectedCount: number; total: number };
+  powerPlatform: { protectedCount: number; total: number };
 }
 
-const mock24HourStatus: StatusCard = { label: 'Last 24 hours', value: '98.5%', change: '+0.3%', positive: true };
-const mock7DayStatus: StatusCard = { label: 'Last 7 days', value: '97.2%', change: '+1.1%', positive: true };
-const mockProtection: StatusCard = { label: 'Protected', value: '1,247 / 1,280' };
-const mockBackupSize: StatusCard = { label: 'Backup Size', value: '2.4 TB' };
+interface Status24hResponse {
+  success: number;
+  warnings: number;
+  failures: number;
+}
 
-const mockActivities: ActivityItem[] = [
-  { id: '1', tenant: 'Contoso M365', type: 'Full Backup', status: 'Done', time: '2 min ago' },
-  { id: '2', tenant: 'Fabrikam Azure', type: 'Incremental', status: 'In Progress', time: '5 min ago' },
-  { id: '3', tenant: 'Contoso M365', type: 'Full Backup', status: 'Done', time: '1 hour ago' },
-  { id: '4', tenant: 'Contoso M365', type: 'Snapshot', status: 'Failed', time: '3 hours ago' },
-  { id: '5', tenant: 'Fabrikam Azure', type: 'Incremental', status: 'Done', time: '6 hours ago' },
-];
+interface Status7dResponse {
+  dailyStatus: { date: string; success: number; warnings: number; failures: number }[];
+  summary: { totalBackups: number; successRate: number; avgDuration: string };
+}
 
-// Simple bar chart data
-const backupSizeData = [
-  { day: 'Mon', size: 340 },
-  { day: 'Tue', size: 280 },
-  { day: 'Wed', size: 420 },
-  { day: 'Thu', size: 380 },
-  { day: 'Fri', size: 310 },
-  { day: 'Sat', size: 250 },
-  { day: 'Sun', size: 290 },
-];
+interface Status7dChartDatum {
+  date: string;
+  shortDate: string;
+  fullDate: string;
+  success: number;
+  warnings: number;
+  failures: number;
+  total: number;
+}
+
+interface BackupSizeChartDatum {
+  date: string;
+  shortDate: string;
+  fullDate: string;
+  bytes: number;
+}
+
+type SizeUnit = 'MB' | 'GB' | 'TB';
+
+const CHART_COLORS = {
+  success: '#17838a',
+  warning: '#f59e0b',
+  failure: '#ef7d73',
+  backup: '#17838a',
+};
+
+function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: number; totalCount: number; percentage: number } {
+  const allCategories = [
+    data.users,
+    data.sharedMailboxes,
+    data.rooms,
+    data.sharepointSites,
+    data.groupsAndTeams,
+    data.entraId,
+    data.powerPlatform,
+  ];
+
+  const totalCount = allCategories.reduce((sum, cat) => sum + cat.total, 0);
+  const protectedCount = allCategories.reduce((sum, cat) => sum + cat.protectedCount, 0);
+  const percentage = totalCount > 0 ? (protectedCount / totalCount) * 100 : 0;
+
+  return { protectedCount, totalCount, percentage };
+}
+
+function formatDateShort(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDateLong(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatGB(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    const gb = bytes / (1024 * 1024 * 1024);
+    return gb < 10 ? `${gb.toFixed(1)} GB` : `${Math.round(gb)} GB`;
+  } else if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  }
+  return '0 GB';
+}
+
+function getChartSizeUnit(maxBytes: number): SizeUnit {
+  if (maxBytes >= 1024 * 1024 * 1024 * 1024) return 'TB';
+  if (maxBytes >= 1024 * 1024 * 1024) return 'GB';
+  return 'MB';
+}
+
+function formatBytesInUnit(bytes: number, unit: SizeUnit): string {
+  const divisors = {
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+    TB: 1024 * 1024 * 1024 * 1024,
+  };
+
+  const value = bytes / divisors[unit];
+
+  if (value === 0) return `0 ${unit}`;
+  if (value < 10) return `${value.toFixed(1)} ${unit}`;
+  return `${Math.round(value)} ${unit}`;
+}
+
+function StatusChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: Status7dChartDatum }>;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const data = payload[0].payload;
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip-title">{data.fullDate}</div>
+      <div className="chart-tooltip-row success">
+        <span>Success</span>
+        <strong>{data.success}</strong>
+      </div>
+      <div className="chart-tooltip-row warning">
+        <span>Warnings</span>
+        <strong>{data.warnings}</strong>
+      </div>
+      <div className="chart-tooltip-row failure">
+        <span>Failures</span>
+        <strong>{data.failures}</strong>
+      </div>
+      <div className="chart-tooltip-total">
+        <span>Total</span>
+        <strong>{data.total}</strong>
+      </div>
+    </div>
+  );
+}
+
+function BackupSizeTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: BackupSizeChartDatum }>;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const data = payload[0].payload;
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip-title">{data.fullDate}</div>
+      <div className="chart-tooltip-row backup">
+        <span>Backup size</span>
+        <strong>{formatGB(data.bytes)}</strong>
+      </div>
+    </div>
+  );
+}
+
+function appendTenantId(url: string, tenantId?: string): string {
+  if (!tenantId) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}tenantId=${encodeURIComponent(tenantId)}`;
+}
 
 export default function Overview() {
-  const maxBackupSize = Math.max(...backupSizeData.map(d => d.size));
+  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
+  const [backupSize, setBackupSize] = useState<BackupSizeResponse | null>(null);
+  const [protection, setProtection] = useState<ProtectionStatus | null>(null);
+  const [status24h, setStatus24h] = useState<Status24hResponse | null>(null);
+  const [status7d, setStatus7d] = useState<Status7dResponse | null>(null);
+  const [activities, setActivities] = useState<ActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [triggeringBackupAll, setTriggeringBackupAll] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+    Promise.all([
+      fetch(appendTenantId(API.DASHBOARD.BACKUP_SIZE, tenantId), { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.PROTECTION, tenantId), { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.STATUS_24H, tenantId), { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.STATUS_7D, tenantId), { headers }).then(r => r.json()),
+      getActivities({ tenantId, page: 1, size: 10 }),
+    ])
+      .then(([backupData, protectionData, data24h, data7d, activityData]) => {
+        setBackupSize(backupData);
+        setProtection(protectionData);
+        setStatus24h(data24h);
+        setStatus7d(data7d);
+        setActivities(activityData.items || []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [tenantId]);
+
+  const hasFailures24h = (status24h?.failures || 0) > 0;
+
+  const status7dChartData: Status7dChartDatum[] = (status7d?.dailyStatus || []).slice(-7).map((d) => ({
+    date: d.date,
+    shortDate: formatDateShort(d.date),
+    fullDate: formatDateLong(d.date),
+    success: d.success,
+    warnings: d.warnings,
+    failures: d.failures,
+    total: d.success + d.warnings + d.failures,
+  }));
+
+  const backupSizeChartData: BackupSizeChartDatum[] = (backupSize?.dailyData || []).slice(-7).map((d) => ({
+    date: d.date,
+    shortDate: formatDateShort(d.date),
+    fullDate: formatDateLong(d.date),
+    bytes: d.bytes,
+  }));
+  const backupSizeChartMax = backupSizeChartData.reduce((max, point) => Math.max(max, point.bytes), 0);
+  const backupSizeChartUnit = getChartSizeUnit(backupSizeChartMax);
+
+  const status7dTotals = status7dChartData.reduce(
+    (acc, day) => ({
+      success: acc.success + day.success,
+      warnings: acc.warnings + day.warnings,
+      failures: acc.failures + day.failures,
+    }),
+    { success: 0, warnings: 0, failures: 0 }
+  );
+
+  const status24hState = hasFailures24h
+    ? { label: 'Failures', className: 'failure' }
+    : (status24h?.warnings || 0) > 0
+      ? { label: 'Warnings', className: 'warning' }
+      : { label: 'Success', className: 'success' };
+
+  const protectionRows = protection ? [
+    { label: 'Users', value: protection.users },
+    { label: 'Shared mailboxes', value: protection.sharedMailboxes },
+    { label: 'Rooms', value: protection.rooms },
+    { label: 'SharePoint sites', value: protection.sharepointSites },
+    { label: 'Groups & Teams', value: protection.groupsAndTeams },
+    { label: 'Entra ID', value: protection.entraId },
+    { label: 'Power Platform', value: protection.powerPlatform },
+  ].filter((item) => item.value.total > 0) : [];
+
+  const handleBackupAll = async () => {
+    if (!tenantId || (serviceType !== 'm365' && serviceType !== 'azure')) return;
+
+    setTriggeringBackupAll(true);
+    try {
+      await triggerDatasourceBackup(tenantId, serviceType, true);
+      const refreshedActivities = await getActivities({ tenantId, page: 1, size: 10 });
+      setActivities(refreshedActivities.items || []);
+    } catch (error) {
+      console.error('Failed to trigger datasource backup:', error);
+    } finally {
+      setTriggeringBackupAll(false);
+    }
+  };
+
+  const formatActivityDate = (dateString: string) => {
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  };
 
   return (
     <div className="overview-page">
       <div className="status-cards">
         {/* 24-hour status */}
-        <div className="status-card">
+        <div className="status-card status-summary-card">
           <div className="status-card-header">
-            <span className="status-label">{mock24HourStatus.label}</span>
+            <span className="status-label">24-hour status</span>
           </div>
           <div className="status-card-value">
-            <div className="progress-ring-container">
-              <svg className="progress-ring" width="80" height="80">
-                <circle
-                  className="progress-ring-bg"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#e2e8f0"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="progress-ring-progress"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#38a169"
-                  strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - 0.985)}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <span className="progress-value">98.5%</span>
-            </div>
+            {loading ? (
+              <span style={{ color: '#94a3b8' }}>Loading...</span>
+            ) : (
+              <div className="status-summary-content">
+                <div className={`status-summary-title ${status24hState.className}`}>
+                  {status24hState.label}
+                </div>
+                <div className="status-summary-list">
+                  <div className="status-summary-row success">
+                    <span>Success</span>
+                    <strong>{status24h?.success || 0}</strong>
+                  </div>
+                  <div className="status-summary-row warning">
+                    <span>Warnings</span>
+                    <strong>{status24h?.warnings || 0}</strong>
+                  </div>
+                  <div className="status-summary-row failure">
+                    <span>Failures</span>
+                    <strong>{status24h?.failures || 0}</strong>
+                  </div>
+                </div>
+                <button
+                  className="backup-all-btn status-summary-btn"
+                  onClick={handleBackupAll}
+                  disabled={!tenantId || !serviceType || triggeringBackupAll}
+                >
+                  {triggeringBackupAll ? 'Starting backup...' : 'Backup all now'}
+                </button>
+              </div>
+            )}
           </div>
-          {mock24HourStatus.change && (
-            <div className={`status-change ${mock24HourStatus.positive ? 'positive' : 'negative'}`}>
-              {mock24HourStatus.change} from previous
-            </div>
-          )}
         </div>
 
         {/* 7-day status */}
-        <div className="status-card">
+        <div className="status-card chart-card">
           <div className="status-card-header">
-            <span className="status-label">{mock7DayStatus.label}</span>
+            <span className="status-label">7-day status</span>
           </div>
           <div className="status-card-value">
-            <div className="progress-ring-container">
-              <svg className="progress-ring" width="80" height="80">
-                <circle
-                  className="progress-ring-bg"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#e2e8f0"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="progress-ring-progress"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#38a169"
-                  strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - 0.972)}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <span className="progress-value">97.2%</span>
-            </div>
+            {loading ? (
+              <span style={{ color: '#94a3b8' }}>Loading...</span>
+            ) : (
+              <div className="chart-card-content">
+                <div className="chart-legend">
+                  <span className="chart-legend-item success">Success {status7dTotals.success}</span>
+                  <span className="chart-legend-item warning">Warnings {status7dTotals.warnings}</span>
+                  <span className="chart-legend-item failure">Failures {status7dTotals.failures}</span>
+                </div>
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={status7dChartData} barGap={6} margin={{ top: 8, right: 8, left: 8, bottom: 6 }}>
+                      <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="shortDate"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                        tickMargin={8}
+                        width={40}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
+                        content={<StatusChartTooltip />}
+                      />
+                      <Bar dataKey="success" stackId="status" fill={CHART_COLORS.success} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                      <Bar dataKey="warnings" stackId="status" fill={CHART_COLORS.warning} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                      <Bar dataKey="failures" stackId="status" fill={CHART_COLORS.failure} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
           </div>
-          {mock7DayStatus.change && (
-            <div className={`status-change ${mock7DayStatus.positive ? 'positive' : 'negative'}`}>
-              {mock7DayStatus.change} from previous
-            </div>
-          )}
         </div>
 
         {/* Protection status */}
-        <div className="status-card">
+        <div className="status-card protection-card">
           <div className="status-card-header">
-            <span className="status-label">{mockProtection.label}</span>
+            <span className="status-label">Protection status</span>
           </div>
           <div className="status-card-value">
-            <div className="progress-ring-container">
-              <svg className="progress-ring" width="80" height="80">
-                <circle
-                  className="progress-ring-bg"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#e2e8f0"
-                  strokeWidth="6"
-                />
-                <circle
-                  className="progress-ring-progress"
-                  cx="40" cy="40" r="34"
-                  fill="none"
-                  stroke="#38a169"
-                  strokeWidth="6"
-                  strokeDasharray={`${2 * Math.PI * 34}`}
-                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - 1247/1280)}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                />
-              </svg>
-              <span className="progress-value">{Math.round(1247/1280*100)}%</span>
-            </div>
+            {loading ? (
+              <span style={{ color: '#94a3b8' }}>Loading...</span>
+            ) : (() => {
+              const totals = protection ? calculateProtectionTotals(protection) : { protectedCount: 0, totalCount: 0, percentage: 0 };
+              return (
+                <div className="protection-card-content">
+                  <div className="protection-summary">
+                    <div className="protection-summary-value">
+                      {totals.totalCount > 0 ? `${Math.round(totals.percentage)}%` : '0%'}
+                    </div>
+                    <svg className="protection-ring" width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="20" cy="20" r="16" fill="none" stroke="#e2e8f0" strokeWidth="4" />
+                      <circle cx="20" cy="20" r="16" fill="none" stroke="#0d9488" strokeWidth="4"
+                        strokeDasharray={`${2 * Math.PI * 16}`}
+                        strokeDashoffset={`${2 * Math.PI * 16 * (1 - totals.percentage / 100)}`}
+                        strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <div className="protection-breakdown">
+                    {protectionRows.map((item) => {
+                      const isPartial = item.value.protectedCount !== item.value.total;
+                      return (
+                        <div key={item.label} className="protection-breakdown-row">
+                          <span className="protection-breakdown-label">{item.label}</span>
+                          <span className={`protection-breakdown-value ${isPartial ? 'partial' : 'complete'}`}>
+                            {item.value.protectedCount} / {item.value.total}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-          <div className="status-detail">1,247 of 1,280 resources protected</div>
         </div>
 
         {/* Backup size */}
-        <div className="status-card">
+        <div className="status-card chart-card">
           <div className="status-card-header">
-            <span className="status-label">{mockBackupSize.label}</span>
+            <span className="status-label">Backup size</span>
           </div>
           <div className="status-card-value">
-            <div className="backup-size-value">
-              <span className="backup-size-text">2.4 TB</span>
-            </div>
-          </div>
-          {/* Bar chart */}
-          <div className="bar-chart">
-            <div className="bar-chart-y-axis">
-              <span className="y-tick">{maxBackupSize}GB</span>
-              <span className="y-tick">{Math.round(maxBackupSize/2)}GB</span>
-              <span className="y-tick">0</span>
-            </div>
-            <div className="bar-chart-bars">
-              {backupSizeData.map((d) => (
-                <div key={d.day} className="bar-chart-column">
-                  <div
-                    className="bar-chart-bar"
-                    style={{ height: `${(d.size / maxBackupSize) * 100}%` }}
-                  />
-                  <span className="bar-chart-label">{d.day}</span>
+            <div className="chart-card-content">
+              <div className="backup-size-summary">
+                <div className="backup-size-headline">
+                  <div className="backup-size-total">
+                    {loading ? 'Loading...' : (backupSize?.total || '0 GB')}
+                  </div>
                 </div>
-              ))}
+                <div className="backup-size-metrics">
+                  {backupSize?.oneMonthChange && (
+                    <div className="backup-size-pill positive">
+                      <span>7 days</span>
+                      <strong>{backupSize.oneMonthChange}</strong>
+                    </div>
+                  )}
+                  {backupSize?.allTimeTotal && (
+                    <div className="backup-size-pill neutral">
+                      <span>All time</span>
+                      <strong>{backupSize.allTimeTotal}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {backupSizeChartData.length > 0 && (
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={backupSizeChartData} barGap={8} margin={{ top: 8, right: 8, left: 8, bottom: 6 }}>
+                      <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="shortDate"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                        tickFormatter={(value: number) => formatBytesInUnit(value, backupSizeChartUnit)}
+                        tickMargin={8}
+                        width={64}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(13, 148, 136, 0.10)' }}
+                        content={<BackupSizeTooltip />}
+                      />
+                      <Bar dataKey="bytes" fill={CHART_COLORS.backup} radius={[4, 4, 0, 0]} maxBarSize={34} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -191,29 +498,37 @@ export default function Overview() {
           <table className="activity-table">
             <thead>
               <tr>
-                <th>Tenant</th>
-                <th>Type</th>
+                <th>Object</th>
+                <th>Operation</th>
+                <th>Started</th>
                 <th>Status</th>
-                <th>Time</th>
               </tr>
             </thead>
             <tbody>
-              {mockActivities.map((activity) => (
+              {activities.map((activity) => (
                 <tr key={activity.id}>
-                  <td className="activity-tenant">{activity.tenant}</td>
-                  <td>{activity.type}</td>
+                  <td className="activity-tenant">{activity.object}</td>
+                  <td>{activity.operation}</td>
+                  <td>{formatActivityDate(activity.start_time)}</td>
                   <td>
                     <span className={`activity-status ${
                       activity.status === 'Done' ? 'done' :
-                      activity.status === 'In Progress' ? 'in-progress' : 'failed'
+                      activity.status === 'In Progress' ? 'in-progress' :
+                      activity.status === 'Canceled' ? 'failed' : 'failed'
                     }`}>
                       {activity.status === 'In Progress' && <span className="spinner-small" />}
                       {activity.status}
                     </span>
                   </td>
-                  <td className="text-muted">{activity.time}</td>
                 </tr>
               ))}
+              {!loading && activities.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="text-muted" style={{ textAlign: 'center' }}>
+                    No recent activity for this datasource yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

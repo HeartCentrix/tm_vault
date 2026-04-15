@@ -22,6 +22,7 @@ export interface ResourceItem {
     size_delta_month: number;
     size_delta_week: number;
   };
+  backupSize?: string;  // Formatted size string from backend (e.g., "1.15 GB")
   status: string;
   sla?: string;
   last_backup?: string;
@@ -290,7 +291,32 @@ export async function triggerBatchBackup(resourceIds: string[]): Promise<{ jobId
   return res.json();
 }
 
-export async function triggerDiscovery(tenantId: string): Promise<{ discoveryId: string; resourcesFound: number }> {
+export async function triggerDatasourceBackup(
+  tenantId: string,
+  serviceType: 'm365' | 'azure',
+  fullBackup: boolean = true
+): Promise<{ jobId: string; status: string; resourceId: string; resourceCount?: number }[]> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.JOBS.TRIGGER_DATASOURCE, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ tenantId, serviceType, fullBackup, priority: 1 }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || `Failed to trigger datasource backup: ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+export async function triggerDiscovery(
+  tenantId: string
+): Promise<{ discoveryId: string; resourcesFound: number }> {
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/discover-m365`, {
     method: 'POST',
@@ -299,6 +325,10 @@ export async function triggerDiscovery(tenantId: string): Promise<{ discoveryId:
       Authorization: `Bearer ${token}`,
     },
   });
-  if (!res.ok) throw new Error(`Failed to trigger discovery: ${res.statusText}`);
+
+  if (!res.ok) {
+    throw new Error(`Failed to trigger discovery: ${res.statusText}`);
+  }
+
   return res.json();
 }
