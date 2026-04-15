@@ -144,5 +144,13 @@ export const API = {
     LIST: `${API_URL}/audit/events`,
     DETAILS: (id: string) => `${API_URL}/audit/events/${id}`,
   },
+
+  // Reports
+  REPORTS: {
+    CONFIG: `${API_URL}/reports/config`,
+    HISTORY: `${API_URL}/reports/history`,
+    HISTORY_DETAIL: (id: string) => `${API_URL}/reports/history/${id}`,
+    SEND: `${API_URL}/reports/generate`,
+  },
 };
 
