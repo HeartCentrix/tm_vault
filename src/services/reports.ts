@@ -13,10 +13,10 @@ export interface ReportConfig {
   schedule_type: 'daily' | 'weekly' | 'monthly';
   send_empty_report: boolean;
   empty_message: string | null;
+  send_detailed_report: boolean;
   email_recipients: string[];
   slack_webhooks: WebhookConfig[];
   teams_webhooks: WebhookConfig[];
-  googlechat_webhooks: WebhookConfig[];
   created_at: string;
   updated_at: string;
 }
@@ -45,10 +45,10 @@ export interface ReportConfigCreate {
   schedule_type: string;
   send_empty_report: boolean;
   empty_message?: string | null;
+  send_detailed_report?: boolean;
   email_recipients: string[];
   slack_webhooks: WebhookConfig[];
   teams_webhooks: WebhookConfig[];
-  googlechat_webhooks: WebhookConfig[];
 }
 
 export interface ReportConfigUpdate {
@@ -56,10 +56,10 @@ export interface ReportConfigUpdate {
   schedule_type?: string;
   send_empty_report?: boolean;
   empty_message?: string | null;
+  send_detailed_report?: boolean;
   email_recipients?: string[];
   slack_webhooks?: WebhookConfig[];
   teams_webhooks?: WebhookConfig[];
-  googlechat_webhooks?: WebhookConfig[];
 }
 
 class ReportService {

@@ -7,6 +7,7 @@ export default function Configuration() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [manualReportType, setManualReportType] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Report config state
@@ -14,6 +15,7 @@ export default function Configuration() {
   const [schedule, setSchedule] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [sendEmptyReport, setSendEmptyReport] = useState(true);
   const [emptyMessage, setEmptyMessage] = useState('No updates. No backups occurred.');
+  const [sendDetailedReport, setSendDetailedReport] = useState(false);
 
   // Notification endpoints
   const [emailRecipients, setEmailRecipients] = useState<string[]>([]);
@@ -21,7 +23,6 @@ export default function Configuration() {
   
   const [slackWebhooks, setSlackWebhooks] = useState<WebhookConfig[]>([]);
   const [teamsWebhooks, setTeamsWebhooks] = useState<WebhookConfig[]>([]);
-  const [googlechatWebhooks, setGooglechatWebhooks] = useState<WebhookConfig[]>([]);
 
   // Load configuration on mount
   useEffect(() => {
@@ -37,10 +38,10 @@ export default function Configuration() {
       setSchedule(config.schedule_type);
       setSendEmptyReport(config.send_empty_report);
       setEmptyMessage(config.empty_message || 'No updates. No backups occurred.');
+      setSendDetailedReport(config.send_detailed_report ?? false);
       setEmailRecipients(config.email_recipients || []);
       setSlackWebhooks(config.slack_webhooks || []);
       setTeamsWebhooks(config.teams_webhooks || []);
-      setGooglechatWebhooks(config.googlechat_webhooks || []);
     } catch (error) {
       console.error('Failed to load configuration:', error);
       setMessage({ type: 'error', text: 'Failed to load configuration' });
@@ -53,7 +54,7 @@ export default function Configuration() {
     try {
       setSending(true);
       setMessage(null);
-      const reportType = schedule.toUpperCase() as 'DAILY' | 'WEEKLY' | 'MONTHLY';
+      const reportType = manualReportType;
       const result = await reportService.sendReport(reportType);
       setMessage({ type: result.success ? 'success' : 'error', text: result.message });
     } catch (error) {
@@ -74,10 +75,10 @@ export default function Configuration() {
         schedule_type: schedule,
         send_empty_report: sendEmptyReport,
         empty_message: emptyMessage,
+        send_detailed_report: sendDetailedReport,
         email_recipients: emailRecipients,
         slack_webhooks: slackWebhooks,
         teams_webhooks: teamsWebhooks,
-        googlechat_webhooks: googlechatWebhooks,
       });
 
       setMessage({ type: 'success', text: 'Configuration saved successfully!' });
@@ -102,43 +103,36 @@ export default function Configuration() {
   };
 
   // Webhook helpers
-  const addWebhook = (type: 'slack' | 'teams' | 'googlechat', url: string) => {
+  const addWebhook = (type: 'slack' | 'teams', url: string) => {
     const name = `Webhook ${getWebhooks(type).length + 1}`;
     const webhook: WebhookConfig = { name, url, enabled: true };
     
     if (type === 'slack') {
       setSlackWebhooks([...slackWebhooks, webhook]);
-    } else if (type === 'teams') {
-      setTeamsWebhooks([...teamsWebhooks, webhook]);
     } else {
-      setGooglechatWebhooks([...googlechatWebhooks, webhook]);
+      setTeamsWebhooks([...teamsWebhooks, webhook]);
     }
   };
 
-  const removeWebhook = (type: 'slack' | 'teams' | 'googlechat', index: number) => {
+  const removeWebhook = (type: 'slack' | 'teams', index: number) => {
     if (type === 'slack') {
       setSlackWebhooks(slackWebhooks.filter((_, i) => i !== index));
-    } else if (type === 'teams') {
-      setTeamsWebhooks(teamsWebhooks.filter((_, i) => i !== index));
     } else {
-      setGooglechatWebhooks(googlechatWebhooks.filter((_, i) => i !== index));
+      setTeamsWebhooks(teamsWebhooks.filter((_, i) => i !== index));
     }
   };
 
-  const toggleWebhook = (type: 'slack' | 'teams' | 'googlechat', index: number) => {
+  const toggleWebhook = (type: 'slack' | 'teams', index: number) => {
     if (type === 'slack') {
       setSlackWebhooks(slackWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
-    } else if (type === 'teams') {
-      setTeamsWebhooks(teamsWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
     } else {
-      setGooglechatWebhooks(googlechatWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
+      setTeamsWebhooks(teamsWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
     }
   };
 
-  const getWebhooks = (type: 'slack' | 'teams' | 'googlechat') => {
+  const getWebhooks = (type: 'slack' | 'teams') => {
     if (type === 'slack') return slackWebhooks;
-    if (type === 'teams') return teamsWebhooks;
-    return googlechatWebhooks;
+    return teamsWebhooks;
   };
 
   if (loading) {
@@ -214,6 +208,23 @@ export default function Configuration() {
                   </p>
                 </div>
 
+                <div className="config-row">
+                  <label className="toggle-label">
+                    <div className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={sendDetailedReport}
+                        onChange={(e) => setSendDetailedReport(e.target.checked)}
+                      />
+                      <span className="toggle-slider" />
+                    </div>
+                    <span className="toggle-text">Send detailed report</span>
+                  </label>
+                  <p className="config-help">
+                    When enabled, a CSV attachment with individual backup details (resource name, time, size) will be included in email reports.
+                  </p>
+                </div>
+
                 {sendEmptyReport && (
                   <div className="config-row">
                     <label className="config-label">Empty report message</label>
@@ -231,11 +242,22 @@ export default function Configuration() {
                   <div className="send-report-row">
                     <div>
                       <span className="config-label">Send Report Now</span>
-                      <p className="config-help">Manually trigger a {schedule} report to all configured channels.</p>
+                      <p className="config-help">Manually trigger a report to all configured channels.</p>
                     </div>
-                    <button className="send-report-btn" onClick={handleSendReport} disabled={sending}>
-                      {sending ? 'Sending...' : `Send ${schedule.charAt(0).toUpperCase() + schedule.slice(1)} Report`}
-                    </button>
+                    <div className="send-report-controls">
+                      <select
+                        className="config-select"
+                        value={manualReportType}
+                        onChange={(e) => setManualReportType(e.target.value as 'DAILY' | 'WEEKLY' | 'MONTHLY')}
+                      >
+                        <option value="DAILY">Daily</option>
+                        <option value="WEEKLY">Weekly</option>
+                        <option value="MONTHLY">Monthly</option>
+                      </select>
+                      <button className="send-report-btn" onClick={handleSendReport} disabled={sending}>
+                        {sending ? 'Sending...' : 'Send Now'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>
@@ -297,15 +319,6 @@ export default function Configuration() {
               onAdd={(url) => addWebhook('teams', url)}
               onRemove={(index) => removeWebhook('teams', index)}
               onToggle={(index) => toggleWebhook('teams', index)}
-            />
-
-            {/* Google Chat Webhooks */}
-            <WebhookSection
-              title="Google Chat Webhooks"
-              webhooks={googlechatWebhooks}
-              onAdd={(url) => addWebhook('googlechat', url)}
-              onRemove={(index) => removeWebhook('googlechat', index)}
-              onToggle={(index) => toggleWebhook('googlechat', index)}
             />
           </>
         )}

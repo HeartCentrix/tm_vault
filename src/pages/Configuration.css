@@ -336,6 +336,12 @@
   width: 100%;
 }
 
+.send-report-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .send-report-btn {
   padding: 10px 20px;
   background: #1d4ed8;
