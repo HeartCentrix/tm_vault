@@ -18,6 +18,9 @@ export interface RestoreRequest {
   targetUserId?: string;
   targetResourceId?: string;
   exportFormat?: string;
+  targetFolder?: string;
+  overwrite?: boolean;
+  workloads?: string[];
 }
 
 export interface RestoreResponse {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, getAllProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -167,8 +167,8 @@ export default function Protection() {
   interface BackupStatus {
     progress_pct: number;
     status: string; // RUNNING, COMPLETED, FAILED
-    processed_bytes: number;
-    total_bytes: number;
+    data_backed_up: number;
+    total_data: number;
     started_at?: string;
     eta_seconds?: number | null;
   }
@@ -203,8 +203,8 @@ export default function Protection() {
           updates[rid] = {
             progress_pct: p.progress_pct || 0,
             status: p.status || 'RUNNING',
-            processed_bytes: p.processed_bytes || 0,
-            total_bytes: p.total_bytes || 0,
+            data_backed_up: p.data_backed_up || 0,
+            total_data: p.total_data || 0,
             started_at: p.started_at,
             eta_seconds: p.eta_seconds,
           };
@@ -274,6 +274,34 @@ export default function Protection() {
         .finally(() => setLoading(false));
     }
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
+
+  // Seed backupStatus + backingUp from backend on load (survives page refresh)
+  useEffect(() => {
+    if (!tenantId) return;
+    getAllProgress(tenantId).then(progresses => {
+      const statusSeed: Record<string, any> = {};
+      const backingUpSeed = new Set<string>();
+      for (const p of progresses) {
+        if (p.status === 'RUNNING') {
+          statusSeed[p.resource_id] = {
+            progress_pct: p.progress_pct || 0,
+            status: p.status,
+            data_backed_up: p.data_backed_up || 0,
+            total_data: p.total_data || 0,
+            started_at: p.started_at,
+            eta_seconds: p.eta_seconds,
+          };
+          backingUpSeed.add(p.resource_id);
+        }
+      }
+      setBackupStatus(prev => ({ ...prev, ...statusSeed }));
+      setBackingUp(prev => {
+        const next = new Set(prev);
+        backingUpSeed.forEach(id => next.add(id));
+        return next;
+      });
+    }).catch(console.error);
+  }, [tenantId, activeTab]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
@@ -405,7 +433,7 @@ export default function Protection() {
       setBackingUp(prev => new Set(prev).add(resourceId));
       setBackupStatus(prev => ({
         ...prev,
-        [resourceId]: { progress_pct: 0, status: 'RUNNING', processed_bytes: 0, total_bytes: 0, started_at: new Date().toISOString() }
+        [resourceId]: { progress_pct: 0, status: 'RUNNING', data_backed_up: 0, total_data: 0, started_at: new Date().toISOString() }
       }));
       await triggerBackup(resourceId);
     } catch (err) {
@@ -436,7 +464,7 @@ export default function Protection() {
       // Initialize status for all
       const initialStatus: Record<string, BackupStatus> = {};
       selectedResources.forEach(r => {
-        initialStatus[r] = { progress_pct: 0, status: 'RUNNING', processed_bytes: 0, total_bytes: 0, started_at: new Date().toISOString() };
+        initialStatus[r] = { progress_pct: 0, status: 'RUNNING', data_backed_up: 0, total_data: 0, started_at: new Date().toISOString() };
       });
       setBackupStatus(prev => ({ ...prev, ...initialStatus }));
 
@@ -710,7 +738,7 @@ export default function Protection() {
                   {(() => {
                     const status = backupStatus[resource.id];
                     const baseSize = resource.usage?.size || 0;
-                    const processedBytes = status?.processed_bytes || 0;
+                    const processedBytes = status?.data_backed_up || 0;
                     const displaySize = backingUp.has(resource.id) ? baseSize + processedBytes : baseSize;
                     return (
                       <>
@@ -728,7 +756,7 @@ export default function Protection() {
                 <td className="backup-cell">
                   {(() => {
                     const status = backupStatus[resource.id];
-                    const isBackingUp = backingUp.has(resource.id);
+                    const isBackingUp = backingUp.has(resource.id) || status?.status === 'RUNNING';
 
                     if (isBackingUp && status) {
                       // Show progress bar during backup

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
+import { RestoreModal } from '../components/RestoreModal';
 import './Recovery.css';
 
 type ContentType = string;
@@ -51,6 +52,309 @@ function getKindLabel(kind: string): string {
   return labels[kind] || kind;
 }
 
+// ==================== Specialized Preview Components ====================
+
+export function EmailPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const from = raw.from?.emailAddress || {};
+  const toList: any[] = raw.toRecipients || [];
+  const ccList: any[] = raw.ccRecipients || [];
+  const attachments: any[] = raw.attachments || [];
+  const subject = raw.subject || item.subject || item.name || '(No subject)';
+  const bodyContent = raw.body?.content || item.body || item.preview || '';
+  const isHtml = raw.body?.contentType === 'html';
+  const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
+  const fromStr = [from.name, from.address ? `<${from.address}>` : ''].filter(Boolean).join(' ') || item.from || '—';
+  const toStr = toList.map((r: any) => { const e = r.emailAddress || {}; return e.name ? `${e.name} <${e.address}>` : (e.address || ''); }).join('; ');
+
+  return (
+    <div className="email-preview">
+      <div className="email-ol-header">
+        <div className="email-ol-meta">
+          <div className="email-ol-row"><span className="email-ol-label">From:</span><span className="email-ol-val">{fromStr}</span></div>
+          {toStr && <div className="email-ol-row"><span className="email-ol-label">To:</span><span className="email-ol-val">{toStr}</span></div>}
+          {ccList.length > 0 && (
+            <div className="email-ol-row">
+              <span className="email-ol-label">Cc:</span>
+              <span className="email-ol-val">{ccList.map((r: any) => r.emailAddress?.address).join('; ')}</span>
+            </div>
+          )}
+          <div className="email-ol-subject">{subject}</div>
+          {(attachments.length > 0 || raw.hasAttachments) && (
+            <div className="email-ol-attachments">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" style={{width:13,height:13,flexShrink:0}}>
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+              {attachments.length > 0
+                ? attachments.map((a: any, i: number) => <span key={i} className="email-ol-attach-chip">{a.name || 'Attachment'}</span>)
+                : <span className="email-ol-attach-chip">Has attachments</span>
+              }
+            </div>
+          )}
+        </div>
+        {sentAt && (
+          <div className="email-ol-date">
+            {new Date(sentAt).toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
+          </div>
+        )}
+      </div>
+      <div className="email-body">
+        {isHtml
+          ? <iframe srcDoc={bodyContent} sandbox="allow-same-origin" className="email-iframe" title="email-body" />
+          : <pre className="email-plain">{bodyContent || 'No content'}</pre>
+        }
+      </div>
+    </div>
+  );
+}
+export function ChatPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || 'Unknown';
+  const senderInitials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+  const bodyContent = raw.body?.content || item.body || item.preview || '';
+  const isHtml = raw.body?.contentType === 'html';
+  const sentAt = raw.createdDateTime || raw.lastModifiedDateTime || item.date;
+  const attachments: any[] = raw.attachments || [];
+  const mentions: any[] = raw.mentions || [];
+  const isDeleted = raw.deletedDateTime != null;
+  const context = item.metadata?.chatTopic || item.metadata?.channelName
+    || item.folderPath?.replace('chats/', '').replace('channels/', '') || '';
+
+  return (
+    <div className="chat-preview">
+      {context && <div className="chat-context-label">{context}</div>}
+      <div className={`chat-bubble-wrap${isDeleted ? ' deleted' : ''}`}>
+        <div className="chat-avatar">{senderInitials}</div>
+        <div className="chat-bubble">
+          <div className="chat-bubble-header">
+            <span className="chat-sender">{sender}</span>
+            {sentAt && <span className="chat-time">{new Date(sentAt).toLocaleString()}</span>}
+            {item.itemType === 'TEAMS_MESSAGE_REPLY' && <span className="chat-reply-badge">Reply</span>}
+          </div>
+          {isDeleted
+            ? <div className="chat-deleted">This message was deleted</div>
+            : isHtml
+              ? <div className="chat-body" dangerouslySetInnerHTML={{ __html: bodyContent }} />
+              : <div className="chat-body">{bodyContent || <em>No content</em>}</div>
+          }
+          {attachments.length > 0 && (
+            <div className="chat-attachments">
+              {attachments.map((a: any, i: number) => (
+                <div key={i} className="chat-attachment-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12 }}>
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                  </svg>
+                  {a.name || 'Attachment'}
+                </div>
+              ))}
+            </div>
+          )}
+          {mentions.length > 0 && (
+            <div className="chat-mentions">
+              {mentions.map((m: any, i: number) => (
+                <span key={i} className="chat-mention">
+                  @{m.mentioned?.user?.displayName || m.mentionText}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CalendarPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const subject = raw.subject || item.subject || item.name || 'Event';
+  const start = raw.start?.dateTime || raw.start?.date || item.date;
+  const end = raw.end?.dateTime || raw.end?.date;
+  const location = raw.location?.displayName || '';
+  const organizer = raw.organizer?.emailAddress?.name || raw.organizer?.emailAddress?.address || '';
+  const attendees: any[] = raw.attendees || [];
+  const body = raw.body?.content || item.body || '';
+  const isHtml = raw.body?.contentType === 'html';
+  const isAllDay = raw.isAllDay || (!raw.start?.dateTime && !!raw.start?.date);
+  const isOnline = raw.isOnlineMeeting;
+  const recurrence = raw.recurrence?.pattern?.type;
+  const showAs = raw.showAs || '';
+
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
+
+  const eventDay = startDate?.getDate();
+  const eventMonth = startDate
+    ? startDate.toLocaleString('default', { month: 'long', year: 'numeric' })
+    : '';
+  const firstDow = startDate
+    ? new Date(startDate.getFullYear(), startDate.getMonth(), 1).getDay()
+    : 0;
+  const daysInMonth = startDate
+    ? new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate()
+    : 0;
+  const calCells = Array.from({ length: firstDow + daysInMonth }, (_, i) =>
+    i < firstDow ? null : i - firstDow + 1
+  );
+
+  return (
+    <div className="calendar-preview">
+      <div className="cal-event-header">
+        <div className="cal-event-title">{subject}</div>
+        <div className="cal-event-badges">
+          {isAllDay && <span className="cal-badge">All day</span>}
+          {isOnline && <span className="cal-badge online">Online meeting</span>}
+          {recurrence && <span className="cal-badge recur">Recurring · {recurrence}</span>}
+          {showAs && <span className="cal-badge status">{showAs}</span>}
+        </div>
+      </div>
+
+      <div className="cal-layout">
+        {startDate && (
+          <div className="cal-mini">
+            <div className="cal-mini-month">{eventMonth}</div>
+            <div className="cal-mini-grid">
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+                <div key={d} className="cal-mini-dow">{d}</div>
+              ))}
+              {calCells.map((day, i) => (
+                <div
+                  key={i}
+                  className={`cal-mini-day${day === eventDay ? ' event-day' : ''}${!day ? ' empty' : ''}`}
+                >
+                  {day ?? ''}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="cal-event-details">
+          {startDate && (
+            <div className="cal-detail-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15, flexShrink: 0 }}>
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <div>
+                <div>{startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</div>
+                {!isAllDay && (
+                  <div className="cal-time">
+                    {startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    {endDate && ` – ${endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {location && (
+            <div className="cal-detail-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15, flexShrink: 0 }}>
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+              </svg>
+              <span>{location}</span>
+            </div>
+          )}
+          {organizer && (
+            <div className="cal-detail-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15, flexShrink: 0 }}>
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+              </svg>
+              <span>Organized by <strong>{organizer}</strong></span>
+            </div>
+          )}
+          {attendees.length > 0 && (
+            <div className="cal-detail-row cal-attendees-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15, flexShrink: 0, marginTop: 2 }}>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              <div className="cal-attendees">
+                {attendees.slice(0, 8).map((a: any, i: number) => {
+                  const name = a.emailAddress?.name || a.emailAddress?.address || 'Attendee';
+                  const resp = (a.status?.response || '').toLowerCase();
+                  return (
+                    <span key={i} className={`cal-attendee-chip resp-${resp}`} title={resp}>
+                      {name}
+                    </span>
+                  );
+                })}
+                {attendees.length > 8 && (
+                  <span className="cal-attendee-more">+{attendees.length - 8} more</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {body && (
+        <div className="cal-event-body">
+          {isHtml
+            ? <div dangerouslySetInnerHTML={{ __html: body }} />
+            : <pre className="cal-body-plain">{body}</pre>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatItemRow({ item, selected, onSelect, onCheck }: {
+  item: any; selected: boolean;
+  onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
+}) {
+  const raw = item.metadata?.raw || {};
+  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
+  const email = raw.from?.user?.userIdentityType === 'aadUser'
+    ? (raw.from?.user?.id ? '' : '')
+    : '';
+  const senderEmail = item.metadata?.senderEmail || raw.from?.user?.displayName || sender;
+  const initials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+  const body = raw.body?.content || item.preview || item.body || '';
+  const isHtml = raw.body?.contentType === 'html';
+  const sentAt = raw.createdDateTime || item.date;
+  const displayBody = isHtml ? body.replace(/<[^>]+>/g, ' ').trim() : body;
+
+  return (
+    <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
+      <input type="checkbox" checked={false} onChange={() => {}} onClick={onCheck} />
+      <div className="chat-item-avatar">{initials}</div>
+      <div className="chat-item-body">
+        <div className="chat-item-header">
+          <span className="chat-item-sender">{sender}{senderEmail && senderEmail !== sender ? ` <${senderEmail}>` : ''}</span>
+          {sentAt && (
+            <span className="chat-item-time">
+              {new Date(sentAt).toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
+            </span>
+          )}
+        </div>
+        <div className="chat-item-text">{displayBody || '\u00a0'}</div>
+      </div>
+    </div>
+  );
+}
+
+export function ItemPreview({ item }: { item: any }) {
+  const type = item.itemType || '';
+  if (type === 'EMAIL') return <EmailPreview item={item} />;
+  if (type === 'TEAMS_CHAT_MESSAGE' || type === 'TEAMS_MESSAGE' || type === 'TEAMS_MESSAGE_REPLY')
+    return <ChatPreview item={item} />;
+  if (type === 'CALENDAR_EVENT') return <CalendarPreview item={item} />;
+
+  // Generic fallback
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        {item.from && <div className="preview-from"><span className="label">From:</span><span className="value">{item.from}</span></div>}
+        {item.to && <div className="preview-to"><span className="label">To:</span><span className="value">{item.to}</span></div>}
+        <div className="preview-status">{item.subject || item.name}</div>
+        {item.date && <div className="preview-date">{new Date(item.date).toLocaleString()}</div>}
+      </div>
+      <div className="preview-body"><p>{item.body || item.preview || 'No content available'}</p></div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -87,6 +391,7 @@ export default function Recovery() {
 
   // Toolbar
   const [searchQuery, setSearchQuery] = useState('');
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
   // Load resources with backups
   useEffect(() => {
@@ -259,15 +564,7 @@ export default function Recovery() {
 
   const handleRecover = () => {
     if (!selectedSnapshotId || selectedItems.size === 0) return;
-    RecoveryService.triggerRecovery({
-      restoreType: 'IN_PLACE',
-      snapshotIds: [selectedSnapshotId],
-      itemIds: Array.from(selectedItems),
-    })
-      .then((response) => {
-        console.log('Recovery job created:', response.jobId);
-      })
-      .catch(console.error);
+    setRestoreModalOpen(true);
   };
 
   const handleDownload = () => {
@@ -326,6 +623,7 @@ export default function Recovery() {
   }
 
   return (
+    <>
     <div className="recovery-page">
       {/* Two-panel layout: Resource list + Recovery content */}
       <div className="recovery-layout">
@@ -534,68 +832,48 @@ export default function Recovery() {
                         <p>No items found</p>
                       </div>
                     ) : (
-                      recoveryItems.map(item => (
-                        <div
-                          key={item.id}
-                          className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedItem(item)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedItems.has(item.id)}
-                            onChange={() => toggleSelectItem(item.id)}
-                            onClick={(e) => e.stopPropagation()}
+                      (() => {
+                        const isChatType = activeContentType === 'TEAMS_CHAT_MESSAGE' || activeContentType === 'TEAMS_MESSAGE' || activeContentType === 'TEAMS_MESSAGE_REPLY';
+                        return recoveryItems.map(item => isChatType ? (
+                          <ChatItemRow
+                            key={item.id}
+                            item={item}
+                            selected={selectedItem?.id === item.id}
+                            onSelect={() => setSelectedItem(item)}
+                            onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
                           />
-                          <div className="item-content">
-                            <div className="item-subject">{item.subject || item.name}</div>
-                            <div className="item-preview">{item.preview || ''}</div>
+                        ) : (
+                          <div
+                            key={item.id}
+                            className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
+                            onClick={() => setSelectedItem(item)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.has(item.id)}
+                              onChange={() => toggleSelectItem(item.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="item-content">
+                              <div className="item-subject">{item.subject || item.name}</div>
+                              <div className="item-preview">{item.preview || ''}</div>
+                            </div>
+                            <div className="item-date">
+                              {item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                            </div>
                           </div>
-                          <div className="item-date">
-                            {item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-                          </div>
-                        </div>
-                      ))
+                        ));
+                      })()
                     )}
                   </div>
                 </div>
 
                 {/* Right Panel: Item Preview */}
                 <div className="panel-right">
-                  {selectedItem ? (
-                    <div className="item-preview">
-                      <div className="preview-header">
-                        {selectedItem.from && (
-                          <div className="preview-from">
-                            <span className="label">From:</span>
-                            <span className="value">{selectedItem.from}</span>
-                          </div>
-                        )}
-                        {selectedItem.to && (
-                          <div className="preview-to">
-                            <span className="label">To:</span>
-                            <span className="value">{selectedItem.to}</span>
-                          </div>
-                        )}
-                        <div className="preview-status">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, color: '#38a169' }}>
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                          {selectedItem.subject || selectedItem.name}
-                        </div>
-                        {selectedItem.date && (
-                          <div className="preview-date">{new Date(selectedItem.date).toLocaleString()}</div>
-                        )}
-                      </div>
-
-                      <div className="preview-body">
-                        <p>{selectedItem.body || selectedItem.preview || 'No content available'}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="empty-preview">
-                      <p>Select an item to preview</p>
-                    </div>
-                  )}
+                  {selectedItem
+                    ? <ItemPreview item={selectedItem} />
+                    : <div className="empty-preview"><p>Select an item to preview</p></div>
+                  }
                 </div>
               </div>
             </>
@@ -603,5 +881,15 @@ export default function Recovery() {
         </div>
       </div>
     </div>
+    <RestoreModal
+      isOpen={restoreModalOpen}
+      onClose={() => setRestoreModalOpen(false)}
+      snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+      itemIds={Array.from(selectedItems)}
+      itemName={selectedItems.size === 1 ? (recoveryItems.find(i => selectedItems.has(i.id))?.name ?? undefined) : `${selectedItems.size} items`}
+      itemType={selectedResource?.kind}
+      snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
+    />
+  </>
   );
 }

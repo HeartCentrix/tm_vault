@@ -8,6 +8,8 @@ export interface ActivityItem {
   status: 'Done' | 'In Progress' | 'Failed' | 'Canceled';
   finish_time: string;
   details?: string;
+  data_backed_up?: number;
+  total_data?: number;
 }
 
 export interface ActivityListParams {
