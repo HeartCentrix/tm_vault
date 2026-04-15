@@ -1321,3 +1321,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+
+/* Expand middle panel when right panel is hidden (e.g. Teams chat) */
+.three-panel-layout:not(:has(.panel-right)) .panel-middle {
+  width: 100%;
+  border-right: none;
+}

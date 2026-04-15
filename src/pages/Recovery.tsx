@@ -110,11 +110,11 @@ export function EmailPreview({ item }: { item: any }) {
 }
 export function ChatPreview({ item }: { item: any }) {
   const raw = item.metadata?.raw || {};
-  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || 'Unknown';
+  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || (item as any).sender || 'Unknown';
   const senderInitials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const bodyContent = raw.body?.content || item.body || item.preview || '';
-  const isHtml = raw.body?.contentType === 'html';
-  const sentAt = raw.createdDateTime || raw.lastModifiedDateTime || item.date;
+  const bodyContent = raw.body?.content || (item as any).body || item.body || item.preview || '';
+  const isHtml = (raw.body?.contentType || (item as any).bodyContentType) === 'html';
+  const sentAt = raw.createdDateTime || (item as any).date || item.date;
   const attachments: any[] = raw.attachments || [];
   const mentions: any[] = raw.mentions || [];
   const isDeleted = raw.deletedDateTime != null;
@@ -305,14 +305,11 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
-  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
-  const email = raw.from?.user?.userIdentityType === 'aadUser'
-    ? (raw.from?.user?.id ? '' : '')
-    : '';
-  const senderEmail = item.metadata?.senderEmail || raw.from?.user?.email || raw.from?.user?.userPrincipalName || '';
+  const sender = (item as any).sender || raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
+  const senderEmail = (item as any).senderEmail || raw.from?.user?.userPrincipalName || '';
   const initials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const body = raw.body?.content || item.preview || item.body || '';
-  const isHtml = raw.body?.contentType === 'html';
+  const body = raw.body?.content || (item as any).body || item.preview || '';
+  const isHtml = (raw.body?.contentType || (item as any).bodyContentType) === 'html';
   const sentAt = raw.createdDateTime || item.date;
   const displayBody = isHtml ? body.replace(/<[^>]+>/g, ' ').trim() : body;
 
@@ -975,12 +972,15 @@ export default function Recovery() {
                 </div>
 
                 {/* Right Panel: Item Preview */}
+                {/* Right Panel: Item Preview — hidden for Teams chat (messages shown inline) */}
+                {!['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY'].includes(activeContentType) && (
                 <div className="panel-right">
                   {selectedItem
                     ? <ItemPreview item={selectedItem} />
                     : <div className="empty-preview"><p>Select an item to preview</p></div>
                   }
                 </div>
+                )}
               </div>
             </>
           )}
