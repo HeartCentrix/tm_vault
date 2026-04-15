@@ -98,19 +98,45 @@ export const SnapshotService = {
   },
 
   async listItems(snapshotId: string, page = 1, size = 50, itemType?: string): Promise<SnapshotItemListResponse> {
-    let url = API.SNAPSHOTS.ITEMS(snapshotId);
-    url += `?page=${page}&size=${size}`;
-    if (itemType) url += `&itemType=${itemType}`;
-
+    // Route to content-specific endpoint for richer fields
+    const contentEndpoint: Record<string, string> = {
+      EMAIL: API.SNAPSHOTS.EMAILS(snapshotId),
+      TEAMS_CHAT_MESSAGE: API.SNAPSHOTS.MESSAGES(snapshotId),
+      TEAMS_MESSAGE: API.SNAPSHOTS.MESSAGES(snapshotId),
+      TEAMS_MESSAGE_REPLY: API.SNAPSHOTS.MESSAGES(snapshotId),
+      CALENDAR_EVENT: API.SNAPSHOTS.CALENDAR(snapshotId),
+    };
+    const isContentSpecific = !!(itemType && contentEndpoint[itemType]);
+    const base = isContentSpecific ? contentEndpoint[itemType!] : API.SNAPSHOTS.ITEMS(snapshotId);
+    const url = `${base}?page=${page}&size=${size}${itemType && !isContentSpecific ? `&itemType=${itemType}` : ''}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch snapshot items');
-    return res.json();
+    const data = await res.json();
+
+    // For content-specific endpoints, ensure metadata.raw is populated
+    // so preview components (EmailPreview, ChatPreview, CalendarPreview) work
+    if (isContentSpecific && data.content) {
+      data.content = data.content.map((item: any) => ({
+        ...item,
+        metadata: item.metadata && Object.keys(item.metadata).length > 0
+          ? item.metadata
+          : { raw: item },  // inject flat fields as raw so previews can read them
+      }));
+    }
+    return data;
   },
 
   async getItemDetail(snapshotId: string, itemId: string): Promise<SnapshotItemDetail> {
     const url = API.SNAPSHOTS.ITEM_DETAIL(snapshotId, itemId);
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch snapshot item detail');
+    return res.json();
+  },
+
+  async getItemContent(snapshotId: string, itemId: string): Promise<{ source: string; content: any }> {
+    const url = `${API.SNAPSHOTS.ITEM_DETAIL(snapshotId, itemId)}/content`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch item content');
     return res.json();
   },
 

@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
+import { API } from '../config/api';
 import './Recovery.css';
 
 type ContentType = string;
@@ -308,7 +309,7 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
   const email = raw.from?.user?.userIdentityType === 'aadUser'
     ? (raw.from?.user?.id ? '' : '')
     : '';
-  const senderEmail = item.metadata?.senderEmail || raw.from?.user?.displayName || sender;
+  const senderEmail = item.metadata?.senderEmail || raw.from?.user?.email || raw.from?.user?.userPrincipalName || '';
   const initials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
   const body = raw.body?.content || item.preview || item.body || '';
   const isHtml = raw.body?.contentType === 'html';
@@ -329,6 +330,35 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
           )}
         </div>
         <div className="chat-item-text">{displayBody || '\u00a0'}</div>
+      </div>
+    </div>
+  );
+}
+
+function EmailItemRow({ item, selected, onSelect, onCheck }: {
+  item: any; selected: boolean;
+  onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
+}) {
+  const raw = item.metadata?.raw || {};
+  const from = raw.from?.emailAddress || {};
+  const sender = from.name || from.address || item.from || item.name || '(Unknown)';
+  const subject = raw.subject || item.subject || item.name || '(No subject)';
+  const preview = raw.bodyPreview || item.preview || '';
+  const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
+  const dateStr = sentAt
+    ? new Date(sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  return (
+    <div className={`email-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
+      <input type="checkbox" checked={false} onChange={() => {}} onClick={onCheck} />
+      <div className="email-item-body">
+        <div className="email-item-top">
+          <span className="email-item-sender">{sender}</span>
+          <span className="email-item-date">{dateStr}</span>
+        </div>
+        <div className="email-item-subject">{subject}</div>
+        {preview && <div className="email-item-preview">{preview}</div>}
       </div>
     </div>
   );
@@ -468,9 +498,15 @@ export default function Recovery() {
       return;
     }
 
+    // Don't load until a content type is selected — always use content-specific endpoints
+    if (!activeContentType) {
+      setAllRecoveryItems([]);
+      setItemCount(0);
+      return;
+    }
+
     setItemsLoading(true);
-    // Load all items without contentType filter - we'll filter locally
-    SnapshotService.listItems(selectedSnapshotId, 1, 500)
+    SnapshotService.listItems(selectedSnapshotId, 1, 500, activeContentType)
       .then((data) => {
         setAllRecoveryItems(data.content);
       })
@@ -479,30 +515,31 @@ export default function Recovery() {
         setAllRecoveryItems([]);
       })
       .finally(() => setItemsLoading(false));
-  }, [selectedSnapshotId, selectedResource]);
+  }, [selectedSnapshotId, selectedResource, activeContentType]);
 
   // Filter items locally when content type, folder, or search changes
   const filterItemsLocally = useCallback(() => {
     let filtered = allRecoveryItems;
-
-    // Filter by content type
-    if (activeContentType) {
-      filtered = filtered.filter(item => item.itemType === activeContentType);
-    }
 
     // Filter by folder
     if (selectedFolder && selectedFolder !== 'all') {
       filtered = filtered.filter(item => item.folderPath === selectedFolder);
     }
 
-    // Filter by search query
+    // Filter by search query — check all rich fields
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item =>
-        item.name?.toLowerCase().includes(query) ||
-        item.externalId?.toLowerCase().includes(query) ||
-        item.subject?.toLowerCase().includes(query) ||
-        item.itemType?.toLowerCase().includes(query)
+        item.name?.toLowerCase().includes(q) ||
+        item.subject?.toLowerCase().includes(q) ||
+        item.from?.toLowerCase().includes(q) ||
+        item.to?.toLowerCase().includes(q) ||
+        item.sender?.toLowerCase().includes(q) ||
+        item.senderEmail?.toLowerCase().includes(q) ||
+        item.body?.toLowerCase().includes(q) ||
+        item.bodyPreview?.toLowerCase().includes(q) ||
+        item.location?.toLowerCase().includes(q) ||
+        item.organizer?.toLowerCase().includes(q)
       );
     }
 
@@ -562,22 +599,76 @@ export default function Recovery() {
     });
   };
 
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleItemSelect = async (item: RecoveryItem) => {
+    setSelectedItem(item);
+    // If metadata.raw is empty, fetch content from blob
+    const raw = item.metadata?.raw;
+    if (!raw || Object.keys(raw).length === 0) {
+      try {
+        const result = await SnapshotService.getItemContent(selectedSnapshotId, item.id);
+        if (result.content && Object.keys(result.content).length > 0) {
+          setSelectedItem({ ...item, metadata: { ...item.metadata, raw: result.content } });
+        }
+      } catch {
+        // ignore — preview will show what it has
+      }
+    }
+  };
+
   const handleRecover = () => {
     if (!selectedSnapshotId || selectedItems.size === 0) return;
     setRestoreModalOpen(true);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!selectedSnapshotId || selectedItems.size === 0) return;
-    RecoveryService.triggerExport({
-      restoreType: 'EXPORT_ZIP',
-      snapshotIds: [selectedSnapshotId],
-      itemIds: Array.from(selectedItems),
-    })
-      .then((response) => {
-        console.log('Export job created:', response.jobId);
-      })
-      .catch(console.error);
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const response = await RecoveryService.triggerExport({
+        restoreType: 'EXPORT_ZIP',
+        snapshotIds: [selectedSnapshotId],
+        itemIds: Array.from(selectedItems),
+      });
+      const jobId = response.jobId;
+      // Poll until complete (max 60s)
+      const token = localStorage.getItem('access_token');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
+        if (statusRes.ok) {
+          const job = await statusRes.json();
+          if (job.status === 'COMPLETED') {
+            // Fetch with auth header and trigger download via blob URL
+            const dlRes = await fetch(`${API.BASE_URL}/exports/${jobId}/download`, { headers });
+            if (!dlRes.ok) throw new Error('Download failed');
+            const blob = await dlRes.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `export-${jobId.slice(0, 8)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            return;
+          }
+          if (job.status === 'FAILED') {
+            setDownloadError('Export failed. Please try again.');
+            return;
+          }
+        }
+      }
+      setDownloadError('Export timed out. Try again later.');
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   // Filter resources by search
@@ -764,12 +855,13 @@ export default function Recovery() {
                 </div>
 
                 <div className="toolbar-right">
+                  {downloadError && <span style={{color:'#dc2626',fontSize:12}}>{downloadError}</span>}
                   <button
                     className="action-button download"
                     onClick={handleDownload}
-                    disabled={selectedItems.size === 0}
+                    disabled={selectedItems.size === 0 || downloading}
                   >
-                    Download{selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}
+                    {downloading ? 'Preparing...' : `Download${selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}`}
                   </button>
                   <button
                     className="action-button recover"
@@ -833,20 +925,33 @@ export default function Recovery() {
                       </div>
                     ) : (
                       (() => {
-                        const isChatType = activeContentType === 'TEAMS_CHAT_MESSAGE' || activeContentType === 'TEAMS_MESSAGE' || activeContentType === 'TEAMS_MESSAGE_REPLY';
-                        return recoveryItems.map(item => isChatType ? (
+                        const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
+                        const isChatContentType = CHAT_TYPES.has(activeContentType);
+                        const isEmailType = activeContentType === 'EMAIL';
+                        return recoveryItems.map(item => {
+                          const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
+                          const isEmailItem = isEmailType || item.itemType === 'EMAIL';
+                          return isChatItem ? (
                           <ChatItemRow
                             key={item.id}
                             item={item}
                             selected={selectedItem?.id === item.id}
-                            onSelect={() => setSelectedItem(item)}
+                            onSelect={() => handleItemSelect(item)}
+                            onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
+                          />
+                        ) : isEmailItem ? (
+                          <EmailItemRow
+                            key={item.id}
+                            item={item}
+                            selected={selectedItem?.id === item.id}
+                            onSelect={() => handleItemSelect(item)}
                             onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
                           />
                         ) : (
                           <div
                             key={item.id}
                             className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
-                            onClick={() => setSelectedItem(item)}
+                            onClick={() => handleItemSelect(item)}
                           >
                             <input
                               type="checkbox"
@@ -862,7 +967,8 @@ export default function Recovery() {
                               {item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                             </div>
                           </div>
-                        ));
+                        );
+                        });
                       })()
                     )}
                   </div>
