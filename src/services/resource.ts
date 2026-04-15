@@ -255,3 +255,24 @@ export async function triggerBatchBackup(resourceIds: string[]): Promise<{ jobId
   if (!res.ok) throw new Error(`Failed to trigger batch backup: ${res.statusText}`);
   return res.json();
 }
+
+export async function triggerDatasourceBackup(
+  tenantId: string,
+  serviceType: 'm365' | 'azure',
+  fullBackup: boolean = true
+): Promise<{ jobId: string; status: string; resourceId: string; resourceCount?: number }[]> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.JOBS.TRIGGER_DATASOURCE, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ tenantId, serviceType, fullBackup, priority: 1 }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || `Failed to trigger datasource backup: ${res.statusText}`);
+  }
+  return res.json();
+}

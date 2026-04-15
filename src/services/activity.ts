@@ -11,6 +11,7 @@ export interface ActivityItem {
 }
 
 export interface ActivityListParams {
+  tenantId?: string;
   startDate?: string;
   endDate?: string;
   operation?: string;
@@ -34,6 +35,7 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
   let url = API.ACTIVITY.LIST;
   const queryParams = new URLSearchParams();
 
+  if (params?.tenantId) queryParams.append('tenantId', params.tenantId);
   if (params?.startDate) queryParams.append('start_date', params.startDate);
   if (params?.endDate) queryParams.append('end_date', params.endDate);
   if (params?.operation) queryParams.append('operation', params.operation);
@@ -64,6 +66,7 @@ export async function downloadActivityCSV(params?: ActivityListParams): Promise<
   let url = `${API.ACTIVITY.LIST}/export`;
   const queryParams = new URLSearchParams();
 
+  if (params?.tenantId) queryParams.append('tenantId', params.tenantId);
   if (params?.startDate) queryParams.append('start_date', params.startDate);
   if (params?.endDate) queryParams.append('end_date', params.endDate);
   if (params?.operation) queryParams.append('operation', params.operation);

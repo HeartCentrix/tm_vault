@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import './Overview.css';
 import { API } from '../config/api';
-
-interface ActivityItem {
-  id: string;
-  tenant: string;
-  type: string;
-  status: 'Done' | 'In Progress' | 'Failed';
-  time: string;
-}
+import { getActivities, type ActivityItem as ActivityRow } from '../services/activity';
+import { triggerDatasourceBackup } from '../services/resource';
 
 interface BackupSizeResponse {
   total: string;
   oneDayChange: string;
   oneMonthChange: string;
-  oneYearChange: string;
+  allTimeTotal: string;
   dailyData: { date: string; bytes: number }[];
 }
 
@@ -40,6 +44,30 @@ interface Status7dResponse {
   summary: { totalBackups: number; successRate: number; avgDuration: string };
 }
 
+interface Status7dChartDatum {
+  date: string;
+  shortDate: string;
+  fullDate: string;
+  success: number;
+  warnings: number;
+  failures: number;
+  total: number;
+}
+
+interface BackupSizeChartDatum {
+  date: string;
+  shortDate: string;
+  fullDate: string;
+  bytes: number;
+}
+
+const CHART_COLORS = {
+  success: '#17838a',
+  warning: '#f59e0b',
+  failure: '#ef7d73',
+  backup: '#17838a',
+};
+
 function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: number; totalCount: number; percentage: number } {
   const allCategories = [
     data.users,
@@ -58,21 +86,14 @@ function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: nu
   return { protectedCount, totalCount, percentage };
 }
 
-const mockActivities: ActivityItem[] = [
-  { id: '1', tenant: 'Contoso M365', type: 'Full Backup', status: 'Done', time: '2 min ago' },
-  { id: '2', tenant: 'Fabrikam Azure', type: 'Incremental', status: 'In Progress', time: '5 min ago' },
-  { id: '3', tenant: 'Contoso M365', type: 'Full Backup', status: 'Done', time: '1 hour ago' },
-  { id: '4', tenant: 'Contoso M365', type: 'Snapshot', status: 'Failed', time: '3 hours ago' },
-  { id: '5', tenant: 'Fabrikam Azure', type: 'Incremental', status: 'Done', time: '6 hours ago' },
-];
-
 function formatDateShort(dateStr: string): string {
   const date = new Date(dateStr);
-  return `Apr ${date.getDate()}`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function formatBytesToGB(bytes: number): number {
-  return bytes / (1024 * 1024 * 1024);
+function formatDateLong(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatGB(bytes: number): string {
@@ -85,48 +106,177 @@ function formatGB(bytes: number): string {
   return '0 GB';
 }
 
+function StatusChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: Status7dChartDatum }>;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const data = payload[0].payload;
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip-title">{data.fullDate}</div>
+      <div className="chart-tooltip-row success">
+        <span>Success</span>
+        <strong>{data.success}</strong>
+      </div>
+      <div className="chart-tooltip-row warning">
+        <span>Warnings</span>
+        <strong>{data.warnings}</strong>
+      </div>
+      <div className="chart-tooltip-row failure">
+        <span>Failures</span>
+        <strong>{data.failures}</strong>
+      </div>
+      <div className="chart-tooltip-total">
+        <span>Total</span>
+        <strong>{data.total}</strong>
+      </div>
+    </div>
+  );
+}
+
+function BackupSizeTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: BackupSizeChartDatum }>;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const data = payload[0].payload;
+
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip-title">{data.fullDate}</div>
+      <div className="chart-tooltip-row backup">
+        <span>Backup size</span>
+        <strong>{formatGB(data.bytes)}</strong>
+      </div>
+    </div>
+  );
+}
+
+function appendTenantId(url: string, tenantId?: string): string {
+  if (!tenantId) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}tenantId=${encodeURIComponent(tenantId)}`;
+}
+
 export default function Overview() {
+  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const [backupSize, setBackupSize] = useState<BackupSizeResponse | null>(null);
   const [protection, setProtection] = useState<ProtectionStatus | null>(null);
   const [status24h, setStatus24h] = useState<Status24hResponse | null>(null);
   const [status7d, setStatus7d] = useState<Status7dResponse | null>(null);
+  const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [triggeringBackupAll, setTriggeringBackupAll] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     Promise.all([
-      fetch(API.DASHBOARD.BACKUP_SIZE, { headers }).then(r => r.json()),
-      fetch(API.DASHBOARD.PROTECTION, { headers }).then(r => r.json()),
-      fetch(API.DASHBOARD.STATUS_24H, { headers }).then(r => r.json()),
-      fetch(API.DASHBOARD.STATUS_7D, { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.BACKUP_SIZE, tenantId), { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.PROTECTION, tenantId), { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.STATUS_24H, tenantId), { headers }).then(r => r.json()),
+      fetch(appendTenantId(API.DASHBOARD.STATUS_7D, tenantId), { headers }).then(r => r.json()),
+      getActivities({ tenantId, page: 1, size: 10 }),
     ])
-      .then(([backupData, protectionData, data24h, data7d]) => {
+      .then(([backupData, protectionData, data24h, data7d, activityData]) => {
         setBackupSize(backupData);
         setProtection(protectionData);
         setStatus24h(data24h);
         setStatus7d(data7d);
+        setActivities(activityData.items || []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
-
-  const maxBackupSize = backupSize?.dailyData
-    ? Math.max(...backupSize.dailyData.map(d => formatBytesToGB(d.bytes)), 0.1)
-    : 0.1;
+  }, [tenantId]);
 
   const hasFailures24h = (status24h?.failures || 0) > 0;
 
-  const maxDailyBackups = status7d?.dailyStatus.length
-    ? Math.max(...status7d.dailyStatus.map(d => d.success + d.failures), 1)
-    : 1;
+  const status7dChartData: Status7dChartDatum[] = (status7d?.dailyStatus || []).slice(-7).map((d) => ({
+    date: d.date,
+    shortDate: formatDateShort(d.date),
+    fullDate: formatDateLong(d.date),
+    success: d.success,
+    warnings: d.warnings,
+    failures: d.failures,
+    total: d.success + d.warnings + d.failures,
+  }));
+
+  const backupSizeChartData: BackupSizeChartDatum[] = (backupSize?.dailyData || []).slice(-7).map((d) => ({
+    date: d.date,
+    shortDate: formatDateShort(d.date),
+    fullDate: formatDateLong(d.date),
+    bytes: d.bytes,
+  }));
+
+  const status7dTotals = status7dChartData.reduce(
+    (acc, day) => ({
+      success: acc.success + day.success,
+      warnings: acc.warnings + day.warnings,
+      failures: acc.failures + day.failures,
+    }),
+    { success: 0, warnings: 0, failures: 0 }
+  );
+
+  const status24hState = hasFailures24h
+    ? { label: 'Failures', className: 'failure' }
+    : (status24h?.warnings || 0) > 0
+      ? { label: 'Warnings', className: 'warning' }
+      : { label: 'Success', className: 'success' };
+
+  const protectionRows = protection ? [
+    { label: 'Users', value: protection.users },
+    { label: 'Shared mailboxes', value: protection.sharedMailboxes },
+    { label: 'Rooms', value: protection.rooms },
+    { label: 'SharePoint sites', value: protection.sharepointSites },
+    { label: 'Groups & Teams', value: protection.groupsAndTeams },
+    { label: 'Entra ID', value: protection.entraId },
+    { label: 'Power Platform', value: protection.powerPlatform },
+  ].filter((item) => item.value.total > 0) : [];
+
+  const handleBackupAll = async () => {
+    if (!tenantId || (serviceType !== 'm365' && serviceType !== 'azure')) return;
+
+    setTriggeringBackupAll(true);
+    try {
+      await triggerDatasourceBackup(tenantId, serviceType, true);
+      const refreshedActivities = await getActivities({ tenantId, page: 1, size: 10 });
+      setActivities(refreshedActivities.items || []);
+    } catch (error) {
+      console.error('Failed to trigger datasource backup:', error);
+    } finally {
+      setTriggeringBackupAll(false);
+    }
+  };
+
+  const formatActivityDate = (dateString: string) => {
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  };
 
   return (
     <div className="overview-page">
       <div className="status-cards">
         {/* 24-hour status */}
-        <div className="status-card">
+        <div className="status-card status-summary-card">
           <div className="status-card-header">
             <span className="status-label">24-hour status</span>
           </div>
@@ -134,22 +284,30 @@ export default function Overview() {
             {loading ? (
               <span style={{ color: '#94a3b8' }}>Loading...</span>
             ) : (
-              <div style={{ textAlign: 'center', width: '100%' }}>
-                <div style={{ fontSize: 32, fontWeight: 700, color: hasFailures24h ? '#dc2626' : '#059669' }}>
-                  {hasFailures24h ? 'Failures' : 'Success'}
+              <div className="status-summary-content">
+                <div className={`status-summary-title ${status24hState.className}`}>
+                  {status24hState.label}
                 </div>
-                <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span style={{ color: '#059669' }}>✓ Success</span>
-                    <span>{status24h?.success || 0}</span>
+                <div className="status-summary-list">
+                  <div className="status-summary-row success">
+                    <span>Success</span>
+                    <strong>{status24h?.success || 0}</strong>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span style={{ color: '#dc2626' }}>✗ Failures</span>
-                    <span>{status24h?.failures || 0}</span>
+                  <div className="status-summary-row warning">
+                    <span>Warnings</span>
+                    <strong>{status24h?.warnings || 0}</strong>
+                  </div>
+                  <div className="status-summary-row failure">
+                    <span>Failures</span>
+                    <strong>{status24h?.failures || 0}</strong>
                   </div>
                 </div>
-                <button className="backup-all-btn" style={{ marginTop: 12 }}>
-                  Backup all now
+                <button
+                  className="backup-all-btn status-summary-btn"
+                  onClick={handleBackupAll}
+                  disabled={!tenantId || !serviceType || triggeringBackupAll}
+                >
+                  {triggeringBackupAll ? 'Starting backup...' : 'Backup all now'}
                 </button>
               </div>
             )}
@@ -157,7 +315,7 @@ export default function Overview() {
         </div>
 
         {/* 7-day status */}
-        <div className="status-card">
+        <div className="status-card chart-card">
           <div className="status-card-header">
             <span className="status-label">7-day status</span>
           </div>
@@ -165,39 +323,38 @@ export default function Overview() {
             {loading ? (
               <span style={{ color: '#94a3b8' }}>Loading...</span>
             ) : (
-              <div style={{ width: '100%' }}>
-                {/* Legend */}
-                <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 8 }}>
-                  <span style={{ color: '#059669' }}>✓ Success {status7d?.summary.totalBackups || 0}</span>
-                  <span style={{ color: '#f59e0b' }}>⚠ Warnings 0</span>
-                  <span style={{ color: '#dc2626' }}>✗ Failures {(status7d?.dailyStatus || []).reduce((s, d) => s + d.failures, 0)}</span>
+              <div className="chart-card-content">
+                <div className="chart-legend">
+                  <span className="chart-legend-item success">Success {status7dTotals.success}</span>
+                  <span className="chart-legend-item warning">Warnings {status7dTotals.warnings}</span>
+                  <span className="chart-legend-item failure">Failures {status7dTotals.failures}</span>
                 </div>
-                {/* Bar chart */}
-                <div style={{ position: 'relative', height: 100, marginTop: 8 }}>
-                  {/* Y-axis labels */}
-                  <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8' }}>
-                    <span>{maxDailyBackups}</span>
-                    <span>{Math.round(maxDailyBackups / 2)}</span>
-                    <span>0</span>
-                  </div>
-                  {/* Bars */}
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, marginLeft: 30, height: '100%', paddingBottom: 24 }}>
-                    {status7d?.dailyStatus.slice(-7).map((d) => {
-                      const successH = maxDailyBackups > 0 ? (d.success / maxDailyBackups) * 100 : 0;
-                      const failH = maxDailyBackups > 0 ? (d.failures / maxDailyBackups) * 100 : 0;
-                      return (
-                        <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
-                            {d.failures > 0 && (
-                              <div style={{ backgroundColor: '#fb7185', height: `${failH}%`, minHeight: d.failures > 0 ? 4 : 0, borderRadius: '2px 2px 0 0' }} />
-                            )}
-                            <div style={{ backgroundColor: d.failures > 0 ? '#059669' : '#14b8a6', height: `${successH}%`, minHeight: d.success > 0 ? 4 : 0, borderRadius: d.failures > 0 ? '0' : '2px 2px 0 0' }} />
-                          </div>
-                          <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>{formatDateShort(d.date)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={status7dChartData} barGap={6} margin={{ top: 8, right: 4, left: -16, bottom: 6 }}>
+                      <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="shortDate"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                        width={32}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
+                        content={<StatusChartTooltip />}
+                      />
+                      <Bar dataKey="success" stackId="status" fill={CHART_COLORS.success} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                      <Bar dataKey="warnings" stackId="status" fill={CHART_COLORS.warning} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                      <Bar dataKey="failures" stackId="status" fill={CHART_COLORS.failure} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             )}
@@ -205,7 +362,7 @@ export default function Overview() {
         </div>
 
         {/* Protection status */}
-        <div className="status-card">
+        <div className="status-card protection-card">
           <div className="status-card-header">
             <span className="status-label">Protection status</span>
           </div>
@@ -215,13 +372,12 @@ export default function Overview() {
             ) : (() => {
               const totals = protection ? calculateProtectionTotals(protection) : { protectedCount: 0, totalCount: 0, percentage: 0 };
               return (
-                <div style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: '#0d9488' }}>
+                <div className="protection-card-content">
+                  <div className="protection-summary">
+                    <div className="protection-summary-value">
                       {totals.totalCount > 0 ? `${Math.round(totals.percentage)}%` : '0%'}
                     </div>
-                    {/* Mini donut */}
-                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                    <svg className="protection-ring" width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
                       <circle cx="20" cy="20" r="16" fill="none" stroke="#e2e8f0" strokeWidth="4" />
                       <circle cx="20" cy="20" r="16" fill="none" stroke="#0d9488" strokeWidth="4"
                         strokeDasharray={`${2 * Math.PI * 16}`}
@@ -229,53 +385,19 @@ export default function Overview() {
                         strokeLinecap="round" />
                     </svg>
                   </div>
-                  {/* Granular breakdown */}
-                  {protection && (
-                    <div style={{ marginTop: 12, fontSize: 12, color: '#64748b', lineHeight: 1.8 }}>
-                      {protection.users.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Users</span>
-                          <span style={{ color: '#f59e0b' }}>{protection.users.protectedCount} / {protection.users.total}</span>
+                  <div className="protection-breakdown">
+                    {protectionRows.map((item) => {
+                      const isPartial = item.value.protectedCount !== item.value.total;
+                      return (
+                        <div key={item.label} className="protection-breakdown-row">
+                          <span className="protection-breakdown-label">{item.label}</span>
+                          <span className={`protection-breakdown-value ${isPartial ? 'partial' : 'complete'}`}>
+                            {item.value.protectedCount} / {item.value.total}
+                          </span>
                         </div>
-                      )}
-                      {protection.sharedMailboxes.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Shared mailboxes</span>
-                          <span>{protection.sharedMailboxes.protectedCount} / {protection.sharedMailboxes.total}</span>
-                        </div>
-                      )}
-                      {protection.rooms.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Rooms</span>
-                          <span>{protection.rooms.protectedCount} / {protection.rooms.total}</span>
-                        </div>
-                      )}
-                      {protection.sharepointSites.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>SharePoint sites</span>
-                          <span style={{ color: '#f59e0b' }}>{protection.sharepointSites.protectedCount} / {protection.sharepointSites.total}</span>
-                        </div>
-                      )}
-                      {protection.groupsAndTeams.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Groups & Teams</span>
-                          <span style={{ color: '#f59e0b' }}>{protection.groupsAndTeams.protectedCount} / {protection.groupsAndTeams.total}</span>
-                        </div>
-                      )}
-                      {protection.entraId.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Entra ID</span>
-                          <span>{protection.entraId.protectedCount} / {protection.entraId.total}</span>
-                        </div>
-                      )}
-                      {protection.powerPlatform.total > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Power Platform</span>
-                          <span>{protection.powerPlatform.protectedCount} / {protection.powerPlatform.total}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })()}
@@ -283,54 +405,63 @@ export default function Overview() {
         </div>
 
         {/* Backup size */}
-        <div className="status-card">
+        <div className="status-card chart-card">
           <div className="status-card-header">
             <span className="status-label">Backup size</span>
           </div>
           <div className="status-card-value">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: 32, fontWeight: 700, color: '#0f172a' }}>
-                  {loading ? 'Loading...' : (backupSize?.total || '0 GB')}
+            <div className="chart-card-content">
+              <div className="backup-size-summary">
+                <div className="backup-size-headline">
+                  <div className="backup-size-total">
+                    {loading ? 'Loading...' : (backupSize?.total || '0 GB')}
+                  </div>
+                </div>
+                <div className="backup-size-metrics">
+                  {backupSize?.oneMonthChange && (
+                    <div className="backup-size-pill positive">
+                      <span>7 days</span>
+                      <strong>{backupSize.oneMonthChange}</strong>
+                    </div>
+                  )}
+                  {backupSize?.allTimeTotal && (
+                    <div className="backup-size-pill neutral">
+                      <span>All time</span>
+                      <strong>{backupSize.allTimeTotal}</strong>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, fontSize: 10 }}>
-                {backupSize?.oneMonthChange && (
-                  <div style={{ backgroundColor: '#f0fdf4', padding: '4px 8px', borderRadius: 4, color: '#16a34a' }}>
-                    7 days<br />{backupSize.oneMonthChange}
-                  </div>
-                )}
-                {backupSize?.oneYearChange && (
-                  <div style={{ backgroundColor: '#f8fafc', padding: '4px 8px', borderRadius: 4, color: '#64748b' }}>
-                    All time<br />{backupSize.oneYearChange}
-                  </div>
-                )}
-              </div>
+
+              {backupSizeChartData.length > 0 && (
+                <div className="chart-shell">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={backupSizeChartData} barGap={8} margin={{ top: 8, right: 4, left: -16, bottom: 6 }}>
+                      <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="shortDate"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                        tickFormatter={(value: number) => formatGB(value)}
+                        width={48}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(13, 148, 136, 0.10)' }}
+                        content={<BackupSizeTooltip />}
+                      />
+                      <Bar dataKey="bytes" fill={CHART_COLORS.backup} radius={[4, 4, 0, 0]} maxBarSize={34} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
           </div>
-          {/* Bar chart */}
-          {backupSize?.dailyData && backupSize.dailyData.length > 0 && (
-            <div style={{ marginTop: 8, position: 'relative', height: 100 }}>
-              <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8' }}>
-                <span>{formatGB(maxBackupSize * 1024 * 1024 * 1024)}</span>
-                <span>{formatGB((maxBackupSize / 2) * 1024 * 1024 * 1024)}</span>
-                <span>0 GB</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, marginLeft: 35, height: '100%', paddingBottom: 24 }}>
-                {backupSize.dailyData.slice(-7).map((d) => {
-                  const sizeGB = formatBytesToGB(d.bytes);
-                  const pct = maxBackupSize > 0 ? (sizeGB / maxBackupSize) * 100 : 0;
-                  return (
-                    <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div style={{ width: '100%', backgroundColor: '#14b8a6', height: `${Math.max(pct, d.bytes > 0 ? 3 : 0)}%`, minHeight: d.bytes > 0 ? 6 : 0, borderRadius: '2px 2px 0 0', transition: 'height 0.3s' }}
-                           title={formatGB(d.bytes)} />
-                      <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>{formatDateShort(d.date)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -341,29 +472,37 @@ export default function Overview() {
           <table className="activity-table">
             <thead>
               <tr>
-                <th>Tenant</th>
-                <th>Type</th>
+                <th>Object</th>
+                <th>Operation</th>
+                <th>Started</th>
                 <th>Status</th>
-                <th>Time</th>
               </tr>
             </thead>
             <tbody>
-              {mockActivities.map((activity) => (
+              {activities.map((activity) => (
                 <tr key={activity.id}>
-                  <td className="activity-tenant">{activity.tenant}</td>
-                  <td>{activity.type}</td>
+                  <td className="activity-tenant">{activity.object}</td>
+                  <td>{activity.operation}</td>
+                  <td>{formatActivityDate(activity.start_time)}</td>
                   <td>
                     <span className={`activity-status ${
                       activity.status === 'Done' ? 'done' :
-                      activity.status === 'In Progress' ? 'in-progress' : 'failed'
+                      activity.status === 'In Progress' ? 'in-progress' :
+                      activity.status === 'Canceled' ? 'failed' : 'failed'
                     }`}>
                       {activity.status === 'In Progress' && <span className="spinner-small" />}
                       {activity.status}
                     </span>
                   </td>
-                  <td className="text-muted">{activity.time}</td>
                 </tr>
               ))}
+              {!loading && activities.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="text-muted" style={{ textAlign: 'center' }}>
+                    No recent activity for this datasource yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

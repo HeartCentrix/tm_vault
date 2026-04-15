@@ -67,6 +67,7 @@ export const API = {
     PROGRESS: (id: string) => `${API_URL}/jobs/${id}/progress`,
     TRIGGER_BACKUP: `${API_URL}/backups/trigger`,
     TRIGGER_BULK: `${API_URL}/backups/trigger-bulk`,
+    TRIGGER_DATASOURCE: `${API_URL}/backups/trigger-datasource`,
   },
 
   // Snapshots
@@ -131,4 +132,3 @@ export const API = {
     DETAILS: (id: string) => `${API_URL}/audit/events/${id}`,
   },
 };
-
