@@ -21,6 +21,23 @@ export interface MicrosoftAuthUrlResponse {
   state: string;
 }
 
+export interface AdminConsentStatus {
+  id: string;
+  consentType: string;
+  grantedBy?: string;
+  consentedAt?: string;
+  lastUsedAt?: string;
+  isActive: boolean;
+  scope?: string;
+}
+
+export interface AdminConsentResponse {
+  message: string;
+  tenantId: string;
+  consentType: string;
+  consentedAt: string;
+}
+
 class AuthService {
   async getMicrosoftLoginUrl(): Promise<MicrosoftAuthUrlResponse> {
     const res = await fetch(API.AUTH.LOGIN_URL);
@@ -163,6 +180,89 @@ class AuthService {
 
   isAuthenticated(): boolean {
     return !!this.getToken();
+  }
+
+  // ============ Admin Consent Methods ============
+  // Uses existing datasource APIs for URL generation and callbacks
+
+  async getM365AdminConsentUrl(): Promise<MicrosoftAuthUrlResponse> {
+    // Reuse existing datasource URL endpoint
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.DATASOURCE_URL, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Failed to get M365 admin consent URL: ${res.statusText}`);
+    return res.json();
+  }
+
+  async getAzureAdminConsentUrl(): Promise<MicrosoftAuthUrlResponse> {
+    // Reuse existing Azure datasource URL endpoint
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.AZURE_DATASOURCE_URL, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Failed to get Azure admin consent URL: ${res.statusText}`);
+    return res.json();
+  }
+
+  async handleM365AdminConsentCallback(externalTenantId: string, state?: string): Promise<any> {
+    // Reuse existing datasource callback endpoint
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.DATASOURCE_CALLBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        external_tenant_id: externalTenantId,
+        admin_consent: true,
+        state: state || '',
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`M365 admin consent callback failed: ${res.status} ${errText}`);
+    }
+    return res.json();
+  }
+
+  async handleAzureAdminConsentCallback(code: string, state?: string): Promise<any> {
+    // Reuse existing Azure datasource callback endpoint
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.AZURE_DATASOURCE_CALLBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code, state }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Azure admin consent callback failed: ${res.status} ${errText}`);
+    }
+    return res.json();
+  }
+
+  async getM365AdminConsentStatus(): Promise<AdminConsentStatus | null> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.ADMIN_CONSENT.M365_STATUS, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Failed to get M365 admin consent status: ${res.statusText}`);
+    const data = await res.json();
+    return data;
+  }
+
+  async getAzureAdminConsentStatus(): Promise<AdminConsentStatus | null> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.ADMIN_CONSENT.AZURE_STATUS, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Failed to get Azure admin consent status: ${res.statusText}`);
+    const data = await res.json();
+    return data;
   }
 }
 

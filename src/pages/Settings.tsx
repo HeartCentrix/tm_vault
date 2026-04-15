@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
+import { authService, type AdminConsentStatus } from '../services/auth';
+import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Settings.css';
 
-type SettingsTab = 'sla' | 'info' | 'admin' | 'apps' | 'access' | 'secrets' | 'saml';
+type SettingsTab = 'sla' | 'info' | 'admin-consent';
 
 interface BackupItem {
   key: string;
@@ -36,8 +38,10 @@ const BACKUP_ITEMS_RIGHT: BackupItem[] = [
 ];
 
 export default function Settings() {
-  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('sla');
+  const { tenantId } = useParams<{ tenantId: string }>();
+  const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
+  const subRouteKey = tenantId ? '/protection/settings' : '/settings';
+  const [activeTab, setActiveTab] = usePersistentTab<SettingsTab>(subRouteKey, 'sla', settingsTabKeys);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -47,6 +51,12 @@ export default function Settings() {
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [downloadingReport, setDownloadingReport] = useState(false);
+
+  // Admin consent state
+  const [m365Consent, setM365Consent] = useState<AdminConsentStatus | null>(null);
+  const [azureConsent, setAzureConsent] = useState<AdminConsentStatus | null>(null);
+  const [adminConsentLoading, setAdminConsentLoading] = useState(true);
+  const [grantingConsent, setGrantingConsent] = useState<'m365' | 'azure' | null>(null);
 
   // Modal form state
   const [formName, setFormName] = useState('');
@@ -65,18 +75,11 @@ export default function Settings() {
   const [formArchiving, setFormArchiving] = useState('INDEFINITE');
   const [showEmailSettings, setShowEmailSettings] = useState(false);
 
-  const sharedTabs: { key: SettingsTab; label: string }[] = [
+  const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'sla', label: 'SLA' },
     { key: 'info', label: 'Info' },
-    { key: 'admin', label: 'Admin consent' },
-    { key: 'apps', label: 'Apps' },
-    { key: 'access', label: 'Access groups' },
-    { key: 'secrets', label: 'Secrets' },
+    { key: 'admin-consent', label: 'Admin Consent' },
   ];
-
-  const tabs: { key: SettingsTab; label: string }[] = serviceType === 'azure' 
-    ? sharedTabs 
-    : [...sharedTabs, { key: 'saml' as SettingsTab, label: 'SAML/Okta' }];
 
   useEffect(() => {
     if (activeTab === 'sla' && tenantId) {
@@ -98,6 +101,22 @@ export default function Settings() {
     }
   }, [activeTab, tenantId]);
 
+  useEffect(() => {
+    if (activeTab === 'admin-consent') {
+      setAdminConsentLoading(true);
+      Promise.all([
+        authService.getM365AdminConsentStatus().catch(() => null),
+        authService.getAzureAdminConsentStatus().catch(() => null),
+      ])
+        .then(([m365, azure]) => {
+          setM365Consent(m365);
+          setAzureConsent(azure);
+        })
+        .catch(console.error)
+        .finally(() => setAdminConsentLoading(false));
+    }
+  }, [activeTab]);
+
   const handleDownloadReport = async () => {
     if (!tenantId) return;
     setDownloadingReport(true);
@@ -109,6 +128,44 @@ export default function Settings() {
     } finally {
       setDownloadingReport(false);
     }
+  };
+
+  const handleGrantM365Consent = async () => {
+    try {
+      setGrantingConsent('m365');
+      localStorage.setItem('consent_return_to', '/settings');
+      const { url } = await authService.getM365AdminConsentUrl();
+      window.location.href = url;
+    } catch (error) {
+      console.error('Failed to get M365 consent URL:', error);
+      alert('Failed to initiate M365 admin consent');
+      setGrantingConsent(null);
+    }
+  };
+
+  const handleGrantAzureConsent = async () => {
+    try {
+      setGrantingConsent('azure');
+      localStorage.setItem('consent_return_to', '/settings');
+      const { url } = await authService.getAzureAdminConsentUrl();
+      window.location.href = url;
+    } catch (error) {
+      console.error('Failed to get Azure consent URL:', error);
+      alert('Failed to initiate Azure admin consent');
+      setGrantingConsent(null);
+    }
+  };
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const copyToClipboard = (text: string) => {
@@ -374,7 +431,88 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab !== 'sla' && activeTab !== 'info' && <div className="empty-state"><p>{tabs.find(t => t.key === activeTab)?.label} - Coming soon</p></div>}
+      {activeTab === 'admin-consent' && (
+        <div className="admin-consent-tab">
+          {adminConsentLoading ? (
+            <div className="empty-state"><p>Loading admin consent status...</p></div>
+          ) : (
+            <div className="admin-consent-content">
+              {/* M365 Admin Consent Card */}
+              <div className="admin-consent-card">
+                <div className="admin-consent-header">
+                  <div className="admin-consent-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor" style={{width: 20, height: 20}}>
+                      <rect x="3" y="3" width="7" height="7" rx="1"/>
+                      <rect x="14" y="3" width="7" height="7" rx="1"/>
+                      <rect x="3" y="14" width="7" height="7" rx="1"/>
+                      <rect x="14" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                  </div>
+                  <span className="admin-consent-title">Microsoft 365 admin consent</span>
+                </div>
+                {m365Consent && m365Consent.isActive ? (
+                  <div className="admin-consent-status granted">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#34a853" strokeWidth="2" style={{width: 18, height: 18, flexShrink: 0}}>
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                    <div className="admin-consent-details">
+                      <div className="admin-consent-granted-by">{m365Consent.grantedBy || 'N/A'}</div>
+                      <div className="admin-consent-date">{formatDate(m365Consent.consentedAt)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="admin-consent-status not-granted">
+                    <span>Not granted</span>
+                  </div>
+                )}
+                <button 
+                  className="admin-consent-regrant-btn" 
+                  onClick={handleGrantM365Consent}
+                  disabled={grantingConsent === 'm365'}
+                >
+                  {grantingConsent === 'm365' ? 'Redirecting...' : 'Regrant'}
+                </button>
+              </div>
+
+              {/* Azure Admin Consent Card */}
+              <div className="admin-consent-card">
+                <div className="admin-consent-header">
+                  <div className="admin-consent-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor" style={{width: 20, height: 20}}>
+                      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                  </div>
+                  <span className="admin-consent-title">Azure admin consent</span>
+                </div>
+                {azureConsent && azureConsent.isActive ? (
+                  <div className="admin-consent-status granted">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#34a853" strokeWidth="2" style={{width: 18, height: 18, flexShrink: 0}}>
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                    <div className="admin-consent-details">
+                      <div className="admin-consent-granted-by">{azureConsent.grantedBy || 'N/A'}</div>
+                      <div className="admin-consent-date">{formatDate(azureConsent.consentedAt)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="admin-consent-status not-granted">
+                    <span>Not granted</span>
+                  </div>
+                )}
+                <button 
+                  className="admin-consent-regrant-btn" 
+                  onClick={handleGrantAzureConsent}
+                  disabled={grantingConsent === 'azure'}
+                >
+                  {grantingConsent === 'azure' ? 'Redirecting...' : 'Regrant'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add SLA Modal */}
       {showModal && (

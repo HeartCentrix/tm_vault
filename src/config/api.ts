@@ -22,6 +22,12 @@ export const API = {
     ME: `${API_URL}/auth/me`,
   },
 
+  // Admin Consent (status only - URL/callback use existing datasource APIs)
+  ADMIN_CONSENT: {
+    M365_STATUS: `${API_URL}/admin-consent/m365/status`,
+    AZURE_STATUS: `${API_URL}/admin-consent/azure/status`,
+  },
+
   // Dashboard
   DASHBOARD: {
     OVERVIEW: `${API_URL}/dashboard/overview`,
@@ -72,10 +78,18 @@ export const API = {
 
   // Snapshots
   SNAPSHOTS: {
-    LIST: (resourceId: string) => `${API_URL}/snapshots?resourceId=${resourceId}`,
-    DETAIL: (snapshotId: string) => `${API_URL}/snapshots/${snapshotId}`,
-    ITEMS: (snapshotId: string) => `${API_URL}/snapshots/${snapshotId}/items`,
-    ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/snapshots/${snapshotId}/items/${itemId}`,
+    LIST: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots`,
+    DETAIL: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}`,
+    ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
+    ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
+    FOLDERS: `${API_URL}/resources/snapshots/folders`,
+    CONTENT_TYPES: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/content-types`,
+  },
+
+  // Recovery
+  RECOVERY: {
+    RESOURCES_WITH_BACKUPS: `${API_URL}/resources/with-backups`,
+    SEARCH_ITEMS: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots/search`,
   },
 
   // Restore

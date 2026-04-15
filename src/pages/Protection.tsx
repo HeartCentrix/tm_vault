@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
+import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
@@ -61,6 +62,8 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const policyId = resource.protections?.[0]?.policy_id;
   const selected = policies.find(p => p.id === policyId);
   const isProtected = !!policyId;
@@ -72,6 +75,16 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setMenuStyle({
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    }
+  }, [open]);
 
   return (
     <div className="sla-dropdown" ref={ref}>
@@ -90,7 +103,7 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
         </svg>
       </button>
       {open && (
-        <div className="sla-menu">
+        <div className="sla-menu" ref={menuRef} style={menuStyle}>
           <button className="sla-item" onClick={() => { onChange(resource.id, ''); setOpen(false); }}>
             <div>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 8, flexShrink: 0, marginTop: 2 }}>
@@ -125,7 +138,12 @@ export default function Protection() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const navigate = useNavigate();
   const tabs = serviceType === 'azure' ? azureTabs : m365Tabs;
-  const [activeTab, setActiveTab] = useState<ResourceTab>('all');
+  const tabKeys = tabs.map(t => t.key) as ResourceTab[];
+  const [activeTab, setActiveTab] = usePersistentTab<ResourceTab>(
+    '/protection',
+    'all',
+    tabKeys,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
   const [showFilter, setShowFilter] = useState(false);
@@ -142,6 +160,8 @@ export default function Protection() {
 
   const [showSlaDropdown, setShowSlaDropdown] = useState(false);
   const slaDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [refreshing, setRefreshing] = useState(false);
 
   // Store complete backup status per resource
   interface BackupStatus {
@@ -204,9 +224,19 @@ export default function Protection() {
         });
         // Refresh resources to show updated backup status and size
         if (tenantId) {
-          getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-            .then((data: ResourceListResponse) => setResources(data.items || []))
-            .catch(console.error);
+          if (searchQuery) {
+            // When searching, fetch all results
+            getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+              .then((data: ResourceListResponse) => {
+                const filtered = data.items || [];
+                setResources(filtered);
+              })
+              .catch(console.error);
+          } else {
+            getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+              .then((data: ResourceListResponse) => setResources(data.items || []))
+              .catch(console.error);
+          }
         }
       }
     }, 2000);
@@ -222,20 +252,50 @@ export default function Protection() {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-    getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-      .then((data: ResourceListResponse) => {
-        setResources(data.items || []);
-        setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    
+    // If there's a search query, fetch all resources and filter client-side
+    if (searchQuery) {
+      getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+        .then((data: ResourceListResponse) => {
+          const filtered = data.items || [];
+          setResources(filtered);
+          setTotalPages(filtered.length > 0 ? Math.ceil(filtered.length / 50) : 1);
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    } else {
+      // No search query - use normal pagination
+      getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+        .then((data: ResourceListResponse) => {
+          setResources(data.items || []);
+          setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
+  // Apply client-side search filtering
+  const filteredResources = useMemo(() => {
+    if (!searchQuery.trim()) return resources;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return resources.filter(resource => {
+      // Search in name
+      if (resource.name.toLowerCase().includes(query)) return true;
+      // Search in email
+      if (resource.email && resource.email.toLowerCase().includes(query)) return true;
+      // Search in kind
+      if (resource.kind && resource.kind.toLowerCase().includes(query)) return true;
+      return false;
+    });
+  }, [resources, searchQuery]);
+
   // Apply size-based sorting/filtering and SLA filtering to resources
   const sortedResources = useMemo(() => {
-    let filtered = [...resources];
+    let filtered = [...filteredResources];
 
     // Apply SLA filter first
     if (slaFilter) {
@@ -258,23 +318,32 @@ export default function Protection() {
       case 'top_total':
         // Sort by total size (descending)
         return filtered.sort((a, b) => (b.usage?.size || 0) - (a.usage?.size || 0));
-      
+
       case 'top_7d':
         // Sort by 7-day growth (descending)
         return filtered.sort((a, b) => (b.usage?.size_delta_week || 0) - (a.usage?.size_delta_week || 0));
-      
+
       case 'top_30d':
         // Sort by 30-day growth (descending)
         return filtered.sort((a, b) => (b.usage?.size_delta_month || 0) - (a.usage?.size_delta_month || 0));
-      
+
       case 'top_365d':
         // Sort by yearly growth (descending)
         return filtered.sort((a, b) => (b.usage?.size_delta_year || 0) - (a.usage?.size_delta_year || 0));
-      
+
       default:
         return filtered;
     }
   }, [resources, sizeFilter, slaFilter, policies]);
+
+  // Apply client-side pagination when searching
+  const displayedResources = useMemo(() => {
+    if (searchQuery) {
+      const startIndex = (page - 1) * 50;
+      return sortedResources.slice(startIndex, startIndex + 50);
+    }
+    return sortedResources;
+  }, [sortedResources, searchQuery, page]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -288,12 +357,12 @@ export default function Protection() {
 
   // Check if any selected resources don't have an SLA policy
   const hasUnprotectedSelected = selectedResources.some(id => {
-    const resource = sortedResources.find(r => r.id === id);
+    const resource = displayedResources.find(r => r.id === id);
     return !resource?.protections?.[0]?.policy_id;
   });
 
   const toggleSelectAll = () => {
-    setSelectedResources(selectedResources.length === sortedResources.length ? [] : sortedResources.map(r => r.id));
+    setSelectedResources(selectedResources.length === displayedResources.length ? [] : displayedResources.map(r => r.id));
   };
 
   const toggleSelect = (id: string) => {
@@ -393,6 +462,58 @@ export default function Protection() {
   const handleRecover = (resource: ResourceItem) => {
     // Navigate to Recovery page with the selected resource
     navigate(`/tenants/${tenantId}/${serviceType}/protection/recovery?resourceId=${resource.id}`);
+  };
+
+  const handleRefresh = async () => {
+    if (refreshing || !tenantId) return;
+    try {
+      setRefreshing(true);
+      // Trigger discovery
+      await triggerDiscovery(tenantId);
+      
+      // Wait for discovery to complete by polling
+      const pollDiscovery = async (attempts = 0) => {
+        if (attempts >= 100) { // Timeout after 5 minutes
+          setRefreshing(false);
+          return;
+        }
+        
+        try {
+          // Fetch resources to check if discovery completed
+          const data = await getResources(
+            tenantId,
+            activeTab,
+            searchQuery ? 1 : page,
+            searchQuery ? 10000 : 50,
+            searchQuery,
+            slaFilter || undefined,
+            resourceFilter || undefined,
+            serviceType
+          );
+
+          // Update resources
+          if (searchQuery) {
+            const filtered = data.items || [];
+            setResources(filtered);
+            setTotalPages(filtered.length > 0 ? Math.ceil(filtered.length / 50) : 1);
+          } else {
+            setResources(data.items || []);
+            setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
+          }
+          setRefreshing(false);
+        } catch (err) {
+          console.error('Error fetching resources during discovery poll:', err);
+          // Continue polling
+          setTimeout(() => pollDiscovery(attempts + 1), 3000);
+        }
+      };
+      
+      // Start polling after a short delay to allow discovery to run
+      setTimeout(() => pollDiscovery(), 3000);
+    } catch (err) {
+      console.error('Failed to trigger discovery:', err);
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -527,7 +648,18 @@ export default function Protection() {
                 </div>
               )}
             </div>
-            <button className="action-btn icon-only" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg></button>
+            <button 
+              className="action-btn icon-only" 
+              title="Refresh" 
+              disabled={refreshing}
+              onClick={handleRefresh}
+              style={refreshing ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16, animation: refreshing ? 'spin 1s linear infinite' : 'none' }}>
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
+            </button>
           </div>
         </div>
         <div className="pagination">
@@ -541,7 +673,7 @@ export default function Protection() {
         <table className="resources-table">
           <thead>
             <tr>
-              <th className="checkbox-cell"><input type="checkbox" checked={sortedResources.length > 0 && selectedResources.length === sortedResources.length} onChange={toggleSelectAll} /></th>
+              <th className="checkbox-cell"><input type="checkbox" checked={displayedResources.length > 0 && selectedResources.length === displayedResources.length} onChange={toggleSelectAll} /></th>
               <th>Resources <span className="th-icon"></span></th>
               <th>SLA <span className="th-icon"></span></th>
               <th className="size-col"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4, verticalAlign: 'middle' }}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>Total size</th>
@@ -551,8 +683,8 @@ export default function Protection() {
           </thead>
           <tbody>
             {loading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>Loading...</td></tr>}
-            {!loading && resources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
-            {!loading && sortedResources.map(resource => (
+            {!loading && displayedResources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
+            {!loading && displayedResources.map(resource => (
               <tr key={resource.id}>
                 <td className="checkbox-cell">
                   <label className="checkbox-label">
@@ -649,7 +781,7 @@ export default function Protection() {
                   <button
                     className="action-btn-sm"
                     onClick={() => handleRecover(resource)}
-                    disabled={!resource.protections?.[0]?.policy_id || !resource.last_backup || resource.usage?.backups === 0}
+                    disabled={!resource.protections?.[0]?.policy_id || !resource.last_backup}
                     title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before recovering' : !resource.last_backup ? 'No backups available' : 'Recover from backup'}
                   >
                     Recover <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginLeft: 2, verticalAlign: 'middle' }}><polyline points="9 18 15 12 9 6" /></svg>

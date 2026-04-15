@@ -41,7 +41,7 @@ export interface ResourceListResponse {
 // M365 resource types
 const M365_TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
-  users: ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'ENTRA_USER'],
+  users: ['ENTRA_USER'],
   shared: ['SHARED_MAILBOX'],
   rooms: ['ROOM_MAILBOX'],
   sharepoint: ['SHAREPOINT_SITE'],
@@ -94,18 +94,54 @@ export async function getResources(
     types = M365_ALL_TYPES;
   }
 
-  let url: string;
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+  // For tabs with multiple types (groups, entra, power), fetch each type separately
+  if (types.length > 1) {
+    const allItems: ResourceItem[] = [];
+    let totalItems = 0;
+
+    // Fetch each type separately
+    const fetchPromises = types.map(async (type) => {
+      let url = `${API.RESOURCES.BY_TYPE}?type=${type}&tenantId=${tenantId}&page=1&size=500`;
+      if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
+      if (resourceFilter === 'active') url += `&status=ACTIVE`;
+      if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`Failed to fetch resources for type ${type}: ${res.statusText}`);
+      return res.json();
+    });
+
+    const results = await Promise.all(fetchPromises);
+    results.forEach((data: ResourceListResponse) => {
+      if (data.items) {
+        allItems.push(...data.items);
+        totalItems += data.item_number || 0;
+      }
+    });
+
+    // Apply pagination on the combined results
+    const startIndex = (page - 1) * size;
+    const paginatedItems = allItems.slice(startIndex, startIndex + size);
+
+    return {
+      item_number: totalItems,
+      page_number: page,
+      next_page_token: startIndex + size < totalItems ? String(page + 1) : null,
+      items: paginatedItems,
+    };
+  }
+
+  // Single type or no type - use existing logic
+  let url: string;
 
   if (types.length === 1) {
     // Single type - use /by-type endpoint
     url = `${API.RESOURCES.BY_TYPE}?type=${types[0]}&tenantId=${tenantId}&page=${page}&size=${size}`;
-  } else if (types.length === 0) {
+  } else {
     // All resources (no filtering)
     url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}`;
-  } else {
-    // Multiple types - send types to backend for server-side filtering with proper pagination
-    url = `${API.RESOURCES.LIST}?tenantId=${tenantId}&page=${page}&size=${size}&types=${types.join(',')}`;
   }
 
   if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
@@ -116,7 +152,6 @@ export async function getResources(
   if (!res.ok) throw new Error(`Failed to fetch resources: ${res.statusText}`);
 
   const data = await res.json();
-
   return data;
 }
 
@@ -270,9 +305,30 @@ export async function triggerDatasourceBackup(
     },
     body: JSON.stringify({ tenantId, serviceType, fullBackup, priority: 1 }),
   });
+
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(errText || `Failed to trigger datasource backup: ${res.statusText}`);
   }
+
+  return res.json();
+}
+
+export async function triggerDiscovery(
+  tenantId: string
+): Promise<{ discoveryId: string; resourcesFound: number }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/discover-m365`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to trigger discovery: ${res.statusText}`);
+  }
+
   return res.json();
 }
