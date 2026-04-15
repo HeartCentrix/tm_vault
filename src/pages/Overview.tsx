@@ -61,6 +61,8 @@ interface BackupSizeChartDatum {
   bytes: number;
 }
 
+type SizeUnit = 'MB' | 'GB' | 'TB';
+
 const CHART_COLORS = {
   success: '#17838a',
   warning: '#f59e0b',
@@ -104,6 +106,26 @@ function formatGB(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
   }
   return '0 GB';
+}
+
+function getChartSizeUnit(maxBytes: number): SizeUnit {
+  if (maxBytes >= 1024 * 1024 * 1024 * 1024) return 'TB';
+  if (maxBytes >= 1024 * 1024 * 1024) return 'GB';
+  return 'MB';
+}
+
+function formatBytesInUnit(bytes: number, unit: SizeUnit): string {
+  const divisors = {
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+    TB: 1024 * 1024 * 1024 * 1024,
+  };
+
+  const value = bytes / divisors[unit];
+
+  if (value === 0) return `0 ${unit}`;
+  if (value < 10) return `${value.toFixed(1)} ${unit}`;
+  return `${Math.round(value)} ${unit}`;
 }
 
 function StatusChartTooltip({
@@ -218,6 +240,8 @@ export default function Overview() {
     fullDate: formatDateLong(d.date),
     bytes: d.bytes,
   }));
+  const backupSizeChartMax = backupSizeChartData.reduce((max, point) => Math.max(max, point.bytes), 0);
+  const backupSizeChartUnit = getChartSizeUnit(backupSizeChartMax);
 
   const status7dTotals = status7dChartData.reduce(
     (acc, day) => ({
@@ -331,7 +355,7 @@ export default function Overview() {
                 </div>
                 <div className="chart-shell">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={status7dChartData} barGap={6} margin={{ top: 8, right: 4, left: -16, bottom: 6 }}>
+                    <BarChart data={status7dChartData} barGap={6} margin={{ top: 8, right: 8, left: 8, bottom: 6 }}>
                       <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="shortDate"
@@ -344,7 +368,8 @@ export default function Overview() {
                         axisLine={false}
                         tickLine={false}
                         tick={{ fontSize: 11, fill: '#94a3b8' }}
-                        width={32}
+                        tickMargin={8}
+                        width={40}
                       />
                       <Tooltip
                         cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
@@ -436,7 +461,7 @@ export default function Overview() {
               {backupSizeChartData.length > 0 && (
                 <div className="chart-shell">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={backupSizeChartData} barGap={8} margin={{ top: 8, right: 4, left: -16, bottom: 6 }}>
+                    <BarChart data={backupSizeChartData} barGap={8} margin={{ top: 8, right: 8, left: 8, bottom: 6 }}>
                       <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="shortDate"
@@ -448,8 +473,9 @@ export default function Overview() {
                         axisLine={false}
                         tickLine={false}
                         tick={{ fontSize: 11, fill: '#94a3b8' }}
-                        tickFormatter={(value: number) => formatGB(value)}
-                        width={48}
+                        tickFormatter={(value: number) => formatBytesInUnit(value, backupSizeChartUnit)}
+                        tickMargin={8}
+                        width={64}
                       />
                       <Tooltip
                         cursor={{ fill: 'rgba(13, 148, 136, 0.10)' }}
