@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
-import { authService, type AdminConsentStatus } from '../services/auth';
+import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../services/auth';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Settings.css';
 
@@ -55,8 +55,9 @@ export default function Settings() {
   // Admin consent state
   const [m365Consent, setM365Consent] = useState<AdminConsentStatus | null>(null);
   const [azureConsent, setAzureConsent] = useState<AdminConsentStatus | null>(null);
+  const [powerBiReadiness, setPowerBiReadiness] = useState<PowerBIReadiness | null>(null);
   const [adminConsentLoading, setAdminConsentLoading] = useState(true);
-  const [grantingConsent, setGrantingConsent] = useState<'m365' | 'azure' | null>(null);
+  const [grantingConsent, setGrantingConsent] = useState<'m365' | 'azure' | 'powerbi' | null>(null);
 
   // Modal form state
   const [formName, setFormName] = useState('');
@@ -102,20 +103,22 @@ export default function Settings() {
   }, [activeTab, tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'admin-consent') {
+    if (activeTab === 'admin-consent' && tenantId) {
       setAdminConsentLoading(true);
       Promise.all([
         authService.getM365AdminConsentStatus().catch(() => null),
         authService.getAzureAdminConsentStatus().catch(() => null),
+        authService.getPowerBIReadiness(tenantId).catch(() => null),
       ])
-        .then(([m365, azure]) => {
+        .then(([m365, azure, powerBi]) => {
           setM365Consent(m365);
           setAzureConsent(azure);
+          setPowerBiReadiness(powerBi);
         })
         .catch(console.error)
         .finally(() => setAdminConsentLoading(false));
     }
-  }, [activeTab]);
+  }, [activeTab, tenantId]);
 
   const handleDownloadReport = async () => {
     if (!tenantId) return;
@@ -156,6 +159,22 @@ export default function Settings() {
     }
   };
 
+  const handleConnectPowerBI = async () => {
+    if (!tenantId) return;
+    try {
+      setGrantingConsent('powerbi');
+      localStorage.setItem('consent_return_to', window.location.pathname);
+      localStorage.setItem('power_bi_tenant_id', tenantId);
+      const { url, state } = await authService.getPowerBIConnectUrl(tenantId);
+      localStorage.setItem('power_bi_oauth_state', state);
+      window.location.href = url;
+    } catch (error) {
+      console.error('Failed to get Power BI connect URL:', error);
+      alert('Failed to initiate Power BI onboarding');
+      setGrantingConsent(null);
+    }
+  };
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
@@ -170,6 +189,18 @@ export default function Settings() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).catch(console.error);
+  };
+
+  const powerBiStatusLabel = (status: PowerBIReadiness['status']) => {
+    if (status === 'ready') return 'Ready';
+    if (status === 'warning') return 'Limited';
+    return 'Action required';
+  };
+
+  const powerBiStatusClass = (status: PowerBIReadiness['status']) => {
+    if (status === 'ready') return 'ready';
+    if (status === 'warning') return 'warning';
+    return 'action';
   };
 
   const resetForm = () => {
@@ -471,7 +502,7 @@ export default function Settings() {
                   onClick={handleGrantM365Consent}
                   disabled={grantingConsent === 'm365'}
                 >
-                  {grantingConsent === 'm365' ? 'Redirecting...' : 'Regrant'}
+                  {grantingConsent === 'm365' ? 'Redirecting...' : m365Consent?.isActive ? 'Regrant' : 'Connect'}
                 </button>
               </div>
 
@@ -506,8 +537,98 @@ export default function Settings() {
                   onClick={handleGrantAzureConsent}
                   disabled={grantingConsent === 'azure'}
                 >
-                  {grantingConsent === 'azure' ? 'Redirecting...' : 'Regrant'}
+                  {grantingConsent === 'azure' ? 'Redirecting...' : azureConsent?.isActive ? 'Regrant' : 'Connect'}
                 </button>
+              </div>
+
+              {/* Power BI Readiness Card */}
+              <div className="power-bi-readiness-card">
+                <div className="power-bi-readiness-header">
+                  <div>
+                    <div className="power-bi-readiness-title">Power BI backup readiness</div>
+                    <div className="power-bi-readiness-subtitle">
+                      Connect a Power BI service user and we will reuse that connection for discovery and backup, with app-only as fallback.
+                    </div>
+                  </div>
+                  <div className="power-bi-header-actions">
+                    {powerBiReadiness && (
+                      <span className={`power-bi-status-badge ${powerBiStatusClass(powerBiReadiness.status)}`}>
+                        {powerBiStatusLabel(powerBiReadiness.status)}
+                      </span>
+                    )}
+                    <button
+                      className="admin-consent-regrant-btn"
+                      onClick={handleConnectPowerBI}
+                      disabled={grantingConsent === 'powerbi'}
+                    >
+                      {grantingConsent === 'powerbi'
+                        ? 'Redirecting...'
+                        : powerBiReadiness?.authMode === 'DELEGATED_SERVICE_USER'
+                          ? 'Reconnect service user'
+                          : 'Connect service user'}
+                    </button>
+                  </div>
+                </div>
+
+                {powerBiReadiness ? (
+                  <>
+                    <p className="power-bi-summary">{powerBiReadiness.summary}</p>
+
+                    <div className="power-bi-metrics">
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Auth mode</span>
+                        <span className="power-bi-metric-value">
+                          {powerBiReadiness.authMode === 'APP_ONLY' ? 'App-only fallback' : 'Delegated service user'}
+                        </span>
+                      </div>
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Accessible workspaces</span>
+                        <span className="power-bi-metric-value">{powerBiReadiness.accessibleWorkspaceCount}</span>
+                      </div>
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Discovered in TMVault</span>
+                        <span className="power-bi-metric-value">{powerBiReadiness.discoveredWorkspaceCount}</span>
+                      </div>
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Credential source</span>
+                        <span className="power-bi-metric-value">
+                          {powerBiReadiness.usesDedicatedApp ? 'Dedicated Power BI app' : 'Primary Microsoft app'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="power-bi-checklist">
+                      {powerBiReadiness.checks.map((check) => (
+                        <div key={check.key} className={`power-bi-check ${powerBiStatusClass(check.status)}`}>
+                          <div className="power-bi-check-header">
+                            <span className="power-bi-check-title">{check.label}</span>
+                            <span className={`power-bi-check-state ${powerBiStatusClass(check.status)}`}>
+                              {powerBiStatusLabel(check.status)}
+                            </span>
+                          </div>
+                          <div className="power-bi-check-detail">{check.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="power-bi-next-steps">
+                      <div className="power-bi-next-steps-title">Recommended next steps</div>
+                      {powerBiReadiness.recommendedActions.length > 0 ? (
+                        <ol className="power-bi-next-steps-list">
+                          {powerBiReadiness.recommendedActions.map((action, index) => (
+                            <li key={`${index}-${action}`}>{action}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="power-bi-next-steps-empty">Nothing else is needed right now. You can run discovery and assign SLA protection.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="power-bi-next-steps-empty">
+                    Power BI readiness could not be loaded yet. Re-open this tab after tenant setup completes.
+                  </div>
+                )}
               </div>
             </div>
           )}

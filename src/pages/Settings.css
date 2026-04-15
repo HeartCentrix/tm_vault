@@ -428,3 +428,188 @@
   cursor: not-allowed;
 }
 
+.power-bi-readiness-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
+  border: 1px solid #d8eeeb;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.power-bi-readiness-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.power-bi-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.power-bi-readiness-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.power-bi-readiness-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.power-bi-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.power-bi-status-badge.ready,
+.power-bi-check-state.ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.power-bi-status-badge.warning,
+.power-bi-check-state.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.power-bi-status-badge.action,
+.power-bi-check-state.action {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.power-bi-summary {
+  margin: 0;
+  font-size: 14px;
+  color: #334155;
+}
+
+.power-bi-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.power-bi-metric {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.power-bi-metric-label {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.power-bi-metric-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.power-bi-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.power-bi-check {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.power-bi-check.ready {
+  border-left-color: #22c55e;
+}
+
+.power-bi-check.warning {
+  border-left-color: #f59e0b;
+}
+
+.power-bi-check.action {
+  border-left-color: #ef4444;
+}
+
+.power-bi-check-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.power-bi-check-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.power-bi-check-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.power-bi-check-detail {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.power-bi-next-steps {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.power-bi-next-steps-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.power-bi-next-steps-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.power-bi-next-steps-empty {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.45;
+}

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
+import { RestoreModal } from '../components/RestoreModal';
 import './Recovery.css';
 
 type ContentType = string;
@@ -10,6 +11,17 @@ function formatContentTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     'USER_PROFILE': 'User Profile',
     'ONEDRIVE': 'OneDrive',
+    'POWER_BI_WORKSPACE': 'Workspace Metadata',
+    'POWER_BI_REPORT': 'Reports',
+    'POWER_BI_PAGINATED_REPORT': 'Paginated Reports',
+    'POWER_BI_SEMANTIC_MODEL': 'Semantic Models',
+    'POWER_BI_DATAFLOW': 'Dataflows',
+    'POWER_BI_DASHBOARD': 'Dashboards',
+    'POWER_BI_TILE': 'Dashboard Tiles',
+    'POWER_BI_DATASOURCE': 'Datasource Metadata',
+    'POWER_BI_REFRESH_SCHEDULE': 'Refresh Schedules',
+    'POWER_BI_PERMISSIONS': 'Permissions',
+    'POWER_BI_LINEAGE': 'Lineage',
   };
   
   if (labels[type]) return labels[type];
@@ -44,6 +56,7 @@ function getKindLabel(kind: string): string {
     sharepoint_site: 'SharePoint',
     teams_channel: 'Teams channel',
     teams_chat: 'Teams chat',
+    power_bi: 'Power BI workspace',
     azure_vm: 'Azure VM',
     azure_sql: 'Azure SQL',
     azure_postgresql: 'Azure PostgreSQL',
@@ -84,6 +97,7 @@ export default function Recovery() {
   const [itemCount, setItemCount] = useState(0);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
   // Toolbar
   const [searchQuery, setSearchQuery] = useState('');
@@ -259,15 +273,7 @@ export default function Recovery() {
 
   const handleRecover = () => {
     if (!selectedSnapshotId || selectedItems.size === 0) return;
-    RecoveryService.triggerRecovery({
-      restoreType: 'IN_PLACE',
-      snapshotIds: [selectedSnapshotId],
-      itemIds: Array.from(selectedItems),
-    })
-      .then((response) => {
-        console.log('Recovery job created:', response.jobId);
-      })
-      .catch(console.error);
+    setRestoreModalOpen(true);
   };
 
   const handleDownload = () => {
@@ -303,6 +309,16 @@ export default function Recovery() {
     );
   }
 
+  const selectedRecoveryItems = recoveryItems.filter((item) => selectedItems.has(item.id));
+  const restoreItemName = selectedRecoveryItems.length === 1
+    ? selectedRecoveryItems[0].name
+    : selectedRecoveryItems.length > 1
+      ? `${selectedRecoveryItems.length} items`
+      : undefined;
+  const restoreItemType = selectedRecoveryItems.length > 0 && selectedRecoveryItems.every((item) => item.itemType === selectedRecoveryItems[0].itemType)
+    ? selectedRecoveryItems[0].itemType
+    : undefined;
+
   // No resources with backups
   if (resources.length === 0) {
     return (
@@ -326,7 +342,8 @@ export default function Recovery() {
   }
 
   return (
-    <div className="recovery-page">
+    <>
+      <div className="recovery-page">
       {/* Two-panel layout: Resource list + Recovery content */}
       <div className="recovery-layout">
         {/* Left Panel: Resource List */}
@@ -602,6 +619,15 @@ export default function Recovery() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+      <RestoreModal
+        isOpen={restoreModalOpen}
+        onClose={() => setRestoreModalOpen(false)}
+        itemIds={Array.from(selectedItems)}
+        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+        itemName={restoreItemName}
+        itemType={restoreItemType}
+      />
+    </>
   );
 }

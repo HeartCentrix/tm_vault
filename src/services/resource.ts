@@ -155,6 +155,28 @@ export async function getResources(
   return data;
 }
 
+export async function getResourcesByType(
+  tenantId: string,
+  resourceType: string,
+  page: number = 1,
+  size: number = 500,
+  searchQuery?: string,
+  resourceFilter?: string
+): Promise<ResourceListResponse> {
+  const token = localStorage.getItem('access_token');
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+  let url = `${API.RESOURCES.BY_TYPE}?type=${encodeURIComponent(resourceType)}&tenantId=${tenantId}&page=${page}&size=${size}`;
+  if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
+  if (resourceFilter === 'active') url += `&status=ACTIVE`;
+  if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`Failed to fetch ${resourceType} resources: ${res.statusText}`);
+
+  return res.json();
+}
+
 export async function assignPolicy(resourceId: string, policyId: string): Promise<void> {
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.ASSIGN_POLICY(resourceId)}`, {

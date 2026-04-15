@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import './RestoreModal.css';
 import { RestoreService, type RestoreType } from '../services/restore';
+import { getResourcesByType, type ResourceItem } from '../services/resource';
 
 interface RestoreModalProps {
   isOpen: boolean;
@@ -23,6 +25,11 @@ const RESTORE_TYPES: { key: RestoreType; label: string; description: string }[] 
     description: 'Restore items to a different user/resource',
   },
   {
+    key: 'CROSS_RESOURCE',
+    label: 'Cross-resource restore',
+    description: 'Restore items to a different target resource',
+  },
+  {
     key: 'EXPORT_ZIP',
     label: 'Export as ZIP',
     description: 'Download items as a ZIP file',
@@ -35,17 +42,64 @@ const RESTORE_TYPES: { key: RestoreType; label: string; description: string }[] 
 ];
 
 export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType }: RestoreModalProps) {
+  const { tenantId } = useParams<{ tenantId: string }>();
   const [restoreType, setRestoreType] = useState<RestoreType>('IN_PLACE');
   const [targetUserId, setTargetUserId] = useState('');
+  const [targetResourceId, setTargetResourceId] = useState('');
+  const [powerBiTargets, setPowerBiTargets] = useState<ResourceItem[]>([]);
+  const [powerBiTargetsLoading, setPowerBiTargetsLoading] = useState(false);
+  const [powerBiTargetsError, setPowerBiTargetsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ jobId: string; restoreType: string } | null>(null);
+
+  const isPowerBiItem = Boolean(itemType?.startsWith('POWER_BI'));
+  const availableRestoreTypes = RESTORE_TYPES.filter((type) => {
+    if (isPowerBiItem) {
+      return type.key !== 'CROSS_USER' && type.key !== 'EXPORT_PST';
+    }
+    return type.key !== 'CROSS_RESOURCE';
+  });
+
+  useEffect(() => {
+    if (!isOpen || !isPowerBiItem || !tenantId) {
+      return;
+    }
+
+    let cancelled = false;
+    setPowerBiTargetsLoading(true);
+    setPowerBiTargetsError(null);
+
+    getResourcesByType(tenantId, 'POWER_BI', 1, 500, undefined, 'active')
+      .then((data) => {
+        if (cancelled) return;
+        setPowerBiTargets(data.items || []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPowerBiTargets([]);
+        setPowerBiTargetsError(err instanceof Error ? err.message : 'Failed to load Power BI workspaces');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPowerBiTargetsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isPowerBiItem, tenantId]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
     if (restoreType === 'CROSS_USER' && !targetUserId.trim()) {
       setError('Target user ID is required for cross-user restore');
+      return;
+    }
+    if (restoreType === 'CROSS_RESOURCE' && !targetResourceId.trim()) {
+      setError('Target resource ID is required for cross-resource restore');
       return;
     }
 
@@ -58,6 +112,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         snapshotIds,
         itemIds,
         targetUserId: restoreType === 'CROSS_USER' ? targetUserId : undefined,
+        targetResourceId: restoreType === 'CROSS_RESOURCE' ? targetResourceId : undefined,
       });
 
       setSuccess({ jobId: response.jobId, restoreType: response.restoreType });
@@ -111,10 +166,16 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             </div>
           )}
 
+          {isPowerBiItem && (
+            <div className="restore-item-info">
+              <strong>Note:</strong> Power BI restores may require manual datasource rebinds or credential re-entry after replay.
+            </div>
+          )}
+
           <div className="form-group">
             <label>Restore Type</label>
             <div className="restore-type-options">
-              {RESTORE_TYPES.map(type => (
+              {availableRestoreTypes.map(type => (
                 <label
                   key={type.key}
                   className={`restore-type-option ${restoreType === type.key ? 'selected' : ''}`}
@@ -145,6 +206,44 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                 placeholder="Enter target user external ID"
                 className="form-input"
               />
+            </div>
+          )}
+
+          {restoreType === 'CROSS_RESOURCE' && (
+            <div className="form-group">
+              <label>{isPowerBiItem ? 'Target Power BI workspace' : 'Target resource ID'}</label>
+              {isPowerBiItem ? (
+                <>
+                  <select
+                    value={targetResourceId}
+                    onChange={(e) => setTargetResourceId(e.target.value)}
+                    className="form-input"
+                    disabled={powerBiTargetsLoading}
+                  >
+                    <option value="">Select target workspace</option>
+                    {powerBiTargets.map((resource) => (
+                      <option key={resource.id} value={resource.id}>
+                        {resource.name}
+                        {resource.email ? ` (${resource.email})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {powerBiTargetsLoading && (
+                    <div className="restore-item-info">Loading available Power BI workspaces...</div>
+                  )}
+                  {powerBiTargetsError && (
+                    <div className="error-message">{powerBiTargetsError}</div>
+                  )}
+                </>
+              ) : (
+                <input
+                  type="text"
+                  value={targetResourceId}
+                  onChange={(e) => setTargetResourceId(e.target.value)}
+                  placeholder="Enter target resource ID"
+                  className="form-input"
+                />
+              )}
             </div>
           )}
 

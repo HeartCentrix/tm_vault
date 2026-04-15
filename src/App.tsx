@@ -5,6 +5,7 @@ import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
 import DatasourceCallback from './pages/DatasourceCallback';
 import AzureDatasourceCallback from './pages/AzureDatasourceCallback';
+import PowerBICallback from './pages/PowerBICallback';
 import Tenants from './pages/Tenants';
 import Overview from './pages/Overview';
 import Protection from './pages/Protection';
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/datasource-callback" element={<DatasourceCallback />} />
         <Route path="/azure-datasource-callback" element={<AzureDatasourceCallback />} />
+        <Route path="/power-bi-callback" element={<PowerBICallback />} />
 
         {/* Protected routes with layout */}
         <Route path="/" element={<Layout />}>

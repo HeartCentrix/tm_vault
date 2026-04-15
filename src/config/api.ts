@@ -14,9 +14,11 @@ export const API = {
     LOGIN_URL: `${API_URL}/auth/microsoft/url`,
     DATASOURCE_URL: `${API_URL}/auth/microsoft/datasource/url`,
     AZURE_DATASOURCE_URL: `${API_URL}/auth/azure/datasource/url`,
+    POWER_BI_URL: (tenantId: string) => `${API_URL}/auth/power-bi/url?tenantId=${tenantId}`,
     CALLBACK: `${API_URL}/auth/callback`,
     DATASOURCE_CALLBACK: `${API_URL}/auth/microsoft/datasource/callback`,
     AZURE_DATASOURCE_CALLBACK: `${API_URL}/auth/azure/datasource/callback`,
+    POWER_BI_CALLBACK: `${API_URL}/auth/power-bi/callback`,
     REFRESH: `${API_URL}/auth/refresh`,
     LOGOUT: `${API_URL}/auth/logout`,
     ME: `${API_URL}/auth/me`,
@@ -26,6 +28,7 @@ export const API = {
   ADMIN_CONSENT: {
     M365_STATUS: `${API_URL}/admin-consent/m365/status`,
     AZURE_STATUS: `${API_URL}/admin-consent/azure/status`,
+    POWER_BI_READINESS: (tenantId: string) => `${API_URL}/admin-consent/power-bi/readiness?tenantId=${tenantId}`,
   },
 
   // Dashboard
