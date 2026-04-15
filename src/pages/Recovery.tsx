@@ -396,6 +396,8 @@ export default function Recovery() {
   const [resources, setResources] = useState<ResourceWithBackups[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [resourceSearch, setResourceSearch] = useState('');
+  const [kindFilter, setKindFilter] = useState('');
+  const [showKindFilter, setShowKindFilter] = useState(false);
   const [selectedResource, setSelectedResource] = useState<ResourceWithBackups | null>(null);
 
   // Snapshot selection
@@ -669,12 +671,13 @@ export default function Recovery() {
   };
 
   // Filter resources by search
-  const filteredResources = resourceSearch
-    ? resources.filter(r =>
-        r.name.toLowerCase().includes(resourceSearch.toLowerCase()) ||
-        (r.email && r.email.toLowerCase().includes(resourceSearch.toLowerCase()))
-      )
-    : resources;
+  const filteredResources = resources.filter(r => {
+    const matchSearch = !resourceSearch ||
+      r.name.toLowerCase().includes(resourceSearch.toLowerCase()) ||
+      (r.email && r.email.toLowerCase().includes(resourceSearch.toLowerCase()));
+    const matchKind = !kindFilter || r.kind === kindFilter;
+    return matchSearch && matchKind;
+  });
 
   // Loading state
   if (resourcesLoading) {
@@ -719,32 +722,69 @@ export default function Recovery() {
         <div className="resource-list-panel">
           <div className="resource-list-header">
             <h3>Backed up resources</h3>
-            <input
-              type="text"
-              placeholder="Search resources..."
-              className="resource-search-input"
-              value={resourceSearch}
-              onChange={(e) => setResourceSearch(e.target.value)}
-            />
+            <div className="resource-search-row">
+              <input
+                type="text"
+                placeholder="Search resources..."
+                className="resource-search-input"
+                value={resourceSearch}
+                onChange={(e) => setResourceSearch(e.target.value)}
+              />
+              <div className="kind-filter-wrap">
+                <button
+                  className={`kind-filter-btn${kindFilter ? ' active' : ''}`}
+                  onClick={() => setShowKindFilter(v => !v)}
+                  title="Filter by type"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width:14,height:14}}>
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                  </svg>
+                  {kindFilter ? getKindLabel(kindFilter) : 'Filter'}
+                </button>
+                {showKindFilter && (
+                  <div className="kind-filter-dropdown">
+                    <button className={`kind-filter-option${!kindFilter ? ' selected' : ''}`} onClick={() => { setKindFilter(''); setShowKindFilter(false); }}>All types</button>
+                    {Array.from(new Set(resources.map(r => r.kind))).sort().map(k => (
+                      <button key={k} className={`kind-filter-option${kindFilter === k ? ' selected' : ''}`} onClick={() => { setKindFilter(k); setShowKindFilter(false); }}>
+                        {getKindLabel(k)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           <div className="resource-list">
-            {filteredResources.map(resource => (
-              <button
-                key={resource.id}
-                className={`resource-list-item ${selectedResource?.id === resource.id ? 'selected' : ''}`}
-                onClick={() => handleResourceSelect(resource)}
-              >
-                <div className="resource-avatar-sm">{getInitials(resource.name)}</div>
-                <div className="resource-list-info">
-                  <div className="resource-list-name">{resource.name}</div>
-                  {resource.email && <div className="resource-list-email">{resource.email}</div>}
-                  <div className="resource-list-meta">
-                    <span className="kind-badge">{getKindLabel(resource.kind)}</span>
-                    <span>{resource.snapshot_count} snapshot{resource.snapshot_count !== 1 ? 's' : ''}</span>
-                  </div>
+            {(() => {
+              // Group resources by kind
+              const groups: Record<string, typeof filteredResources> = {};
+              filteredResources.forEach(r => {
+                const k = getKindLabel(r.kind);
+                if (!groups[k]) groups[k] = [];
+                groups[k].push(r);
+              });
+              return Object.entries(groups).map(([kindLabel, items]) => (
+                <div key={kindLabel}>
+                  <div className="resource-group-header">{kindLabel}</div>
+                  {items.map(resource => (
+                    <button
+                      key={resource.id}
+                      className={`resource-list-item ${selectedResource?.id === resource.id ? 'selected' : ''}`}
+                      onClick={() => handleResourceSelect(resource)}
+                    >
+                      <div className="resource-avatar-sm">{getInitials(resource.name)}</div>
+                      <div className="resource-list-info">
+                        <div className="resource-list-name">{resource.name}</div>
+                        {resource.email && <div className="resource-list-email">{resource.email}</div>}
+                        <div className="resource-list-meta">
+                          <span>{resource.snapshot_count} snapshot{resource.snapshot_count !== 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
-            ))}
+              ));
+            })()}
             {filteredResources.length === 0 && (
               <div className="empty-resource-list">
                 <p>No matching resources</p>

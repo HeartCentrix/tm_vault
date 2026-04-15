@@ -252,7 +252,7 @@ export default function Protection() {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-    
+
     // If there's a search query, fetch all resources and filter client-side
     if (searchQuery) {
       getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
@@ -308,7 +308,7 @@ export default function Protection() {
   // Apply client-side search filtering
   const filteredResources = useMemo(() => {
     if (!searchQuery.trim()) return resources;
-    
+
     const query = searchQuery.toLowerCase().trim();
     return resources.filter(resource => {
       // Search in name
@@ -498,14 +498,14 @@ export default function Protection() {
       setRefreshing(true);
       // Trigger discovery
       await triggerDiscovery(tenantId);
-      
+
       // Wait for discovery to complete by polling
       const pollDiscovery = async (attempts = 0) => {
         if (attempts >= 100) { // Timeout after 5 minutes
           setRefreshing(false);
           return;
         }
-        
+
         try {
           // Fetch resources to check if discovery completed
           const data = await getResources(
@@ -535,7 +535,7 @@ export default function Protection() {
           setTimeout(() => pollDiscovery(attempts + 1), 3000);
         }
       };
-      
+
       // Start polling after a short delay to allow discovery to run
       setTimeout(() => pollDiscovery(), 3000);
     } catch (err) {
@@ -676,9 +676,9 @@ export default function Protection() {
                 </div>
               )}
             </div>
-            <button 
-              className="action-btn icon-only" 
-              title="Refresh" 
+            <button
+              className="action-btn icon-only"
+              title="Refresh"
               disabled={refreshing}
               onClick={handleRefresh}
               style={refreshing ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
@@ -743,8 +743,7 @@ export default function Protection() {
                     return (
                       <>
                         <div className="size-main">{formatSize(displaySize)}</div>
-                        <div className="size-sub">
-                          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 2, verticalAlign: 'middle' }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>{resource.usage?.backups || 0}</span>
+                        <div className="size-sub">                          
                           {backingUp.has(resource.id) && processedBytes > 0 && (
                             <span style={{ color: '#3b82f6' }}>+{formatSize(processedBytes)}</span>
                           )}
