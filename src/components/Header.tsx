@@ -30,12 +30,14 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
 
   const selectAllDataSources = () => {
     onSelectSource(null);
+    localStorage.removeItem('selected_datasource');
     setIsDropdownOpen(false);
     navigate('/tenants');
   };
 
   const selectDataSource = (source: DataSourceType) => {
     onSelectSource(source);
+    localStorage.setItem('selected_datasource', JSON.stringify({ id: source.id, type: source.type, name: source.name, status: source.status }));
     setIsDropdownOpen(false);
     navigate(`/tenants/${source.id}/${source.type}/overview`);
   };

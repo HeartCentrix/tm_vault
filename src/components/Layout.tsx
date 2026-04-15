@@ -11,7 +11,19 @@ import './Layout.css';
 export default function Layout() {
   useTrackNavigation();
 
-  const [selectedSource, setSelectedSource] = useState<DataSourceType | null>(null);
+  const [selectedSource, setSelectedSource] = useState<DataSourceType | null>(() => {
+    const raw = localStorage.getItem('selected_datasource');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as DataSourceType;
+      if (parsed && parsed.id && parsed.name && (parsed.type === 'm365' || parsed.type === 'azure' || parsed.type === 'kubernetes')) {
+        return parsed;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
 
   return (
