@@ -5,7 +5,7 @@ export interface ActivityItem {
   start_time: string;
   operation: string;
   object: string;
-  status: 'Done' | 'In Progress' | 'Failed' | 'Canceled';
+  status: 'Done' | 'In Progress' | 'Failed' | 'Canceled' | 'Warning';
   finish_time: string;
   details?: string;
   data_backed_up?: number;
@@ -14,6 +14,7 @@ export interface ActivityItem {
 
 export interface ActivityListParams {
   tenantId?: string;
+  serviceType?: 'm365' | 'azure';
   startDate?: string;
   endDate?: string;
   operation?: string;
@@ -38,6 +39,7 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
   const queryParams = new URLSearchParams();
 
   if (params?.tenantId) queryParams.append('tenantId', params.tenantId);
+  if (params?.serviceType) queryParams.append('serviceType', params.serviceType);
   if (params?.startDate) queryParams.append('start_date', params.startDate);
   if (params?.endDate) queryParams.append('end_date', params.endDate);
   if (params?.operation) queryParams.append('operation', params.operation);
@@ -69,6 +71,7 @@ export async function downloadActivityCSV(params?: ActivityListParams): Promise<
   const queryParams = new URLSearchParams();
 
   if (params?.tenantId) queryParams.append('tenantId', params.tenantId);
+  if (params?.serviceType) queryParams.append('serviceType', params.serviceType);
   if (params?.startDate) queryParams.append('start_date', params.startDate);
   if (params?.endDate) queryParams.append('end_date', params.endDate);
   if (params?.operation) queryParams.append('operation', params.operation);

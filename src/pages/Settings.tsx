@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
-import { authService, type AdminConsentStatus } from '../services/auth';
+import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../services/auth';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Settings.css';
 
 type SettingsTab = 'sla' | 'info' | 'admin-consent';
 
 interface BackupItem {
-  key: string;
+  formKey: string;
+  policyKey: string;
   label: string;
   checked: boolean;
   hasSettings?: boolean;
@@ -18,29 +19,86 @@ interface BackupItem {
 const DAYS = ['M', 'T', 'W', 'R', 'F', 'S', 'U'] as const;
 const DAY_LABELS: Record<string, string> = { M: 'M', T: 'T', W: 'W', R: 'T', F: 'F', S: 'S', U: 'S' };
 
-const BACKUP_ITEMS_LEFT: BackupItem[] = [
-  { key: 'backup_exchange', label: 'Emails', checked: true, hasSettings: true },
-  { key: 'backup_teams_chats', label: 'Chats', checked: true },
-  { key: 'contacts', label: 'Contacts', checked: true },
-  { key: 'calendars', label: 'Calendars', checked: true },
-  { key: 'backup_onedrive', label: 'Drive & OneNote', checked: true },
-  { key: 'tasks', label: 'Tasks', checked: false },
-  { key: 'backup_copilot', label: 'Copilot', checked: false },
+const M365_BACKUP_ITEMS_LEFT: BackupItem[] = [
+  { formKey: 'backup_exchange', policyKey: 'backupExchange', label: 'Emails', checked: true, hasSettings: true },
+  { formKey: 'backup_teams_chats', policyKey: 'backupTeamsChats', label: 'Chats', checked: true },
+  { formKey: 'contacts', policyKey: 'contacts', label: 'Contacts', checked: true },
+  { formKey: 'calendars', policyKey: 'calendars', label: 'Calendars', checked: true },
+  { formKey: 'backup_onedrive', policyKey: 'backupOneDrive', label: 'Drive & OneNote', checked: true },
+  { formKey: 'tasks', policyKey: 'tasks', label: 'Tasks', checked: false },
+  { formKey: 'backup_copilot', policyKey: 'backupCopilot', label: 'Copilot', checked: false },
 ];
 
-const BACKUP_ITEMS_RIGHT: BackupItem[] = [
-  { key: 'backup_sharepoint', label: 'SharePoint', checked: true },
-  { key: 'backup_teams', label: 'Team Channels', checked: true },
-  { key: 'group_mailbox', label: 'Group mailbox', checked: true },
-  { key: 'backup_entra_id', label: 'Entra ID', checked: true },
-  { key: 'backup_power_platform', label: 'Power Platform', checked: true },
-  { key: 'planner', label: 'Planner', checked: false },
+const M365_BACKUP_ITEMS_RIGHT: BackupItem[] = [
+  { formKey: 'backup_sharepoint', policyKey: 'backupSharepoint', label: 'SharePoint', checked: true },
+  { formKey: 'backup_teams', policyKey: 'backupTeams', label: 'Team Channels', checked: true },
+  { formKey: 'group_mailbox', policyKey: 'groupMailbox', label: 'Group mailbox', checked: true },
+  { formKey: 'backup_entra_id', policyKey: 'backupEntraId', label: 'Entra ID', checked: true },
+  { formKey: 'backup_power_platform', policyKey: 'backupPowerPlatform', label: 'Power Platform', checked: true },
+  { formKey: 'planner', policyKey: 'planner', label: 'Planner', checked: false },
 ];
+
+const AZURE_BACKUP_ITEMS_LEFT: BackupItem[] = [
+  { formKey: 'backup_azure_vm', policyKey: 'backupAzureVm', label: 'Virtual machines', checked: true },
+  { formKey: 'backup_azure_sql', policyKey: 'backupAzureSql', label: 'Azure SQL databases', checked: true },
+];
+
+const AZURE_BACKUP_ITEMS_RIGHT: BackupItem[] = [
+  { formKey: 'backup_azure_postgresql', policyKey: 'backupAzurePostgresql', label: 'Azure PostgreSQL servers', checked: true },
+];
+
+function defaultFormBackups(serviceType: 'm365' | 'azure'): Record<string, boolean> {
+  if (serviceType === 'azure') {
+    return {
+      backup_exchange: false,
+      backup_teams_chats: false,
+      contacts: false,
+      calendars: false,
+      backup_onedrive: false,
+      tasks: false,
+      backup_copilot: false,
+      backup_sharepoint: false,
+      backup_teams: false,
+      group_mailbox: false,
+      backup_entra_id: false,
+      backup_power_platform: false,
+      planner: false,
+      backup_exchange_recoverable: false,
+      backup_azure_vm: true,
+      backup_azure_sql: true,
+      backup_azure_postgresql: true,
+    };
+  }
+
+  return {
+    backup_exchange: true,
+    backup_teams_chats: true,
+    contacts: true,
+    calendars: true,
+    backup_onedrive: true,
+    tasks: false,
+    backup_copilot: false,
+    backup_sharepoint: true,
+    backup_teams: true,
+    group_mailbox: true,
+    backup_entra_id: true,
+    backup_power_platform: true,
+    planner: false,
+    backup_exchange_recoverable: false,
+    backup_azure_vm: false,
+    backup_azure_sql: false,
+    backup_azure_postgresql: false,
+  };
+}
 
 export default function Settings() {
-  const { tenantId } = useParams<{ tenantId: string }>();
+  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
+  const effectiveServiceType: 'm365' | 'azure' = serviceType === 'azure' ? 'azure' : 'm365';
   const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
   const subRouteKey = tenantId ? '/protection/settings' : '/settings';
+  const tenantSettingsPath = tenantId && serviceType
+    ? `/tenants/${tenantId}/${serviceType}/protection/settings`
+    : '/settings';
   const [activeTab, setActiveTab] = usePersistentTab<SettingsTab>(subRouteKey, 'sla', settingsTabKeys);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,18 +113,15 @@ export default function Settings() {
   // Admin consent state
   const [m365Consent, setM365Consent] = useState<AdminConsentStatus | null>(null);
   const [azureConsent, setAzureConsent] = useState<AdminConsentStatus | null>(null);
+  const [powerBiReadiness, setPowerBiReadiness] = useState<PowerBIReadiness | null>(null);
   const [adminConsentLoading, setAdminConsentLoading] = useState(true);
-  const [grantingConsent, setGrantingConsent] = useState<'m365' | 'azure' | null>(null);
+  const [grantingConsent, setGrantingConsent] = useState<'m365' | 'azure' | 'powerbi' | null>(null);
+  const backupItemsLeft = effectiveServiceType === 'azure' ? AZURE_BACKUP_ITEMS_LEFT : M365_BACKUP_ITEMS_LEFT;
+  const backupItemsRight = effectiveServiceType === 'azure' ? AZURE_BACKUP_ITEMS_RIGHT : M365_BACKUP_ITEMS_RIGHT;
 
   // Modal form state
   const [formName, setFormName] = useState('');
-  const [formBackups, setFormBackups] = useState<Record<string, boolean>>({
-    backup_exchange: true, backup_teams_chats: true, contacts: true, calendars: true,
-    backup_onedrive: true, tasks: false, backup_copilot: false,
-    backup_sharepoint: true, backup_teams: true, group_mailbox: true,
-    backup_entra_id: true, backup_power_platform: true, planner: false,
-    backup_exchange_recoverable: false,
-  });
+  const [formBackups, setFormBackups] = useState<Record<string, boolean>>(() => defaultFormBackups(effectiveServiceType));
   const [formFrequency, setFormFrequency] = useState('1x');
   const [formDays, setFormDays] = useState<Set<string>>(new Set(['M', 'T', 'W', 'R', 'F', 'S', 'U']));
   const [formStartTime, setFormStartTime] = useState('21:00');
@@ -82,40 +137,56 @@ export default function Settings() {
   ];
 
   useEffect(() => {
-    if (activeTab === 'sla' && tenantId) {
-      setLoading(true);
-      getSlaPolicies(tenantId)
-        .then(setPolicies)
-        .catch(console.error)
-        .finally(() => setLoading(false));
+    if (activeTab !== 'sla') return;
+    if (!tenantId) {
+      setLoading(false);
+      setPolicies([]);
+      return;
     }
+    setLoading(true);
+    getSlaPolicies(tenantId, effectiveServiceType)
+      .then(setPolicies)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [activeTab, tenantId, effectiveServiceType]);
+
+  useEffect(() => {
+    if (activeTab !== 'info') return;
+    if (!tenantId) {
+      setInfoLoading(false);
+      setTenantInfo(null);
+      return;
+    }
+    setInfoLoading(true);
+    getTenantInfo(tenantId)
+      .then(setTenantInfo)
+      .catch(console.error)
+      .finally(() => setInfoLoading(false));
   }, [activeTab, tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'info' && tenantId) {
-      setInfoLoading(true);
-      getTenantInfo(tenantId)
-        .then(setTenantInfo)
-        .catch(console.error)
-        .finally(() => setInfoLoading(false));
+    if (activeTab !== 'admin-consent') return;
+    if (!tenantId) {
+      setAdminConsentLoading(false);
+      setM365Consent(null);
+      setAzureConsent(null);
+      setPowerBiReadiness(null);
+      return;
     }
+    setAdminConsentLoading(true);
+    Promise.all([
+      authService.getM365AdminConsentStatus().catch(() => null),
+      authService.getAzureAdminConsentStatus().catch(() => null),
+      authService.getPowerBIReadiness(tenantId).catch(() => null),
+    ])
+      .then(([m365, azure, powerBi]) => {
+        setM365Consent(m365);
+        setAzureConsent(azure);
+        setPowerBiReadiness(powerBi);
+      })
+      .catch(console.error)
+      .finally(() => setAdminConsentLoading(false));
   }, [activeTab, tenantId]);
-
-  useEffect(() => {
-    if (activeTab === 'admin-consent') {
-      setAdminConsentLoading(true);
-      Promise.all([
-        authService.getM365AdminConsentStatus().catch(() => null),
-        authService.getAzureAdminConsentStatus().catch(() => null),
-      ])
-        .then(([m365, azure]) => {
-          setM365Consent(m365);
-          setAzureConsent(azure);
-        })
-        .catch(console.error)
-        .finally(() => setAdminConsentLoading(false));
-    }
-  }, [activeTab]);
 
   const handleDownloadReport = async () => {
     if (!tenantId) return;
@@ -133,7 +204,7 @@ export default function Settings() {
   const handleGrantM365Consent = async () => {
     try {
       setGrantingConsent('m365');
-      localStorage.setItem('consent_return_to', '/settings');
+      localStorage.setItem('consent_return_to', tenantSettingsPath);
       const { url } = await authService.getM365AdminConsentUrl();
       window.location.href = url;
     } catch (error) {
@@ -146,12 +217,31 @@ export default function Settings() {
   const handleGrantAzureConsent = async () => {
     try {
       setGrantingConsent('azure');
-      localStorage.setItem('consent_return_to', '/settings');
+      localStorage.setItem('consent_return_to', tenantSettingsPath);
       const { url } = await authService.getAzureAdminConsentUrl();
       window.location.href = url;
     } catch (error) {
       console.error('Failed to get Azure consent URL:', error);
       alert('Failed to initiate Azure admin consent');
+      setGrantingConsent(null);
+    }
+  };
+
+  const handleConnectPowerBI = async () => {
+    if (!tenantId) return;
+    try {
+      setGrantingConsent('powerbi');
+      localStorage.setItem('consent_return_to', tenantSettingsPath);
+      localStorage.setItem('power_bi_tenant_id', tenantId);
+      if (serviceType) {
+        localStorage.setItem('power_bi_service_type', serviceType);
+      }
+      const { url, state } = await authService.getPowerBIConnectUrl(tenantId);
+      localStorage.setItem('power_bi_oauth_state', state);
+      window.location.href = url;
+    } catch (error) {
+      console.error('Failed to get Power BI connect URL:', error);
+      alert('Failed to initiate Power BI onboarding');
       setGrantingConsent(null);
     }
   };
@@ -172,15 +262,21 @@ export default function Settings() {
     navigator.clipboard.writeText(text).catch(console.error);
   };
 
+  const powerBiStatusLabel = (status: PowerBIReadiness['status']) => {
+    if (status === 'ready') return 'Ready';
+    if (status === 'warning') return 'Limited';
+    return 'Action required';
+  };
+
+  const powerBiStatusClass = (status: PowerBIReadiness['status']) => {
+    if (status === 'ready') return 'ready';
+    if (status === 'warning') return 'warning';
+    return 'action';
+  };
+
   const resetForm = () => {
     setFormName('');
-    setFormBackups({
-      backup_exchange: true, backup_teams_chats: true, contacts: true, calendars: true,
-      backup_onedrive: true, tasks: false, backup_copilot: false,
-      backup_sharepoint: true, backup_teams: true, group_mailbox: true,
-      backup_entra_id: true, backup_power_platform: true, planner: false,
-      backup_exchange_recoverable: false,
-    });
+    setFormBackups(defaultFormBackups(effectiveServiceType));
     setShowEmailSettings(false);
     setFormFrequency('1x');
     setFormDays(new Set(['M', 'T', 'W', 'R', 'F', 'S', 'U']));
@@ -212,6 +308,7 @@ export default function Settings() {
 
       const data: Partial<SlaPolicy> = {
         tenantId,
+        serviceType: effectiveServiceType,
         name: formName.trim(),
         frequency,
         backupDays,
@@ -231,6 +328,9 @@ export default function Settings() {
         tasks: formBackups.tasks,
         groupMailbox: formBackups.group_mailbox,
         planner: formBackups.planner,
+        backupAzureVm: formBackups.backup_azure_vm,
+        backupAzureSql: formBackups.backup_azure_sql,
+        backupAzurePostgresql: formBackups.backup_azure_postgresql,
         retentionType: formRetention,
         enabled: true,
         isDefault: false,
@@ -297,8 +397,14 @@ export default function Settings() {
         ))}
       </div>
 
+      {!tenantId && (
+        <div className="empty-state">
+          <p>Open Settings from a specific datasource to manage SLA, tenant info, and admin consent.</p>
+        </div>
+      )}
+
       {/* SLA Tab Content */}
-      {activeTab === 'sla' && (
+      {tenantId && activeTab === 'sla' && (
         <div className="sla-tab">
           <div className="sla-header">
             <div />
@@ -322,35 +428,20 @@ export default function Settings() {
                     <div className="sla-name">{policy.name}</div>
                     <div className="sla-backups">
                       <div className="sla-backup-col">
-                        {[
-                          { key: 'backupExchange', label: 'Emails' },
-                          { key: 'backupTeamsChats', label: 'Chats' },
-                          { key: 'contacts', label: 'Contacts' },
-                          { key: 'calendars', label: 'Calendars' },
-                          { key: 'backupOneDrive', label: 'Drive & OneNote' },
-                          { key: 'tasks', label: 'Tasks' },
-                          { key: 'backupCopilot', label: 'Copilot' },
-                        ].map(item => (
-                          <label key={item.key} className="sla-check">
-                            <span className={`sla-check-box ${policy[item.key as keyof typeof policy] ? 'checked' : ''}`}>
-                              {policy[item.key as keyof typeof policy] ? '✓' : ''}
+                        {backupItemsLeft.map(item => (
+                          <label key={item.policyKey} className="sla-check">
+                            <span className={`sla-check-box ${policy[item.policyKey as keyof typeof policy] ? 'checked' : ''}`}>
+                              {policy[item.policyKey as keyof typeof policy] ? '✓' : ''}
                             </span>
                             {item.label}
                           </label>
                         ))}
                       </div>
                       <div className="sla-backup-col">
-                        {[
-                          { key: 'backupSharepoint', label: 'SharePoint' },
-                          { key: 'backupTeams', label: 'Team Channels' },
-                          { key: 'groupMailbox', label: 'Group mailbox' },
-                          { key: 'backupEntraId', label: 'Entra ID' },
-                          { key: 'backupPowerPlatform', label: 'Power Platform' },
-                          { key: 'planner', label: 'Planner' },
-                        ].map(item => (
-                          <label key={item.key} className="sla-check">
-                            <span className={`sla-check-box ${policy[item.key as keyof typeof policy] ? 'checked' : ''}`}>
-                              {policy[item.key as keyof typeof policy] ? '✓' : ''}
+                        {backupItemsRight.map(item => (
+                          <label key={item.policyKey} className="sla-check">
+                            <span className={`sla-check-box ${policy[item.policyKey as keyof typeof policy] ? 'checked' : ''}`}>
+                              {policy[item.policyKey as keyof typeof policy] ? '✓' : ''}
                             </span>
                             {item.label}
                           </label>
@@ -383,7 +474,7 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab === 'info' && (
+      {tenantId && activeTab === 'info' && (
         <div className="info-tab">
           {infoLoading ? (
             <div className="empty-state"><p>Loading tenant info...</p></div>
@@ -431,7 +522,7 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab === 'admin-consent' && (
+      {tenantId && activeTab === 'admin-consent' && (
         <div className="admin-consent-tab">
           {adminConsentLoading ? (
             <div className="empty-state"><p>Loading admin consent status...</p></div>
@@ -471,7 +562,7 @@ export default function Settings() {
                   onClick={handleGrantM365Consent}
                   disabled={grantingConsent === 'm365'}
                 >
-                  {grantingConsent === 'm365' ? 'Redirecting...' : 'Regrant'}
+                  {grantingConsent === 'm365' ? 'Redirecting...' : m365Consent?.isActive ? 'Regrant' : 'Connect'}
                 </button>
               </div>
 
@@ -506,8 +597,98 @@ export default function Settings() {
                   onClick={handleGrantAzureConsent}
                   disabled={grantingConsent === 'azure'}
                 >
-                  {grantingConsent === 'azure' ? 'Redirecting...' : 'Regrant'}
+                  {grantingConsent === 'azure' ? 'Redirecting...' : azureConsent?.isActive ? 'Regrant' : 'Connect'}
                 </button>
+              </div>
+
+              {/* Power BI Readiness Card */}
+              <div className="power-bi-readiness-card">
+                <div className="power-bi-readiness-header">
+                  <div>
+                    <div className="power-bi-readiness-title">Power BI backup readiness</div>
+                    <div className="power-bi-readiness-subtitle">
+                      Connect a Power BI service user and we will reuse that connection for discovery and backup, with app-only as fallback.
+                    </div>
+                  </div>
+                  <div className="power-bi-header-actions">
+                    {powerBiReadiness && (
+                      <span className={`power-bi-status-badge ${powerBiStatusClass(powerBiReadiness.status)}`}>
+                        {powerBiStatusLabel(powerBiReadiness.status)}
+                      </span>
+                    )}
+                    <button
+                      className="admin-consent-regrant-btn"
+                      onClick={handleConnectPowerBI}
+                      disabled={grantingConsent === 'powerbi'}
+                    >
+                      {grantingConsent === 'powerbi'
+                        ? 'Redirecting...'
+                        : powerBiReadiness?.authMode === 'DELEGATED_SERVICE_USER'
+                          ? 'Reconnect service user'
+                          : 'Connect service user'}
+                    </button>
+                  </div>
+                </div>
+
+                {powerBiReadiness ? (
+                  <>
+                    <p className="power-bi-summary">{powerBiReadiness.summary}</p>
+
+                    <div className="power-bi-metrics">
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Auth mode</span>
+                        <span className="power-bi-metric-value">
+                          {powerBiReadiness.authMode === 'APP_ONLY' ? 'App-only fallback' : 'Delegated service user'}
+                        </span>
+                      </div>
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Accessible workspaces</span>
+                        <span className="power-bi-metric-value">{powerBiReadiness.accessibleWorkspaceCount}</span>
+                      </div>
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Discovered in TMVault</span>
+                        <span className="power-bi-metric-value">{powerBiReadiness.discoveredWorkspaceCount}</span>
+                      </div>
+                      <div className="power-bi-metric">
+                        <span className="power-bi-metric-label">Credential source</span>
+                        <span className="power-bi-metric-value">
+                          {powerBiReadiness.usesDedicatedApp ? 'Dedicated Power BI app' : 'Primary Microsoft app'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="power-bi-checklist">
+                      {powerBiReadiness.checks.map((check) => (
+                        <div key={check.key} className={`power-bi-check ${powerBiStatusClass(check.status)}`}>
+                          <div className="power-bi-check-header">
+                            <span className="power-bi-check-title">{check.label}</span>
+                            <span className={`power-bi-check-state ${powerBiStatusClass(check.status)}`}>
+                              {powerBiStatusLabel(check.status)}
+                            </span>
+                          </div>
+                          <div className="power-bi-check-detail">{check.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="power-bi-next-steps">
+                      <div className="power-bi-next-steps-title">Recommended next steps</div>
+                      {powerBiReadiness.recommendedActions.length > 0 ? (
+                        <ol className="power-bi-next-steps-list">
+                          {powerBiReadiness.recommendedActions.map((action, index) => (
+                            <li key={`${index}-${action}`}>{action}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="power-bi-next-steps-empty">Nothing else is needed right now. You can run discovery and assign SLA protection.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="power-bi-next-steps-empty">
+                    Power BI readiness could not be loaded yet. Re-open this tab after tenant setup completes.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -535,11 +716,11 @@ export default function Settings() {
               <h4 className="sla-modal-heading">Data to back up:</h4>
               <div className="sla-modal-backup-grid">
                 <div className="sla-modal-backup-col">
-                  {BACKUP_ITEMS_LEFT.map(item => (
-                    <div key={`bl-${item.key}`} className="sla-modal-check-row">
-                      <label className="sla-modal-check" onClick={() => toggleBackup(item.key)}>
-                        <span className={`sla-modal-check-box ${formBackups[item.key] ? 'checked' : ''}`}>
-                          {formBackups[item.key] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
+                  {backupItemsLeft.map(item => (
+                    <div key={`bl-${item.formKey}`} className="sla-modal-check-row">
+                      <label className="sla-modal-check" onClick={() => toggleBackup(item.formKey)}>
+                        <span className={`sla-modal-check-box ${formBackups[item.formKey] ? 'checked' : ''}`}>
+                          {formBackups[item.formKey] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
                         </span>
                         <span>{item.label}</span>
                       </label>
@@ -566,10 +747,10 @@ export default function Settings() {
                   ))}
                 </div>
                 <div className="sla-modal-backup-col">
-                  {BACKUP_ITEMS_RIGHT.map(item => (
-                    <label key={`br-${item.key}`} className="sla-modal-check" onClick={() => toggleBackup(item.key)}>
-                      <span className={`sla-modal-check-box ${formBackups[item.key] ? 'checked' : ''}`}>
-                        {formBackups[item.key] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
+                  {backupItemsRight.map(item => (
+                    <label key={`br-${item.formKey}`} className="sla-modal-check" onClick={() => toggleBackup(item.formKey)}>
+                      <span className={`sla-modal-check-box ${formBackups[item.formKey] ? 'checked' : ''}`}>
+                        {formBackups[item.formKey] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
                       </span>
                       <span>{item.label}</span>
                     </label>

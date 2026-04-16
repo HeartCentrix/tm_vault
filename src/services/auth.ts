@@ -31,6 +31,14 @@ export interface AdminConsentStatus {
   scope?: string;
 }
 
+type RawAdminConsentStatus = AdminConsentStatus & {
+  consent_type?: string;
+  granted_by?: string;
+  consented_at?: string;
+  last_used_at?: string;
+  is_active?: boolean;
+};
+
 export interface AdminConsentResponse {
   message: string;
   tenantId: string;
@@ -38,7 +46,39 @@ export interface AdminConsentResponse {
   consentedAt: string;
 }
 
+export interface PowerBIReadinessCheck {
+  key: string;
+  label: string;
+  status: 'ready' | 'warning' | 'action_required';
+  detail: string;
+}
+
+export interface PowerBIReadiness {
+  tenantId: string;
+  status: 'ready' | 'warning' | 'action_required';
+  summary: string;
+  authMode: string;
+  usesDedicatedApp: boolean;
+  accessibleWorkspaceCount: number;
+  discoveredWorkspaceCount: number;
+  checks: PowerBIReadinessCheck[];
+  recommendedActions: string[];
+}
+
 class AuthService {
+  private normalizeAdminConsentStatus(data: RawAdminConsentStatus | null): AdminConsentStatus | null {
+    if (!data) return null;
+    return {
+      id: data.id,
+      consentType: data.consentType ?? data.consent_type ?? '',
+      grantedBy: data.grantedBy ?? data.granted_by,
+      consentedAt: data.consentedAt ?? data.consented_at,
+      lastUsedAt: data.lastUsedAt ?? data.last_used_at,
+      isActive: data.isActive ?? data.is_active ?? false,
+      scope: data.scope,
+    };
+  }
+
   async getMicrosoftLoginUrl(): Promise<MicrosoftAuthUrlResponse> {
     const res = await fetch(API.AUTH.LOGIN_URL);
     if (!res.ok) throw new Error(`Failed to get login URL: ${res.statusText}`);
@@ -54,6 +94,16 @@ class AuthService {
   async getAzureDatasourceUrl(): Promise<MicrosoftAuthUrlResponse> {
     const res = await fetch(API.AUTH.AZURE_DATASOURCE_URL);
     if (!res.ok) throw new Error(`Failed to get Azure datasource URL: ${res.statusText}`);
+    return res.json();
+  }
+
+  async getPowerBIConnectUrl(tenantId: string): Promise<MicrosoftAuthUrlResponse> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.POWER_BI_URL(tenantId), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Failed to get Power BI connect URL: ${res.statusText}`);
     return res.json();
   }
 
@@ -109,6 +159,21 @@ class AuthService {
       body: JSON.stringify({ code, state }),
     });
     if (!res.ok) throw new Error(`Azure datasource callback failed: ${res.statusText}`);
+    return res.json();
+  }
+
+  async handlePowerBICallback(tenantId: string, code: string, state?: string): Promise<any> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.AUTH.POWER_BI_CALLBACK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ tenantId, code, state }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Power BI callback failed: ${res.status} ${errText}`);
+    }
     return res.json();
   }
 
@@ -251,7 +316,7 @@ class AuthService {
     });
     if (!res.ok) throw new Error(`Failed to get M365 admin consent status: ${res.statusText}`);
     const data = await res.json();
-    return data;
+    return this.normalizeAdminConsentStatus(data);
   }
 
   async getAzureAdminConsentStatus(): Promise<AdminConsentStatus | null> {
@@ -262,7 +327,17 @@ class AuthService {
     });
     if (!res.ok) throw new Error(`Failed to get Azure admin consent status: ${res.statusText}`);
     const data = await res.json();
-    return data;
+    return this.normalizeAdminConsentStatus(data);
+  }
+
+  async getPowerBIReadiness(tenantId: string): Promise<PowerBIReadiness> {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(API.ADMIN_CONSENT.POWER_BI_READINESS(tenantId), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Failed to get Power BI readiness: ${res.statusText}`);
+    return res.json();
   }
 }
 

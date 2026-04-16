@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, getAllProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
@@ -26,8 +26,6 @@ const azureTabs: { key: ResourceTab; label: string }[] = [
   { key: 'virtual-machines', label: 'Virtual machines' },
   { key: 'sql-databases', label: 'Azure SQL databases' },
   { key: 'postgresql-servers', label: 'Azure PostgreSQL servers' },
-  { key: 'resource-groups', label: 'Resource groups' },
-  { key: 'dynamic-groups', label: 'Dynamic groups' },
 ];
 
 function getInitials(name: string): string {
@@ -52,6 +50,61 @@ function getSlaDescription(p: SlaPolicy): string {
     return `${freq} at ${h}:00 ${ampm}`;
   }
   return freq;
+}
+
+type PolicyCoverageRule = {
+  workloadLabel: string;
+  covers: (policy: SlaPolicy) => boolean;
+};
+
+const POLICY_COVERAGE_RULES: Record<string, PolicyCoverageRule> = {
+  office_user: { workloadLabel: 'Exchange mailbox backups', covers: (policy) => !!policy.backupExchange },
+  shared_mailbox: { workloadLabel: 'Exchange mailbox backups', covers: (policy) => !!policy.backupExchange },
+  room_mailbox: { workloadLabel: 'Exchange mailbox backups', covers: (policy) => !!policy.backupExchange },
+  onedrive: { workloadLabel: 'OneDrive backups', covers: (policy) => !!policy.backupOneDrive },
+  onenote: { workloadLabel: 'OneDrive and OneNote backups', covers: (policy) => !!policy.backupOneDrive },
+  sharepoint_site: { workloadLabel: 'SharePoint backups', covers: (policy) => !!policy.backupSharepoint },
+  teams_channel: { workloadLabel: 'Teams channel backups', covers: (policy) => !!policy.backupTeams },
+  teams_chat: { workloadLabel: 'Teams chat backups', covers: (policy) => !!policy.backupTeamsChats },
+  entra_user: {
+    workloadLabel: 'Entra user, contacts, or calendar backups',
+    covers: (policy) => !!(policy.backupEntraId || policy.contacts || policy.calendars),
+  },
+  entra_group: {
+    workloadLabel: 'Entra group or group mailbox backups',
+    covers: (policy) => !!(policy.backupEntraId || policy.groupMailbox),
+  },
+  dynamic_group: {
+    workloadLabel: 'Entra group or group mailbox backups',
+    covers: (policy) => !!(policy.backupEntraId || policy.groupMailbox),
+  },
+  entra_app: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_device: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  power_bi: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
+  power_apps: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
+  power_automate: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
+  power_dlp: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
+  copilot: { workloadLabel: 'Copilot backups', covers: (policy) => !!policy.backupCopilot },
+  planner: { workloadLabel: 'Planner backups', covers: (policy) => !!policy.planner },
+  todo: { workloadLabel: 'Tasks backups', covers: (policy) => !!policy.tasks },
+  azure_vm: { workloadLabel: 'Azure virtual machine backups', covers: (policy) => !!policy.backupAzureVm },
+  azure_sql: { workloadLabel: 'Azure SQL database backups', covers: (policy) => !!policy.backupAzureSql },
+  azure_postgresql: { workloadLabel: 'Azure PostgreSQL backups', covers: (policy) => !!policy.backupAzurePostgresql },
+};
+
+function getPolicyCoverageWarning(resource: ResourceItem, policy?: SlaPolicy): string | null {
+  if (!policy) return null;
+
+  const rule = POLICY_COVERAGE_RULES[resource.kind];
+  if (!rule) {
+    return `Scheduled backups may skip this resource because its workload is not mapped to an SLA coverage flag yet.`;
+  }
+
+  if (rule.covers(policy)) {
+    return null;
+  }
+
+  return `Scheduled backups will skip this resource because '${policy.name}' does not include ${rule.workloadLabel}.`;
 }
 
 function SlaCell({ resource, policies, onChange, onSettings }: {
@@ -279,14 +332,14 @@ export default function Protection() {
 
   useEffect(() => {
     if (!tenantId) return;
-    getSlaPolicies(tenantId).then(setPolicies).catch(console.error);
-  }, [tenantId]);
+    getSlaPolicies(tenantId, serviceType === 'azure' ? 'azure' : 'm365').then(setPolicies).catch(console.error);
+  }, [tenantId, serviceType]);
 
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-
+    
     // If there's a search query, fetch all resources and filter client-side
     if (searchQuery) {
       getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
@@ -342,7 +395,7 @@ export default function Protection() {
   // Apply client-side search filtering
   const filteredResources = useMemo(() => {
     if (!searchQuery.trim()) return resources;
-
+    
     const query = searchQuery.toLowerCase().trim();
     return resources.filter(resource => {
       // Search in name
@@ -532,14 +585,14 @@ export default function Protection() {
       setRefreshing(true);
       // Trigger discovery
       await triggerDiscovery(tenantId);
-
+      
       // Wait for discovery to complete by polling
       const pollDiscovery = async (attempts = 0) => {
         if (attempts >= 100) { // Timeout after 5 minutes
           setRefreshing(false);
           return;
         }
-
+        
         try {
           // Fetch resources to check if discovery completed
           const data = await getResources(
@@ -569,7 +622,7 @@ export default function Protection() {
           setTimeout(() => pollDiscovery(attempts + 1), 3000);
         }
       };
-
+      
       // Start polling after a short delay to allow discovery to run
       setTimeout(() => pollDiscovery(), 3000);
     } catch (err) {
@@ -710,9 +763,9 @@ export default function Protection() {
                 </div>
               )}
             </div>
-            <button
-              className="action-btn icon-only"
-              title="Refresh"
+            <button 
+              className="action-btn icon-only" 
+              title="Refresh" 
               disabled={refreshing}
               onClick={handleRefresh}
               style={refreshing ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
@@ -746,7 +799,16 @@ export default function Protection() {
           <tbody>
             {loading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>Loading...</td></tr>}
             {!loading && displayedResources.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>No resources found.</td></tr>}
-            {!loading && displayedResources.map(resource => (
+            {!loading && displayedResources.map(resource => {
+              const selectedPolicy = policies.find(p => p.id === resource.protections?.[0]?.policy_id);
+              const coverageWarning = getPolicyCoverageWarning(resource, selectedPolicy);
+              const backupButtonTitle = !resource.protections?.[0]?.policy_id
+                ? 'Assign an SLA policy before triggering backup'
+                : coverageWarning
+                  ? `${coverageWarning} Manual backup still runs.`
+                  : '';
+
+              return (
               <tr key={resource.id}>
                 <td className="checkbox-cell">
                   <label className="checkbox-label">
@@ -767,6 +829,16 @@ export default function Protection() {
                 </td>
                 <td className="sla-cell">
                   <SlaCell resource={resource} policies={policies} onChange={handleSlaChange} onSettings={() => navigate(`/tenants/${tenantId}/${serviceType}/protection/settings`)} />
+                  {coverageWarning && (
+                    <div className="sla-coverage-warning" title={coverageWarning}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10.29 3.86L1.82 18A2 2 0 0 0 3.53 21h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      <span>{coverageWarning}</span>
+                    </div>
+                  )}
                 </td>
                 <td className="size-cell">
                   {(() => {
@@ -777,7 +849,7 @@ export default function Protection() {
                     return (
                       <>
                         <div className="size-main">{formatSize(displaySize)}</div>
-                        <div className="size-sub">                          
+                        <div className="size-sub">
                           {backingUp.has(resource.id) && processedBytes > 0 && (
                             <span style={{ color: '#3b82f6' }}>+{formatSize(processedBytes)}</span>
                           )}
@@ -838,7 +910,7 @@ export default function Protection() {
                     className="action-btn-sm"
                     onClick={() => handleBackupNow(resource.id)}
                     disabled={backingUp.has(resource.id) || !resource.protections?.[0]?.policy_id}
-                    title={!resource.protections?.[0]?.policy_id ? 'Assign an SLA policy before triggering backup' : ''}
+                    title={backupButtonTitle}
                   >
                     {backingUp.has(resource.id) ? 'Backing up...' : 'Backup now'}
                   </button>
@@ -860,7 +932,7 @@ export default function Protection() {
                   </button> */}
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>

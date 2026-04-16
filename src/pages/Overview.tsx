@@ -24,13 +24,16 @@ interface BackupSizeResponse {
 
 interface ProtectionStatus {
   percentage: number;
-  users: { protectedCount: number; total: number };
-  sharedMailboxes: { protectedCount: number; total: number };
-  rooms: { protectedCount: number; total: number };
-  sharepointSites: { protectedCount: number; total: number };
-  groupsAndTeams: { protectedCount: number; total: number };
-  entraId: { protectedCount: number; total: number };
-  powerPlatform: { protectedCount: number; total: number };
+  users?: { protectedCount: number; total: number };
+  sharedMailboxes?: { protectedCount: number; total: number };
+  rooms?: { protectedCount: number; total: number };
+  sharepointSites?: { protectedCount: number; total: number };
+  groupsAndTeams?: { protectedCount: number; total: number };
+  entraId?: { protectedCount: number; total: number };
+  powerPlatform?: { protectedCount: number; total: number };
+  virtualMachines?: { protectedCount: number; total: number };
+  sqlDatabases?: { protectedCount: number; total: number };
+  postgresqlDatabases?: { protectedCount: number; total: number };
 }
 
 interface Status24hResponse {
@@ -71,15 +74,10 @@ const CHART_COLORS = {
 };
 
 function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: number; totalCount: number; percentage: number } {
-  const allCategories = [
-    data.users,
-    data.sharedMailboxes,
-    data.rooms,
-    data.sharepointSites,
-    data.groupsAndTeams,
-    data.entraId,
-    data.powerPlatform,
-  ];
+  const allCategories = Object.values(data).filter(
+    (value): value is { protectedCount: number; total: number } =>
+      typeof value === 'object' && value !== null && 'protectedCount' in value && 'total' in value
+  );
 
   const totalCount = allCategories.reduce((sum, cat) => sum + cat.total, 0);
   const protectedCount = allCategories.reduce((sum, cat) => sum + cat.protectedCount, 0);
@@ -184,10 +182,14 @@ function BackupSizeTooltip({
   );
 }
 
-function appendTenantId(url: string, tenantId?: string): string {
-  if (!tenantId) return url;
+function appendDashboardFilters(url: string, tenantId?: string, serviceType?: string): string {
+  const queryParams = new URLSearchParams();
+  if (tenantId) queryParams.append('tenantId', tenantId);
+  if (serviceType === 'm365' || serviceType === 'azure') queryParams.append('serviceType', serviceType);
+  const query = queryParams.toString();
+  if (!query) return url;
   const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}tenantId=${encodeURIComponent(tenantId)}`;
+  return `${url}${separator}${query}`;
 }
 
 export default function Overview() {
@@ -205,11 +207,16 @@ export default function Overview() {
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     Promise.all([
-      fetch(appendTenantId(API.DASHBOARD.BACKUP_SIZE, tenantId), { headers }).then(r => r.json()),
-      fetch(appendTenantId(API.DASHBOARD.PROTECTION, tenantId), { headers }).then(r => r.json()),
-      fetch(appendTenantId(API.DASHBOARD.STATUS_24H, tenantId), { headers }).then(r => r.json()),
-      fetch(appendTenantId(API.DASHBOARD.STATUS_7D, tenantId), { headers }).then(r => r.json()),
-      getActivities({ tenantId, page: 1, size: 10 }),
+      fetch(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), { headers }).then(r => r.json()),
+      fetch(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), { headers }).then(r => r.json()),
+      fetch(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), { headers }).then(r => r.json()),
+      fetch(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), { headers }).then(r => r.json()),
+      getActivities({
+        tenantId,
+        serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
+        page: 1,
+        size: 10,
+      }),
     ])
       .then(([backupData, protectionData, data24h, data7d, activityData]) => {
         setBackupSize(backupData);
@@ -220,7 +227,7 @@ export default function Overview() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, [tenantId, serviceType]);
 
   const hasFailures24h = (status24h?.failures || 0) > 0;
 
@@ -258,15 +265,23 @@ export default function Overview() {
       ? { label: 'Warnings', className: 'warning' }
       : { label: 'Success', className: 'success' };
 
-  const protectionRows = protection ? [
-    { label: 'Users', value: protection.users },
-    { label: 'Shared mailboxes', value: protection.sharedMailboxes },
-    { label: 'Rooms', value: protection.rooms },
-    { label: 'SharePoint sites', value: protection.sharepointSites },
-    { label: 'Groups & Teams', value: protection.groupsAndTeams },
-    { label: 'Entra ID', value: protection.entraId },
-    { label: 'Power Platform', value: protection.powerPlatform },
-  ].filter((item) => item.value.total > 0) : [];
+  const protectionRows = protection
+    ? (serviceType === 'azure'
+      ? [
+          { label: 'VM', value: protection.virtualMachines },
+          { label: 'SQL DB', value: protection.sqlDatabases },
+          { label: 'PostgreSQL DB', value: protection.postgresqlDatabases },
+        ]
+      : [
+          { label: 'Users', value: protection.users },
+          { label: 'Shared mailboxes', value: protection.sharedMailboxes },
+          { label: 'Rooms', value: protection.rooms },
+          { label: 'SharePoint sites', value: protection.sharepointSites },
+          { label: 'Groups & Teams', value: protection.groupsAndTeams },
+          { label: 'Entra ID', value: protection.entraId },
+          { label: 'Power Platform', value: protection.powerPlatform },
+        ]).filter((item): item is { label: string; value: { protectedCount: number; total: number } } => !!item.value && item.value.total > 0)
+    : [];
 
   const handleBackupAll = async () => {
     if (!tenantId || (serviceType !== 'm365' && serviceType !== 'azure')) return;
@@ -274,7 +289,12 @@ export default function Overview() {
     setTriggeringBackupAll(true);
     try {
       await triggerDatasourceBackup(tenantId, serviceType, true);
-      const refreshedActivities = await getActivities({ tenantId, page: 1, size: 10 });
+      const refreshedActivities = await getActivities({
+        tenantId,
+        serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
+        page: 1,
+        size: 10,
+      });
       setActivities(refreshedActivities.items || []);
     } catch (error) {
       console.error('Failed to trigger datasource backup:', error);
@@ -331,7 +351,7 @@ export default function Overview() {
                   onClick={handleBackupAll}
                   disabled={!tenantId || !serviceType || triggeringBackupAll}
                 >
-                  {triggeringBackupAll ? 'Starting backup...' : 'Backup all now'}
+                  {triggeringBackupAll ? 'Starting backup...' : `Backup all ${serviceType === 'azure' ? 'Azure' : 'M365'} now`}
                 </button>
               </div>
             )}
@@ -514,6 +534,7 @@ export default function Overview() {
                     <span className={`activity-status ${
                       activity.status === 'Done' ? 'done' :
                       activity.status === 'In Progress' ? 'in-progress' :
+                      activity.status === 'Warning' ? 'warning' :
                       activity.status === 'Canceled' ? 'failed' : 'failed'
                     }`}>
                       {activity.status === 'In Progress' && <span className="spinner-small" />}

@@ -3,6 +3,7 @@ import { API } from '../config/api';
 export interface SlaPolicy {
   id: string;
   tenantId: string;
+  serviceType: 'm365' | 'azure';
   name: string;
   frequency: string;
   backupDays?: string[];
@@ -22,6 +23,9 @@ export interface SlaPolicy {
   tasks?: boolean;
   groupMailbox?: boolean;
   planner?: boolean;
+  backupAzureVm?: boolean;
+  backupAzureSql?: boolean;
+  backupAzurePostgresql?: boolean;
   retentionType?: string;
   retentionDays?: number;
   enabled?: boolean;
@@ -29,9 +33,12 @@ export interface SlaPolicy {
   createdAt?: string;
 }
 
-export async function getSlaPolicies(tenantId: string): Promise<SlaPolicy[]> {
+export async function getSlaPolicies(tenantId: string, serviceType?: 'm365' | 'azure'): Promise<SlaPolicy[]> {
   const token = localStorage.getItem('access_token');
-  const url = tenantId ? `${API.POLICIES.LIST}?tenantId=${tenantId}` : API.POLICIES.LIST;
+  const queryParams = new URLSearchParams();
+  if (tenantId) queryParams.set('tenantId', tenantId);
+  if (serviceType) queryParams.set('serviceType', serviceType);
+  const url = queryParams.size ? `${API.POLICIES.LIST}?${queryParams.toString()}` : API.POLICIES.LIST;
   const res = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

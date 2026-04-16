@@ -55,16 +55,14 @@ const M365_TAB_TYPE_MAP: Record<string, string[]> = {
 // Azure resource types
 const AZURE_TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
-  'virtual-machines': ['VIRTUAL_MACHINE'],
-  'sql-databases': ['AZURE_SQL_DATABASE'],
-  'postgresql-servers': ['AZURE_POSTGRESQL_SERVER'],
-  'resource-groups': ['RESOURCE_GROUP'],
-  'dynamic-groups': ['DYNAMIC_GROUP'],
+  'virtual-machines': ['AZURE_VM'],
+  'sql-databases': ['AZURE_SQL_DB'],
+  'postgresql-servers': ['AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE'],
 };
 
 // Full resource type lists for filtering "all" tab by service type
 const M365_ALL_TYPES = ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'SHAREPOINT_SITE', 'TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE', 'POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'];
-const AZURE_ALL_TYPES = ['AZURE_VM', 'AZURE_SQL_DB', 'AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE', 'RESOURCE_GROUP'];
+const AZURE_ALL_TYPES = ['AZURE_VM', 'AZURE_SQL_DB', 'AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE'];
 
 export function getTabTypeMap(serviceType?: string): Record<string, string[]> {
   if (serviceType === 'azure') {
@@ -153,6 +151,28 @@ export async function getResources(
 
   const data = await res.json();
   return data;
+}
+
+export async function getResourcesByType(
+  tenantId: string,
+  resourceType: string,
+  page: number = 1,
+  size: number = 500,
+  searchQuery?: string,
+  resourceFilter?: string
+): Promise<ResourceListResponse> {
+  const token = localStorage.getItem('access_token');
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+  let url = `${API.RESOURCES.BY_TYPE}?type=${encodeURIComponent(resourceType)}&tenantId=${tenantId}&page=${page}&size=${size}`;
+  if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
+  if (resourceFilter === 'active') url += `&status=ACTIVE`;
+  if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`Failed to fetch ${resourceType} resources: ${res.statusText}`);
+
+  return res.json();
 }
 
 export async function assignPolicy(resourceId: string, policyId: string): Promise<void> {

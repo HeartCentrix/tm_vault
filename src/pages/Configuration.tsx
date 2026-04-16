@@ -23,6 +23,7 @@ export default function Configuration() {
   
   const [slackWebhooks, setSlackWebhooks] = useState<WebhookConfig[]>([]);
   const [teamsWebhooks, setTeamsWebhooks] = useState<WebhookConfig[]>([]);
+  const [googlechatWebhooks, setGooglechatWebhooks] = useState<WebhookConfig[]>([]);
 
   // Load configuration on mount
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function Configuration() {
       setEmailRecipients(config.email_recipients || []);
       setSlackWebhooks(config.slack_webhooks || []);
       setTeamsWebhooks(config.teams_webhooks || []);
+      setGooglechatWebhooks(config.googlechat_webhooks || []);
     } catch (error) {
       console.error('Failed to load configuration:', error);
       setMessage({ type: 'error', text: 'Failed to load configuration' });
@@ -79,6 +81,7 @@ export default function Configuration() {
         email_recipients: emailRecipients,
         slack_webhooks: slackWebhooks,
         teams_webhooks: teamsWebhooks,
+        googlechat_webhooks: googlechatWebhooks,
       });
 
       setMessage({ type: 'success', text: 'Configuration saved successfully!' });
@@ -103,36 +106,43 @@ export default function Configuration() {
   };
 
   // Webhook helpers
-  const addWebhook = (type: 'slack' | 'teams', url: string) => {
+  const addWebhook = (type: 'slack' | 'teams' | 'googlechat', url: string) => {
     const name = `Webhook ${getWebhooks(type).length + 1}`;
     const webhook: WebhookConfig = { name, url, enabled: true };
     
     if (type === 'slack') {
       setSlackWebhooks([...slackWebhooks, webhook]);
-    } else {
+    } else if (type === 'teams') {
       setTeamsWebhooks([...teamsWebhooks, webhook]);
+    } else {
+      setGooglechatWebhooks([...googlechatWebhooks, webhook]);
     }
   };
 
-  const removeWebhook = (type: 'slack' | 'teams', index: number) => {
+  const removeWebhook = (type: 'slack' | 'teams' | 'googlechat', index: number) => {
     if (type === 'slack') {
       setSlackWebhooks(slackWebhooks.filter((_, i) => i !== index));
-    } else {
+    } else if (type === 'teams') {
       setTeamsWebhooks(teamsWebhooks.filter((_, i) => i !== index));
+    } else {
+      setGooglechatWebhooks(googlechatWebhooks.filter((_, i) => i !== index));
     }
   };
 
-  const toggleWebhook = (type: 'slack' | 'teams', index: number) => {
+  const toggleWebhook = (type: 'slack' | 'teams' | 'googlechat', index: number) => {
     if (type === 'slack') {
       setSlackWebhooks(slackWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
-    } else {
+    } else if (type === 'teams') {
       setTeamsWebhooks(teamsWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
+    } else {
+      setGooglechatWebhooks(googlechatWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
     }
   };
 
-  const getWebhooks = (type: 'slack' | 'teams') => {
+  const getWebhooks = (type: 'slack' | 'teams' | 'googlechat') => {
     if (type === 'slack') return slackWebhooks;
-    return teamsWebhooks;
+    if (type === 'teams') return teamsWebhooks;
+    return googlechatWebhooks;
   };
 
   if (loading) {
@@ -319,6 +329,15 @@ export default function Configuration() {
               onAdd={(url) => addWebhook('teams', url)}
               onRemove={(index) => removeWebhook('teams', index)}
               onToggle={(index) => toggleWebhook('teams', index)}
+            />
+
+            {/* Google Chat Webhooks */}
+            <WebhookSection
+              title="Google Chat Webhooks"
+              webhooks={googlechatWebhooks}
+              onAdd={(url) => addWebhook('googlechat', url)}
+              onRemove={(index) => removeWebhook('googlechat', index)}
+              onToggle={(index) => toggleWebhook('googlechat', index)}
             />
           </>
         )}

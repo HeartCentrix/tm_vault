@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { getActivities, downloadActivityCSV, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -7,6 +8,7 @@ import './Activity.css';
 type ViewType = 'tasks' | 'audit' | 'risk';
 
 export default function Activity() {
+  const { tenantId: routeTenantId, serviceType: routeServiceType } = useParams<{ tenantId?: string; serviceType?: string }>();
   const viewTabKeys = ['tasks', 'audit', 'risk'] as const;
   const [viewType, setViewType] = usePersistentTab<ViewType>('/activity', 'tasks', viewTabKeys);
 
@@ -54,6 +56,27 @@ export default function Activity() {
   // Download state
   const [downloading, setDownloading] = useState(false);
 
+  const selectedSourceRaw = localStorage.getItem('selected_datasource');
+  let selectedSourceTenantId: string | undefined;
+  let selectedSourceType: 'm365' | 'azure' | undefined;
+  if (selectedSourceRaw) {
+    try {
+      const parsed = JSON.parse(selectedSourceRaw) as { id?: string; type?: string } | null;
+      selectedSourceTenantId = parsed?.id;
+      if (parsed?.type === 'm365' || parsed?.type === 'azure') {
+        selectedSourceType = parsed.type;
+      }
+    } catch {
+      // ignore malformed persisted value
+    }
+  }
+
+  const effectiveTenantId = routeTenantId || selectedSourceTenantId;
+  const effectiveServiceType: 'm365' | 'azure' | undefined =
+    routeServiceType === 'm365' || routeServiceType === 'azure'
+      ? routeServiceType
+      : selectedSourceType;
+
   useEffect(() => {
     fetchData();
   }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage]);
@@ -63,6 +86,8 @@ export default function Activity() {
     try {
       if (viewType === 'tasks') {
         const params: ActivityListParams = {
+          tenantId: effectiveTenantId,
+          serviceType: effectiveServiceType,
           startDate,
           endDate,
           operation: taskOperation || undefined,
@@ -103,7 +128,7 @@ export default function Activity() {
     } finally {
       setLoading(false);
     }
-  }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage, minRiskScore]);
+  }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage, minRiskScore, effectiveTenantId, effectiveServiceType]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -113,6 +138,8 @@ export default function Activity() {
       if (endDate) params.endDate = endDate;
 
       if (viewType === 'tasks') {
+        if (effectiveTenantId) params.tenantId = effectiveTenantId;
+        if (effectiveServiceType) params.serviceType = effectiveServiceType;
         if (taskOperation) params.operation = taskOperation;
         if (taskStatus) params.status = taskStatus;
         const blob = await downloadActivityCSV(params);
@@ -214,6 +241,17 @@ export default function Activity() {
             Failed
           </span>
         );
+      case 'Warning':
+        return (
+          <span className="status-badge status-warning">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M10.29 3.86L1.82 18A2 2 0 0 0 3.53 21h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            Warning
+          </span>
+        );
       case 'Canceled':
         return (
           <span className="status-badge status-canceled">
@@ -293,6 +331,7 @@ export default function Activity() {
                 <option value="">All Statuses</option>
                 <option value="Done">Done</option>
                 <option value="In Progress">In Progress</option>
+                <option value="Warning">Warning</option>
                 <option value="Failed">Failed</option>
                 <option value="Canceled">Canceled</option>
               </select>

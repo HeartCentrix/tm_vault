@@ -12,6 +12,17 @@ function formatContentTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     'USER_PROFILE': 'User Profile',
     'ONEDRIVE': 'OneDrive',
+    'POWER_BI_WORKSPACE': 'Workspace Metadata',
+    'POWER_BI_REPORT': 'Reports',
+    'POWER_BI_PAGINATED_REPORT': 'Paginated Reports',
+    'POWER_BI_SEMANTIC_MODEL': 'Semantic Models',
+    'POWER_BI_DATAFLOW': 'Dataflows',
+    'POWER_BI_DASHBOARD': 'Dashboards',
+    'POWER_BI_TILE': 'Dashboard Tiles',
+    'POWER_BI_DATASOURCE': 'Datasource Metadata',
+    'POWER_BI_REFRESH_SCHEDULE': 'Refresh Schedules',
+    'POWER_BI_PERMISSIONS': 'Permissions',
+    'POWER_BI_LINEAGE': 'Lineage',
   };
   
   if (labels[type]) return labels[type];
@@ -46,6 +57,7 @@ function getKindLabel(kind: string): string {
     sharepoint_site: 'SharePoint',
     teams_channel: 'Teams channel',
     teams_chat: 'Teams chat',
+    power_bi: 'Power BI workspace',
     azure_vm: 'Azure VM',
     azure_sql: 'Azure SQL',
     azure_postgresql: 'Azure PostgreSQL',
@@ -306,9 +318,6 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
 }) {
   const raw = item.metadata?.raw || {};
   const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
-  const email = raw.from?.user?.userIdentityType === 'aadUser'
-    ? (raw.from?.user?.id ? '' : '')
-    : '';
   const senderEmail = item.metadata?.senderEmail || raw.from?.user?.email || raw.from?.user?.userPrincipalName || '';
   const initials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
   const body = raw.body?.content || item.preview || item.body || '';
@@ -640,10 +649,10 @@ export default function Recovery() {
   const [itemTotalPages, setItemTotalPages] = useState(1);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
   // Toolbar
   const [searchQuery, setSearchQuery] = useState('');
-  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
   // Load resources with backups
   useEffect(() => {
@@ -792,7 +801,6 @@ export default function Recovery() {
 
   const handleItemSelect = async (item: RecoveryItem) => {
     setSelectedItem(item);
-    // If metadata.raw is empty, fetch content from blob
     const raw = item.metadata?.raw;
     if (!raw || Object.keys(raw).length === 0) {
       try {
@@ -817,9 +825,9 @@ export default function Recovery() {
     setDownloadError(null);
     try {
       const response = await RecoveryService.triggerExport({
-        restoreType: 'EXPORT_ZIP',
-        snapshotIds: [selectedSnapshotId],
-        itemIds: Array.from(selectedItems),
+      restoreType: 'EXPORT_ZIP',
+      snapshotIds: [selectedSnapshotId],
+      itemIds: Array.from(selectedItems),
       });
       const jobId = response.jobId;
       // Poll until complete (max 60s)
@@ -862,7 +870,7 @@ export default function Recovery() {
   // Filter resources by search
   const filteredResources = resources.filter(r => {
     const matchSearch = !resourceSearch ||
-      r.name.toLowerCase().includes(resourceSearch.toLowerCase()) ||
+        r.name.toLowerCase().includes(resourceSearch.toLowerCase()) ||
       (r.email && r.email.toLowerCase().includes(resourceSearch.toLowerCase()));
     const matchKind = !kindFilter || r.kind === kindFilter;
     return matchSearch && matchKind;
@@ -879,6 +887,16 @@ export default function Recovery() {
       </div>
     );
   }
+
+  const selectedRecoveryItems = recoveryItems.filter((item) => selectedItems.has(item.id));
+  const restoreItemName = selectedRecoveryItems.length === 1
+    ? selectedRecoveryItems[0].name
+    : selectedRecoveryItems.length > 1
+      ? `${selectedRecoveryItems.length} items`
+      : undefined;
+  const restoreItemType = selectedRecoveryItems.length > 0 && selectedRecoveryItems.every((item) => item.itemType === selectedRecoveryItems[0].itemType)
+    ? selectedRecoveryItems[0].itemType
+    : undefined;
 
   // No resources with backups
   if (resources.length === 0) {
@@ -904,7 +922,7 @@ export default function Recovery() {
 
   return (
     <>
-    <div className="recovery-page">
+      <div className="recovery-page">
       {/* Two-panel layout: Resource list + Recovery content */}
       <div className="recovery-layout">
         {/* Left Panel: Resource List */}
@@ -912,13 +930,13 @@ export default function Recovery() {
           <div className="resource-list-header">
             <h3>Backed up resources</h3>
             <div className="resource-search-row">
-              <input
-                type="text"
-                placeholder="Search resources..."
-                className="resource-search-input"
-                value={resourceSearch}
-                onChange={(e) => setResourceSearch(e.target.value)}
-              />
+            <input
+              type="text"
+              placeholder="Search resources..."
+              className="resource-search-input"
+              value={resourceSearch}
+              onChange={(e) => setResourceSearch(e.target.value)}
+            />
               <div className="kind-filter-wrap">
                 <button
                   className={`kind-filter-btn${kindFilter ? ' active' : ''}`}
@@ -956,21 +974,21 @@ export default function Recovery() {
                 <div key={kindLabel}>
                   <div className="resource-group-header">{kindLabel}</div>
                   {items.map(resource => (
-                    <button
-                      key={resource.id}
-                      className={`resource-list-item ${selectedResource?.id === resource.id ? 'selected' : ''}`}
-                      onClick={() => handleResourceSelect(resource)}
-                    >
-                      <div className="resource-avatar-sm">{getInitials(resource.name)}</div>
-                      <div className="resource-list-info">
-                        <div className="resource-list-name">{resource.name}</div>
-                        {resource.email && <div className="resource-list-email">{resource.email}</div>}
-                        <div className="resource-list-meta">
-                          <span>{resource.snapshot_count} snapshot{resource.snapshot_count !== 1 ? 's' : ''}</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+              <button
+                key={resource.id}
+                className={`resource-list-item ${selectedResource?.id === resource.id ? 'selected' : ''}`}
+                onClick={() => handleResourceSelect(resource)}
+              >
+                <div className="resource-avatar-sm">{getInitials(resource.name)}</div>
+                <div className="resource-list-info">
+                  <div className="resource-list-name">{resource.name}</div>
+                  {resource.email && <div className="resource-list-email">{resource.email}</div>}
+                  <div className="resource-list-meta">
+                    <span>{resource.snapshot_count} snapshot{resource.snapshot_count !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+              </button>
+            ))}
                 </div>
               ));
             })()}
@@ -1210,25 +1228,25 @@ export default function Recovery() {
                             onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
                           />
                         ) : (
-                          <div
-                            key={item.id}
-                            className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
+                        <div
+                          key={item.id}
+                          className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
                             onClick={() => handleItemSelect(item)}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedItems.has(item.id)}
-                              onChange={() => toggleSelectItem(item.id)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <div className="item-content">
-                              <div className="item-subject">{item.subject || item.name}</div>
-                              <div className="item-preview">{item.preview || ''}</div>
-                            </div>
-                            <div className="item-date">
-                              {item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-                            </div>
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.has(item.id)}
+                            onChange={() => toggleSelectItem(item.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="item-content">
+                            <div className="item-subject">{item.subject || item.name}</div>
+                            <div className="item-preview">{item.preview || ''}</div>
                           </div>
+                          <div className="item-date">
+                            {item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                          </div>
+                        </div>
                         );
                         });
                       })()
@@ -1245,23 +1263,23 @@ export default function Recovery() {
                     ? <ItemPreview item={selectedItem} />
                     : <div className="empty-preview"><p>Select an item to preview</p></div>
                   }
-                </div>
-                )}
+                          </div>
+                        )}
               </div>
             </>
           )}
         </div>
       </div>
-    </div>
-    <RestoreModal
-      isOpen={restoreModalOpen}
-      onClose={() => setRestoreModalOpen(false)}
-      snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
-      itemIds={Array.from(selectedItems)}
-      itemName={selectedItems.size === 1 ? (recoveryItems.find(i => selectedItems.has(i.id))?.name ?? undefined) : `${selectedItems.size} items`}
-      itemType={selectedResource?.kind}
-      snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
-    />
-  </>
+      </div>
+      <RestoreModal
+        isOpen={restoreModalOpen}
+        onClose={() => setRestoreModalOpen(false)}
+        itemIds={Array.from(selectedItems)}
+        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+        itemName={restoreItemName}
+        itemType={restoreItemType}
+        snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
+      />
+    </>
   );
 }
