@@ -45,6 +45,45 @@ export interface SnapshotItemListResponse {
   number: number;
 }
 
+export interface CalendarEvent {
+  id: string;
+  snapshotId: string;
+  externalId: string;
+  subject: string;
+  name: string;
+  start: string | null;
+  end: string | null;
+  timeZone: string;
+  isAllDay: boolean;
+  isCancelled: boolean;
+  location: string;
+  organizer: string | null;
+  organizerEmail: string;
+  attendees: any[];
+  body: string;
+  bodyContentType: string;
+  isOnlineMeeting: boolean;
+  recurrence: any;
+  recurrenceType: string | null;
+  graphType: string;
+  showAs: string;
+  importance: string;
+  sensitivity: string;
+  categories: string[];
+  eventType: string;
+  folderPath: string;
+  date: string;
+  metadata: { raw: any };
+}
+
+export interface CalendarEventListResponse {
+  content: CalendarEvent[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+}
+
 /** A resource that has at least one completed backup */
 export interface ResourceWithBackups {
   id: string;
@@ -172,6 +211,16 @@ export const SnapshotService = {
     if (!res.ok) throw new Error('Failed to fetch content types');
     const data = await res.json();
     return data.contentTypes || [];
+  },
+
+  /**
+   * Fetch all calendar events for a snapshot (reads from blob storage).
+   */
+  async listCalendarEvents(snapshotId: string, page = 1, size = 500): Promise<CalendarEventListResponse> {
+    const url = `${API.SNAPSHOTS.CALENDAR(snapshotId)}?page=${page}&size=${size}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch calendar events');
+    return res.json();
   },
 
   /**

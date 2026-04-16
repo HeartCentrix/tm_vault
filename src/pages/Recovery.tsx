@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups } from '../services/snapshot';
+import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
 import { API } from '../config/api';
@@ -382,6 +382,225 @@ export function ItemPreview({ item }: { item: any }) {
   );
 }
 
+// ==================== Calendar Month View ====================
+
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  'Cancelled':      '#dc2626',
+  'All Day':        '#7c3aed',
+  'Online Meeting': '#0284c7',
+  'Recurring':      '#0d9488',
+  'Recurring Series': '#0d9488',
+  'Exception':      '#d97706',
+  'Meeting':        '#16a34a',
+  'Appointment':    '#16a34a',
+};
+
+function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
+  snapshotId: string;
+  selectedItems: Set<string>;
+  onItemCheck: (itemId: string) => void;
+}) {
+  const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [viewDate, setViewDate] = useState<Date>(new Date());
+
+  // Load all events for this snapshot
+  useEffect(() => {
+    if (!snapshotId) return;
+    setLoading(true);
+    SnapshotService.listCalendarEvents(snapshotId, 1, 1000)
+      .then(data => {
+        setAllEvents(data.content);
+        // Auto-navigate to month with most events
+        if (data.content.length > 0) {
+          const first = data.content.find(e => e.start);
+          if (first?.start) setViewDate(new Date(first.start));
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [snapshotId]);
+
+  // Collect unique event types for filter sidebar
+  const eventTypes = Array.from(new Set(allEvents.map(e => e.eventType))).sort();
+
+  // Filter events
+  const visibleEvents = activeFilters.size === 0
+    ? allEvents
+    : allEvents.filter(e => activeFilters.has(e.eventType));
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthLabel = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  // Group visible events by day
+  const eventsByDay: Record<number, CalendarEvent[]> = {};
+  visibleEvents.forEach(ev => {
+    if (!ev.start) return;
+    const d = new Date(ev.start);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const day = d.getDate();
+      if (!eventsByDay[day]) eventsByDay[day] = [];
+      eventsByDay[day].push(ev);
+    }
+  });
+
+  const today = new Date();
+  const isToday = (day: number) =>
+    today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+
+  const toggleFilter = (type: string) => {
+    setActiveFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+  };
+
+  const totalVisible = visibleEvents.filter(e => {
+    if (!e.start) return false;
+    const d = new Date(e.start);
+    return d.getFullYear() === year && d.getMonth() === month;
+  }).length;
+
+  return (
+    <div className="cal-full-view">
+      {/* Left: Filter sidebar */}
+      <div className="cal-filter-sidebar">
+        <div className="cal-filter-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width:14,height:14}}>
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Calendars
+        </div>
+
+        <div className="cal-filter-section">
+          <button
+            className={`cal-filter-all${activeFilters.size === 0 ? ' active' : ''}`}
+            onClick={() => setActiveFilters(new Set())}
+          >
+            <span className="cal-filter-dot" style={{background:'#16a34a'}} />
+            All events
+            <span className="cal-filter-count">{allEvents.length}</span>
+          </button>
+        </div>
+
+        <div className="cal-filter-divider" />
+
+        <div className="cal-filter-section-label">Event Type</div>
+        <div className="cal-filter-section">
+          {eventTypes.map(type => {
+            const color = EVENT_TYPE_COLORS[type] || '#64748b';
+            const count = allEvents.filter(e => e.eventType === type).length;
+            const isActive = activeFilters.has(type);
+            return (
+              <button
+                key={type}
+                className={`cal-filter-item${isActive ? ' active' : ''}`}
+                onClick={() => toggleFilter(type)}
+              >
+                <span className="cal-filter-dot" style={{background: color}} />
+                <span className="cal-filter-label">{type}</span>
+                <span className="cal-filter-count">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {loading && (
+          <div className="cal-filter-loading">
+            <div className="spinner-sm" />
+          </div>
+        )}
+
+        <div className="cal-filter-divider" />
+        <div className="cal-filter-stat">
+          <span>{totalVisible} event{totalVisible !== 1 ? 's' : ''} this month</span>
+        </div>
+      </div>
+
+      {/* Right: Calendar grid */}
+      <div className="cal-month-view">
+        {/* Navigation bar */}
+        <div className="cal-month-nav">
+          <button className="cal-nav-today" onClick={() => setViewDate(new Date())}>Today</button>
+          <div className="cal-nav-arrows">
+            <button className="cal-nav-arrow" onClick={() => setViewDate(new Date(year, month - 1, 1))}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{width:14,height:14}}><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button className="cal-nav-arrow" onClick={() => setViewDate(new Date(year, month + 1, 1))}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{width:14,height:14}}><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <span className="cal-month-label">{monthLabel}</span>
+          <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
+            {activeFilters.size > 0 && (
+              <button className="cal-clear-filters" onClick={() => setActiveFilters(new Set())}>
+                Clear filters ({activeFilters.size})
+              </button>
+            )}
+            <div className="cal-view-toggle">
+              <button className="cal-view-btn active">Month</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Grid */}
+        <div className="cal-month-grid">
+          {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
+            <div key={d} className="cal-dow-header">{d}</div>
+          ))}
+          {cells.map((day, i) => (
+            <div key={i} className={`cal-day-cell${!day ? ' cal-day-empty' : ''}${day && isToday(day) ? ' cal-day-today' : ''}`}>
+              {day && (
+                <>
+                  <span className="cal-day-number">{day}</span>
+                  <div className="cal-day-events">
+                    {(eventsByDay[day] || []).slice(0, 4).map(ev => {
+                      const color = EVENT_TYPE_COLORS[ev.eventType] || '#16a34a';
+                      const isChecked = selectedItems.has(ev.id);
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`cal-event-chip${isChecked ? ' checked' : ''}`}
+                          style={{'--chip-color': color} as React.CSSProperties}
+                          title={ev.subject}
+                        >
+                          <input
+                            type="checkbox"
+                            className="cal-event-check"
+                            checked={isChecked}
+                            onChange={() => onItemCheck(ev.id)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <span className="cal-event-name">{ev.subject}</span>
+                        </div>
+                      );
+                    })}
+                    {(eventsByDay[day]?.length ?? 0) > 4 && (
+                      <div className="cal-event-overflow">+{eventsByDay[day].length - 4} more</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -410,11 +629,12 @@ export default function Recovery() {
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [foldersLoading, setFoldersLoading] = useState(false);
 
-  // Recovery items - loaded once, filtered locally
-  const [allRecoveryItems, setAllRecoveryItems] = useState<RecoveryItem[]>([]);
+  // Recovery items - server-side paginated
   const [recoveryItems, setRecoveryItems] = useState<RecoveryItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemCount, setItemCount] = useState(0);
+  const [itemPage, setItemPage] = useState(1);
+  const [itemTotalPages, setItemTotalPages] = useState(1);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
@@ -488,63 +708,32 @@ export default function Recovery() {
       .finally(() => setContentTypesLoading(false));
   }, [selectedSnapshotId]);
 
-  // Load ALL recovery items once when snapshot changes
+  // Load recovery items with server-side pagination
   useEffect(() => {
-    if (!selectedSnapshotId || !selectedResource) {
-      setAllRecoveryItems([]);
+    if (!selectedSnapshotId || !selectedResource || !activeContentType) {
       setRecoveryItems([]);
       setItemCount(0);
+      setItemTotalPages(1);
       return;
     }
 
-    // Don't load until a content type is selected — always use content-specific endpoints
-    if (!activeContentType) {
-      setAllRecoveryItems([]);
-      setItemCount(0);
-      return;
-    }
-
+    const pageSize = activeContentType === 'CALENDAR_EVENT' ? 500 : 50;
     setItemsLoading(true);
-    SnapshotService.listItems(selectedSnapshotId, 1, 500, activeContentType)
+    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType)
       .then((data) => {
-        setAllRecoveryItems(data.content);
+        setRecoveryItems(data.content);
+        setItemCount(data.totalElements);
+        setItemTotalPages(data.totalPages || 1);
       })
       .catch((error) => {
         console.error('Failed to load items:', error);
-        setAllRecoveryItems([]);
+        setRecoveryItems([]);
       })
       .finally(() => setItemsLoading(false));
-  }, [selectedSnapshotId, selectedResource, activeContentType]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, itemPage]);
 
-  // Filter items locally when content type, folder, or search changes
-  const filterItemsLocally = useCallback(() => {
-    let filtered = allRecoveryItems;
-
-    // Filter by folder
-    if (selectedFolder && selectedFolder !== 'all') {
-      filtered = filtered.filter(item => item.folderPath === selectedFolder);
-    }
-
-    // Filter by search query — check all rich fields
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(item =>
-        item.name?.toLowerCase().includes(q) ||
-        item.subject?.toLowerCase().includes(q) ||
-        item.from?.toLowerCase().includes(q) ||
-        item.to?.toLowerCase().includes(q) ||
-        item.sender?.toLowerCase().includes(q) ||
-        item.senderEmail?.toLowerCase().includes(q) ||
-        item.body?.toLowerCase().includes(q) ||
-        item.bodyPreview?.toLowerCase().includes(q) ||
-        item.location?.toLowerCase().includes(q) ||
-        item.organizer?.toLowerCase().includes(q)
-      );
-    }
-
-    setRecoveryItems(filtered);
-    setItemCount(filtered.length);
-  }, [allRecoveryItems, activeContentType, selectedFolder, searchQuery]);
+  // Reset item page when content type or snapshot changes
+  useEffect(() => { setItemPage(1); setSelectedItem(null); }, [selectedSnapshotId, activeContentType]);
 
   // Load folders for selected snapshot (all folders, not filtered by content type)
   useEffect(() => {
@@ -566,10 +755,7 @@ export default function Recovery() {
       .finally(() => setFoldersLoading(false));
   }, [selectedSnapshotId]);
 
-  // Filter items locally when filters change
-  useEffect(() => {
-    filterItemsLocally();
-  }, [filterItemsLocally]);
+
 
   const handleResourceSelect = (resource: ResourceWithBackups) => {
     if (selectedResource?.id === resource.id) {
@@ -911,7 +1097,22 @@ export default function Recovery() {
               </div>
 
               {/* Three Panel Layout */}
-              <div className="three-panel-layout">
+              <div className={`three-panel-layout${activeContentType === 'CALENDAR_EVENT' ? ' cal-layout-mode' : ''}`}>
+                {activeContentType === 'CALENDAR_EVENT' ? (
+                  /* Calendar Month View — replaces folder tree + item list */
+                  <div className="panel-calendar">
+                    {itemsLoading ? (
+                      <div className="loading-container"><div className="spinner" /><p>Loading events...</p></div>
+                    ) : (
+                      <CalendarMonthView
+                        snapshotId={selectedSnapshotId}
+                        selectedItems={selectedItems}
+                        onItemCheck={toggleSelectItem}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <>
                 {/* Left Panel: Folder Tree */}
                 <div className="panel-left">
                   <div className="folder-list">
@@ -947,7 +1148,28 @@ export default function Recovery() {
                 {/* Middle Panel: Item List */}
                 <div className="panel-middle">
                   <div className="item-list-header">
-                    <span className="item-count">Items: {itemCount}</span>
+                    <label className="select-all-wrap" title="Select all">
+                      <input
+                        type="checkbox"
+                        checked={recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id))}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
+                          else setSelectedItems(new Set());
+                        }}
+                      />
+                    </label>
+                    <span className="item-count">
+                      {selectedItems.size > 0 ? `${selectedItems.size} / ${itemCount} selected` : `Items: ${itemCount}`}
+                    </span>
+                    <div className="item-pagination">
+                      <button className="pagination-btn" disabled={itemPage <= 1} onClick={() => setItemPage(p => p - 1)}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polyline points="15 18 9 12 15 6" /></svg>
+                      </button>
+                      <span className="pagination-page">{itemPage} / {itemTotalPages}</span>
+                      <button className="pagination-btn" disabled={itemPage >= itemTotalPages} onClick={() => setItemPage(p => p + 1)}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polyline points="9 18 15 12 9 6" /></svg>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="item-list">
@@ -1010,10 +1232,11 @@ export default function Recovery() {
                     )}
                   </div>
                 </div>
+                  </>
+                )}
 
-                {/* Right Panel: Item Preview */}
-                {/* Right Panel: Item Preview — hidden for Teams chat (messages shown inline) */}
-                {!['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY'].includes(activeContentType) && (
+                {/* Right Panel: Item Preview — hidden for Teams chat and Calendar (shown inline / in month view) */}
+                {!['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY', 'CALENDAR_EVENT'].includes(activeContentType) && (
                 <div className="panel-right">
                   {selectedItem
                     ? <ItemPreview item={selectedItem} />
