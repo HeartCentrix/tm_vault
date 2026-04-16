@@ -10,7 +10,7 @@
   border-bottom: 1px solid #e2e8f0;
   overflow-x: auto;
   background: #fff;
-  padding: 0 8px;
+  padding: 8px 8px;
 }
 
 .resource-tab {
@@ -84,20 +84,20 @@
 .auto-protection-tabs {
   display: flex;
   gap: 0;
-  overflow: hidden;
   margin-top: 4px;
 }
 
 .auto-protection-tabs .resource-tab {
   border: none;
-  border-bottom: none;
+  border-bottom: 2px solid transparent;
   border-radius: 0;
   color: #64748b;
+  padding: 6px 10px;
 }
 
 .auto-protection-tabs .resource-tab.active {
-  border-bottom: none;
-  background: #f8fafc;
+  border-bottom-color: #0d9488;
+  background: transparent;
   color: #0f172a;
   font-weight: 600;
 }
