@@ -38,9 +38,12 @@ const BACKUP_ITEMS_RIGHT: BackupItem[] = [
 ];
 
 export default function Settings() {
-  const { tenantId } = useParams<{ tenantId: string }>();
+  const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
   const subRouteKey = tenantId ? '/protection/settings' : '/settings';
+  const tenantSettingsPath = tenantId && serviceType
+    ? `/tenants/${tenantId}/${serviceType}/protection/settings`
+    : '/settings';
   const [activeTab, setActiveTab] = usePersistentTab<SettingsTab>(subRouteKey, 'sla', settingsTabKeys);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,41 +86,55 @@ export default function Settings() {
   ];
 
   useEffect(() => {
-    if (activeTab === 'sla' && tenantId) {
-      setLoading(true);
-      getSlaPolicies(tenantId)
-        .then(setPolicies)
-        .catch(console.error)
-        .finally(() => setLoading(false));
+    if (activeTab !== 'sla') return;
+    if (!tenantId) {
+      setLoading(false);
+      setPolicies([]);
+      return;
     }
+    setLoading(true);
+    getSlaPolicies(tenantId)
+      .then(setPolicies)
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [activeTab, tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'info' && tenantId) {
-      setInfoLoading(true);
-      getTenantInfo(tenantId)
-        .then(setTenantInfo)
-        .catch(console.error)
-        .finally(() => setInfoLoading(false));
+    if (activeTab !== 'info') return;
+    if (!tenantId) {
+      setInfoLoading(false);
+      setTenantInfo(null);
+      return;
     }
+    setInfoLoading(true);
+    getTenantInfo(tenantId)
+      .then(setTenantInfo)
+      .catch(console.error)
+      .finally(() => setInfoLoading(false));
   }, [activeTab, tenantId]);
 
   useEffect(() => {
-    if (activeTab === 'admin-consent' && tenantId) {
-      setAdminConsentLoading(true);
-      Promise.all([
-        authService.getM365AdminConsentStatus().catch(() => null),
-        authService.getAzureAdminConsentStatus().catch(() => null),
-        authService.getPowerBIReadiness(tenantId).catch(() => null),
-      ])
-        .then(([m365, azure, powerBi]) => {
-          setM365Consent(m365);
-          setAzureConsent(azure);
-          setPowerBiReadiness(powerBi);
-        })
-        .catch(console.error)
-        .finally(() => setAdminConsentLoading(false));
+    if (activeTab !== 'admin-consent') return;
+    if (!tenantId) {
+      setAdminConsentLoading(false);
+      setM365Consent(null);
+      setAzureConsent(null);
+      setPowerBiReadiness(null);
+      return;
     }
+    setAdminConsentLoading(true);
+    Promise.all([
+      authService.getM365AdminConsentStatus().catch(() => null),
+      authService.getAzureAdminConsentStatus().catch(() => null),
+      authService.getPowerBIReadiness(tenantId).catch(() => null),
+    ])
+      .then(([m365, azure, powerBi]) => {
+        setM365Consent(m365);
+        setAzureConsent(azure);
+        setPowerBiReadiness(powerBi);
+      })
+      .catch(console.error)
+      .finally(() => setAdminConsentLoading(false));
   }, [activeTab, tenantId]);
 
   const handleDownloadReport = async () => {
@@ -136,7 +153,7 @@ export default function Settings() {
   const handleGrantM365Consent = async () => {
     try {
       setGrantingConsent('m365');
-      localStorage.setItem('consent_return_to', '/settings');
+      localStorage.setItem('consent_return_to', tenantSettingsPath);
       const { url } = await authService.getM365AdminConsentUrl();
       window.location.href = url;
     } catch (error) {
@@ -149,7 +166,7 @@ export default function Settings() {
   const handleGrantAzureConsent = async () => {
     try {
       setGrantingConsent('azure');
-      localStorage.setItem('consent_return_to', '/settings');
+      localStorage.setItem('consent_return_to', tenantSettingsPath);
       const { url } = await authService.getAzureAdminConsentUrl();
       window.location.href = url;
     } catch (error) {
@@ -163,8 +180,11 @@ export default function Settings() {
     if (!tenantId) return;
     try {
       setGrantingConsent('powerbi');
-      localStorage.setItem('consent_return_to', window.location.pathname);
+      localStorage.setItem('consent_return_to', tenantSettingsPath);
       localStorage.setItem('power_bi_tenant_id', tenantId);
+      if (serviceType) {
+        localStorage.setItem('power_bi_service_type', serviceType);
+      }
       const { url, state } = await authService.getPowerBIConnectUrl(tenantId);
       localStorage.setItem('power_bi_oauth_state', state);
       window.location.href = url;
@@ -328,8 +348,14 @@ export default function Settings() {
         ))}
       </div>
 
+      {!tenantId && (
+        <div className="empty-state">
+          <p>Open Settings from a specific datasource to manage SLA, tenant info, and admin consent.</p>
+        </div>
+      )}
+
       {/* SLA Tab Content */}
-      {activeTab === 'sla' && (
+      {tenantId && activeTab === 'sla' && (
         <div className="sla-tab">
           <div className="sla-header">
             <div />
@@ -414,7 +440,7 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab === 'info' && (
+      {tenantId && activeTab === 'info' && (
         <div className="info-tab">
           {infoLoading ? (
             <div className="empty-state"><p>Loading tenant info...</p></div>
@@ -462,7 +488,7 @@ export default function Settings() {
         </div>
       )}
 
-      {activeTab === 'admin-consent' && (
+      {tenantId && activeTab === 'admin-consent' && (
         <div className="admin-consent-tab">
           {adminConsentLoading ? (
             <div className="empty-state"><p>Loading admin consent status...</p></div>

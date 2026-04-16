@@ -9,6 +9,7 @@ export default function AzureDatasourceCallback() {
   const [searchParams] = useSearchParams();
   const handled = useRef(false);
   const [error, setError] = useState('');
+  const returnTo = searchParams.get('return_to') || localStorage.getItem('consent_return_to') || '/tenants';
 
   useEffect(() => {
     if (handled.current) return;
@@ -17,7 +18,6 @@ export default function AzureDatasourceCallback() {
     const code = searchParams.get('code');
     const state = searchParams.get('state') || undefined;
     const authError = searchParams.get('error');
-    const returnTo = searchParams.get('return_to') || localStorage.getItem('consent_return_to') || '/tenants';
     localStorage.removeItem('consent_return_to');
 
     if (authError) {
@@ -37,7 +37,7 @@ export default function AzureDatasourceCallback() {
         }
       })();
     }
-  }, [navigate, searchParams]);
+  }, [navigate, returnTo, searchParams]);
 
   return (
     <div className="auth-page">
@@ -47,7 +47,7 @@ export default function AzureDatasourceCallback() {
         {error ? (
           <div style={{color: '#dc2626', fontSize: 14}}>
             <p>{error}</p>
-            <button className="microsoft-btn" onClick={() => navigate('/tenants')} style={{marginTop: 16}}>
+            <button className="microsoft-btn" onClick={() => navigate(returnTo)} style={{marginTop: 16}}>
               Back to Data Sources
             </button>
           </div>

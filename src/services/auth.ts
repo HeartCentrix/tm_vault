@@ -31,6 +31,14 @@ export interface AdminConsentStatus {
   scope?: string;
 }
 
+type RawAdminConsentStatus = AdminConsentStatus & {
+  consent_type?: string;
+  granted_by?: string;
+  consented_at?: string;
+  last_used_at?: string;
+  is_active?: boolean;
+};
+
 export interface AdminConsentResponse {
   message: string;
   tenantId: string;
@@ -58,6 +66,19 @@ export interface PowerBIReadiness {
 }
 
 class AuthService {
+  private normalizeAdminConsentStatus(data: RawAdminConsentStatus | null): AdminConsentStatus | null {
+    if (!data) return null;
+    return {
+      id: data.id,
+      consentType: data.consentType ?? data.consent_type ?? '',
+      grantedBy: data.grantedBy ?? data.granted_by,
+      consentedAt: data.consentedAt ?? data.consented_at,
+      lastUsedAt: data.lastUsedAt ?? data.last_used_at,
+      isActive: data.isActive ?? data.is_active ?? false,
+      scope: data.scope,
+    };
+  }
+
   async getMicrosoftLoginUrl(): Promise<MicrosoftAuthUrlResponse> {
     const res = await fetch(API.AUTH.LOGIN_URL);
     if (!res.ok) throw new Error(`Failed to get login URL: ${res.statusText}`);
@@ -295,7 +316,7 @@ class AuthService {
     });
     if (!res.ok) throw new Error(`Failed to get M365 admin consent status: ${res.statusText}`);
     const data = await res.json();
-    return data;
+    return this.normalizeAdminConsentStatus(data);
   }
 
   async getAzureAdminConsentStatus(): Promise<AdminConsentStatus | null> {
@@ -306,7 +327,7 @@ class AuthService {
     });
     if (!res.ok) throw new Error(`Failed to get Azure admin consent status: ${res.statusText}`);
     const data = await res.json();
-    return data;
+    return this.normalizeAdminConsentStatus(data);
   }
 
   async getPowerBIReadiness(tenantId: string): Promise<PowerBIReadiness> {

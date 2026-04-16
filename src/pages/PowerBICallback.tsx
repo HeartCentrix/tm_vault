@@ -8,6 +8,12 @@ export default function PowerBICallback() {
   const [searchParams] = useSearchParams();
   const handled = useRef(false);
   const [error, setError] = useState('');
+  const tenantId = searchParams.get('tenantId') || localStorage.getItem('power_bi_tenant_id');
+  const serviceType = searchParams.get('serviceType') || localStorage.getItem('power_bi_service_type');
+  const fallbackReturnTo = tenantId && serviceType
+    ? `/tenants/${tenantId}/${serviceType}/protection/settings`
+    : '/settings';
+  const returnTo = searchParams.get('return_to') || localStorage.getItem('consent_return_to') || fallbackReturnTo;
 
   useEffect(() => {
     if (handled.current) return;
@@ -17,10 +23,9 @@ export default function PowerBICallback() {
     const state = searchParams.get('state') || undefined;
     const expectedState = localStorage.getItem('power_bi_oauth_state');
     const authError = searchParams.get('error');
-    const tenantId = searchParams.get('tenantId') || localStorage.getItem('power_bi_tenant_id');
-    const returnTo = searchParams.get('return_to') || localStorage.getItem('consent_return_to') || '/settings';
     localStorage.removeItem('consent_return_to');
     localStorage.removeItem('power_bi_tenant_id');
+    localStorage.removeItem('power_bi_service_type');
     localStorage.removeItem('power_bi_oauth_state');
 
     if (authError) {
@@ -52,7 +57,7 @@ export default function PowerBICallback() {
     } else {
       setError('Missing authorization code from Power BI sign-in.');
     }
-  }, [navigate, searchParams]);
+  }, [navigate, returnTo, searchParams, tenantId]);
 
   return (
     <div className="auth-page">
@@ -62,7 +67,7 @@ export default function PowerBICallback() {
         {error ? (
           <div style={{color: '#dc2626', fontSize: 14}}>
             <p>{error}</p>
-            <button className="microsoft-btn" onClick={() => navigate('/settings')} style={{marginTop: 16}}>
+            <button className="microsoft-btn" onClick={() => navigate(returnTo)} style={{marginTop: 16}}>
               Back to Settings
             </button>
           </div>
