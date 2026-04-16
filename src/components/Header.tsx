@@ -127,7 +127,7 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                     {filteredDataSources.map((source) => (
                       <div
                         key={source.id}
-                        className={`dropdown-item ${selectedSource?.id === source.id ? 'active' : ''}`}
+                        className={`dropdown-item ${selectedSource?.id === source.id && selectedSource?.type === source.type ? 'active' : ''}`}
                         onClick={() => selectDataSource(source)}
                       >
                         {source.type === 'm365' ? (
