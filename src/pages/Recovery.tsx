@@ -305,67 +305,6 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
-  const sender = (item as any).sender || raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
-  const senderEmail = (item as any).senderEmail || raw.from?.user?.userPrincipalName || '';
-  const initials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const body = raw.body?.content || (item as any).body || item.preview || '';
-  const isHtml = (raw.body?.contentType || (item as any).bodyContentType) === 'html';
-  const sentAt = raw.createdDateTime || item.date;
-  const displayBody = isHtml ? body.replace(/<[^>]+>/g, ' ').trim() : body;
-
-  return (
-    <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
-      <input type="checkbox" checked={false} onChange={() => {}} onClick={onCheck} />
-      <div className="chat-item-avatar">{initials}</div>
-      <div className="chat-item-body">
-        <div className="chat-item-header">
-          <span className="chat-item-sender">{sender}{senderEmail && senderEmail !== sender ? ` <${senderEmail}>` : ''}</span>
-          {sentAt && (
-            <span className="chat-item-time">
-              {new Date(sentAt).toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
-            </span>
-          )}
-        </div>
-        <div className="chat-item-text">{displayBody || '\u00a0'}</div>
-      </div>
-    </div>
-  );
-}
-
-function EmailItemRow({ item, selected, onSelect, onCheck }: {
-  item: any; selected: boolean;
-  onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
-}) {
-  const raw = item.metadata?.raw || {};
-  const from = raw.from?.emailAddress || {};
-  const sender = from.name || from.address || item.from || item.name || '(Unknown)';
-  const subject = raw.subject || item.subject || item.name || '(No subject)';
-  const preview = raw.bodyPreview || item.preview || '';
-  const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
-  const dateStr = sentAt
-    ? new Date(sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '';
-
-  return (
-    <div className={`email-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
-      <input type="checkbox" checked={false} onChange={() => {}} onClick={onCheck} />
-      <div className="email-item-body">
-        <div className="email-item-top">
-          <span className="email-item-sender">{sender}</span>
-          <span className="email-item-date">{dateStr}</span>
-        </div>
-        <div className="email-item-subject">{subject}</div>
-        {preview && <div className="email-item-preview">{preview}</div>}
-      </div>
-    </div>
-  );
-}
-
-function ChatItemRow({ item, selected, onSelect, onCheck }: {
-  item: any; selected: boolean;
-  onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
-}) {
-  const raw = item.metadata?.raw || {};
   const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
   const email = raw.from?.user?.userIdentityType === 'aadUser'
     ? (raw.from?.user?.id ? '' : '')

@@ -621,6 +621,11 @@
   font-style: italic;
 }
 
+.backup-status.queued {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 /* Actions */
 .actions-cell {
   display: flex;
@@ -777,6 +782,16 @@
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
+}
+
+.backup-progress-fill.queued-pulse {
+  background: linear-gradient(90deg, #fcd34d, #fbbf24);
+  animation: queued-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes queued-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 @keyframes spin {

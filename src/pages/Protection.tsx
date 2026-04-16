@@ -175,14 +175,32 @@ export default function Protection() {
     started_at?: string;
     eta_seconds?: number | null;
   }
-  const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>({});
-  const [backingUp, setBackingUp] = useState<Set<string>>(new Set()); // resourceIds currently backing up
+  const STORAGE_KEY = `backupStatus_${tenantId}`;
+  const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+  });
+  const [backingUp, setBackingUp] = useState<Set<string>>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Record<string, BackupStatus>;
+      return new Set(Object.keys(stored).filter(id => stored[id].status === 'RUNNING' || stored[id].status === 'QUEUED'));
+    } catch { return new Set(); }
+  });
 
-  // Snapshot browsing state (currently unused - Snapshots button is commented out)
-  // const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
-  // const [selectedResource, setSelectedResource] = useState<ResourceItem | null>(null);
-  // const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([]);
-  // const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  // Persist backupStatus to localStorage so progress bar survives refresh/navigation
+  useEffect(() => {
+    try {
+      // Only keep active entries to avoid stale localStorage bloat
+      const active: Record<string, BackupStatus> = {};
+      for (const [id, s] of Object.entries(backupStatus)) {
+        if (s.status === 'RUNNING' || s.status === 'QUEUED') active[id] = s;
+      }
+      if (Object.keys(active).length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch { /* quota errors etc */ }
+  }, [backupStatus, STORAGE_KEY]);
 
   useEffect(() => {
     function handleSlaClick(e: MouseEvent) {
@@ -224,6 +242,19 @@ export default function Protection() {
           const next = new Set(prev);
           done.forEach(d => next.delete(d));
           return next;
+        });
+        // Remove completed/failed entries from localStorage
+        setBackupStatus(prev => {
+          const cleaned = { ...prev };
+          done.forEach(d => { delete cleaned[d]; });
+          try {
+            const active = Object.fromEntries(
+              Object.entries(cleaned).filter(([, s]) => s.status === 'RUNNING' || s.status === 'QUEUED')
+            );
+            if (Object.keys(active).length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
+            else localStorage.removeItem(STORAGE_KEY);
+          } catch { /* ignore */ }
+          return cleaned;
         });
         // Refresh resources to show updated backup status and size
         if (tenantId) {
@@ -285,7 +316,7 @@ export default function Protection() {
       const statusSeed: Record<string, any> = {};
       const backingUpSeed = new Set<string>();
       for (const p of progresses) {
-        if (p.status === 'RUNNING') {
+        if (p.status === 'RUNNING' || p.status === 'QUEUED') {
           statusSeed[p.resource_id] = {
             progress_pct: p.progress_pct || 0,
             status: p.status,
@@ -758,23 +789,26 @@ export default function Protection() {
                 <td className="backup-cell">
                   {(() => {
                     const status = backupStatus[resource.id];
-                    const isBackingUp = backingUp.has(resource.id) || status?.status === 'RUNNING';
+                    const isActive = backingUp.has(resource.id) || status?.status === 'RUNNING' || status?.status === 'QUEUED';
 
-                    if (isBackingUp && status) {
-                      // Show progress bar during backup
+                    if (isActive && status) {
+                      const isQueued = status.status === 'QUEUED';
                       return (
                         <div className="backup-progress-cell">
                           <div className="backup-progress-track">
-                            <div className="backup-progress-fill" style={{ width: `${status.progress_pct}%` }}></div>
+                            {isQueued
+                              ? <div className="backup-progress-fill queued-pulse" style={{ width: '100%' }}></div>
+                              : <div className="backup-progress-fill" style={{ width: `${status.progress_pct}%` }}></div>
+                            }
                           </div>
-                          <span className="backup-progress-label">{status.progress_pct}%</span>
-                          <span className="backup-status running">
+                          {!isQueued && <span className="backup-progress-label">{status.progress_pct}%</span>}
+                          <span className={`backup-status ${isQueued ? 'queued' : 'running'}`}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 4 }}>
                               <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="15">
                                 <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite" />
                               </circle>
                             </svg>
-                            Backing up...
+                            {isQueued ? 'Queued...' : 'Backing up...'}
                           </span>
                         </div>
                       );
