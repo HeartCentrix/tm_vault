@@ -79,10 +79,13 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
   useEffect(() => {
     if (open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
-      setMenuStyle({
-        top: rect.bottom + 4,
-        left: rect.left,
-      });
+      const menuHeight = 320; // approximate max height of SLA menu
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const flipUp = spaceBelow < menuHeight && rect.top > menuHeight;
+      setMenuStyle(flipUp
+        ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
+        : { top: rect.bottom + 4, left: rect.left }
+      );
     }
   }, [open]);
 
