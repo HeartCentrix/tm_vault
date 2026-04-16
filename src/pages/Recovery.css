@@ -710,7 +710,8 @@
 
 .preview-from,
 .preview-to,
-.preview-date {
+.preview-date,
+.preview-meta-row {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
@@ -718,13 +719,15 @@
 }
 
 .preview-from .label,
-.preview-to .label {
+.preview-to .label,
+.preview-meta-row .label {
   color: #64748b;
-  min-width: 50px;
+  min-width: 90px;
 }
 
 .preview-from .value,
-.preview-to .value {
+.preview-to .value,
+.preview-meta-row .value {
   color: #0f172a;
   font-weight: 500;
 }

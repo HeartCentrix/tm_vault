@@ -312,6 +312,331 @@ export function CalendarPreview({ item }: { item: any }) {
   );
 }
 
+// ==================== Workload-specific Preview Components ====================
+// Each preview reads from item.metadata.raw (populated by backup handlers) and
+// falls back to flat fields. Styles piggyback on the existing .item-preview /
+// .preview-* CSS classes plus inline for card-specific details.
+
+function PreviewLabel({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div className="preview-meta-row">
+      <span className="label">{label}</span>
+      <span className="value">{value}</span>
+    </div>
+  );
+}
+
+function fmtDate(v?: string | null): string {
+  if (!v) return '';
+  try {
+    return new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch { return v || ''; }
+}
+
+export function OneNotePagePreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const title = raw.title || item.name || '(Untitled page)';
+  const createdBy = raw.createdByAppId || raw.lastModifiedBy?.user?.displayName || raw.createdBy?.user?.displayName;
+  const modified = raw.lastModifiedDateTime || raw.createdDateTime;
+  // ONENOTE_PAGE_CONTENT blobs are HTML. When the caller already loaded content
+  // into item.content (via get_item_content endpoint) we render it sandboxed.
+  const html = item.content || item.htmlContent;
+  const isHtmlItem = item.itemType === 'ONENOTE_PAGE_CONTENT' && typeof html === 'string';
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{title}</div>
+        <PreviewLabel label="Created by" value={createdBy} />
+        <PreviewLabel label="Modified" value={fmtDate(modified)} />
+        {item.metadata?.notebookId && <PreviewLabel label="Notebook" value={item.metadata.notebookId} />}
+        {item.metadata?.sectionId && <PreviewLabel label="Section" value={item.metadata.sectionId} />}
+      </div>
+      <div className="preview-body">
+        {isHtmlItem ? (
+          <iframe
+            title={title}
+            sandbox=""
+            srcDoc={html}
+            style={{ width: '100%', minHeight: 420, border: '1px solid #e5e7eb', borderRadius: 4 }}
+          />
+        ) : (
+          <p style={{ color: '#6b7280' }}>
+            Page metadata only. Load full HTML content via the item content endpoint to render the body.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PlannerTaskPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const title = raw.title || item.name;
+  const dueDate = raw.dueDateTime;
+  const progress = raw.percentComplete ?? 0;
+  const priority = raw.priority;
+  const assignees = Object.keys(raw.assignments || {});
+  const plan = item.metadata?.planId;
+  // Task details (description + checklist + references) live in a sibling item
+  // but callers may also inline them on .raw.details for convenience.
+  const details = raw.details || {};
+  const checklist = details.checklist ? Object.values(details.checklist) : [];
+  const description = details.description;
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{title}</div>
+        <PreviewLabel label="Plan" value={plan} />
+        <PreviewLabel label="Due" value={fmtDate(dueDate)} />
+        <PreviewLabel label="Priority" value={priority != null ? `P${priority}` : null} />
+        <PreviewLabel label="Progress" value={progress != null ? `${progress}%` : null} />
+        <PreviewLabel label="Assignees" value={assignees.length ? `${assignees.length} user(s)` : null} />
+      </div>
+      <div className="preview-body">
+        {description && <p style={{ whiteSpace: 'pre-wrap' }}>{description}</p>}
+        {checklist.length > 0 && (
+          <>
+            <div style={{ fontWeight: 600, marginTop: 12, marginBottom: 6 }}>Checklist</div>
+            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+              {checklist.map((c: any, i: number) => (
+                <li key={i} style={{ padding: '4px 0' }}>
+                  <span style={{ marginRight: 8 }}>{c.isChecked ? '☑' : '☐'}</span>
+                  <span style={{ textDecoration: c.isChecked ? 'line-through' : 'none' }}>{c.title}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {!description && checklist.length === 0 && (
+          <p style={{ color: '#6b7280' }}>No description or checklist items.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function TodoTaskPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const title = raw.title || item.name;
+  const body = raw.body?.content;
+  const status = raw.status;
+  const due = raw.dueDateTime?.dateTime || raw.dueDateTime;
+  const importance = raw.importance;
+  const subtasks = item.metadata?.checklist || raw.checklistItems || [];
+  const linked = item.metadata?.linked || raw.linkedResources || [];
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{title}</div>
+        <PreviewLabel label="Status" value={status} />
+        <PreviewLabel label="Importance" value={importance} />
+        <PreviewLabel label="Due" value={fmtDate(typeof due === 'string' ? due : due?.dateTime)} />
+        <PreviewLabel label="Categories" value={(raw.categories || []).join(', ') || null} />
+      </div>
+      <div className="preview-body">
+        {body && <p style={{ whiteSpace: 'pre-wrap' }}>{body}</p>}
+        {subtasks.length > 0 && (
+          <>
+            <div style={{ fontWeight: 600, marginTop: 12, marginBottom: 6 }}>Subtasks</div>
+            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+              {subtasks.map((c: any, i: number) => (
+                <li key={i} style={{ padding: '4px 0' }}>
+                  <span style={{ marginRight: 8 }}>{c.isChecked ? '☑' : '☐'}</span>
+                  {c.displayName || c.title}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {linked.length > 0 && (
+          <>
+            <div style={{ fontWeight: 600, marginTop: 12, marginBottom: 6 }}>Linked resources</div>
+            <ul style={{ paddingLeft: 20 }}>
+              {linked.map((l: any, i: number) => (
+                <li key={i} style={{ padding: '2px 0' }}>
+                  {l.webUrl ? <a href={l.webUrl} target="_blank" rel="noopener noreferrer">{l.displayName || l.webUrl}</a> : (l.displayName || l.applicationName)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PowerAppPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const props = raw.properties || raw;
+  const name = props.displayName || item.name;
+  const env = item.metadata?.environmentId || props.environment?.name;
+  const owner = props.owner?.displayName || props.createdBy?.displayName;
+  const appType = props.appType;
+  const created = props.createdTime;
+  const modified = props.lastModifiedTime;
+  const hasPackage = item.itemType === 'POWER_APP_PACKAGE';
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{name}</div>
+        <PreviewLabel label="Environment" value={env} />
+        <PreviewLabel label="Owner" value={owner} />
+        <PreviewLabel label="Type" value={appType} />
+        <PreviewLabel label="Created" value={fmtDate(created)} />
+        <PreviewLabel label="Modified" value={fmtDate(modified)} />
+        {hasPackage && (
+          <PreviewLabel
+            label="Backup"
+            value={<span style={{ color: '#059669', fontWeight: 600 }}>Full package (.zip)</span>}
+          />
+        )}
+      </div>
+      <div className="preview-body">
+        {hasPackage ? (
+          <p>Canvas/model-driven app package stored. Restore reimports into the chosen environment.</p>
+        ) : (
+          <p>Definition only. Restore requires a package backup (re-run backup with package export).</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PowerFlowPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const props = raw.properties || raw;
+  const name = props.displayName || item.name;
+  const state = props.state;
+  const triggerKind = props.definitionSummary?.triggers
+    ? Object.keys(props.definitionSummary.triggers)[0]
+    : props.trigger?.type;
+  const actionCount = props.definitionSummary?.actions
+    ? Object.keys(props.definitionSummary.actions).length
+    : null;
+  const env = item.metadata?.environmentId;
+  const connections = item.itemType === 'POWER_FLOW_CONNECTIONS'
+    ? (item.metadata?.count || (raw.value || []).length)
+    : null;
+  const stateColor = state === 'Started' ? '#059669' : state === 'Stopped' ? '#dc2626' : '#6b7280';
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{name}</div>
+        <PreviewLabel
+          label="State"
+          value={state ? <span style={{ color: stateColor, fontWeight: 600 }}>{state}</span> : null}
+        />
+        <PreviewLabel label="Environment" value={env} />
+        <PreviewLabel label="Trigger" value={triggerKind} />
+        <PreviewLabel label="Actions" value={actionCount} />
+        {connections !== null && <PreviewLabel label="Connections" value={`${connections} connection(s)`} />}
+      </div>
+      <div className="preview-body">
+        {item.itemType === 'POWER_FLOW_PACKAGE' && (
+          <p><span style={{ color: '#059669', fontWeight: 600 }}>Full package (.zip)</span> captured — restore reimports into the target environment.</p>
+        )}
+        {item.itemType === 'POWER_FLOW_CONNECTIONS' && (
+          <p>Connection references captured. These are reused during restore to keep the flow functional.</p>
+        )}
+        {item.itemType === 'POWER_FLOW_DEFINITION' && (
+          <p>Trigger and action logic captured as JSON. Use package export for full-fidelity restore.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function PowerDlpPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const props = raw.properties || raw;
+  const name = props.displayName || item.name;
+  const classified = props.connectorGroups || [];
+  const groupCounts: Record<string, number> = {};
+  for (const g of classified) {
+    const label = g.classification || 'Unknown';
+    groupCounts[label] = (groupCounts[label] || 0) + (g.connectors?.length || 0);
+  }
+  const envType = props.environmentType;
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{name}</div>
+        <PreviewLabel label="Scope" value={envType} />
+        <PreviewLabel label="Policy type" value={props.policyType} />
+        <PreviewLabel label="Created" value={fmtDate(props.createdTime)} />
+        <PreviewLabel label="Modified" value={fmtDate(props.lastModifiedTime)} />
+      </div>
+      <div className="preview-body">
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Connector groups</div>
+        {Object.keys(groupCounts).length === 0 ? (
+          <p style={{ color: '#6b7280' }}>No connector classification data.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+            {Object.entries(groupCounts).map(([label, count]) => (
+              <li key={label} style={{ padding: '4px 0' }}>
+                <span style={{ fontWeight: 600, marginRight: 8 }}>{label}:</span>
+                {count} connector(s)
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function FilePreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.name || item.name;
+  const size = raw.size ?? item.contentSize;
+  const mime = raw.file?.mimeType || raw.mimeType;
+  const checksum = raw.file?.hashes?.quickXorHash || item.contentChecksum;
+  const webUrl = raw.webUrl;
+  const path = raw.parentReference?.path || item.folderPath;
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{name}</div>
+        <PreviewLabel label="Size" value={size != null ? formatSize(size) : null} />
+        <PreviewLabel label="Type" value={mime} />
+        <PreviewLabel label="Path" value={path} />
+        <PreviewLabel label="Modified" value={fmtDate(raw.lastModifiedDateTime)} />
+        <PreviewLabel label="Checksum" value={checksum ? <code style={{ fontSize: 11 }}>{String(checksum).slice(0, 16)}...</code> : null} />
+      </div>
+      <div className="preview-body">
+        {webUrl
+          ? <a href={webUrl} target="_blank" rel="noopener noreferrer">Open in source (may require SSO)</a>
+          : <p style={{ color: '#6b7280' }}>No direct link available — restore to retrieve content.</p>}
+      </div>
+    </div>
+  );
+}
+
+export function JsonPreview({ item }: { item: any }) {
+  // Deliberately-final fallback: pretty-print whatever we have as read-only JSON.
+  // Better than the old generic that read item.from/subject/body which usually returned nothing.
+  const payload = item.metadata?.raw ?? item.metadata ?? item;
+  let serialized: string;
+  try { serialized = JSON.stringify(payload, null, 2); } catch { serialized = String(payload); }
+  return (
+    <div className="item-preview">
+      <div className="preview-header">
+        <div className="preview-status">{item.name || item.itemType || 'Item'}</div>
+        <PreviewLabel label="Type" value={item.itemType} />
+        <PreviewLabel label="Size" value={item.contentSize ? formatSize(item.contentSize) : null} />
+      </div>
+      <div className="preview-body">
+        <pre style={{
+          background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 4,
+          padding: 12, fontSize: 12, maxHeight: 520, overflow: 'auto', whiteSpace: 'pre-wrap',
+        }}>{serialized}</pre>
+      </div>
+    </div>
+  );
+}
+
+
 function ChatItemRow({ item, selected, onSelect, onCheck }: {
   item: any; selected: boolean;
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
@@ -375,23 +700,43 @@ function EmailItemRow({ item, selected, onSelect, onCheck }: {
 
 export function ItemPreview({ item }: { item: any }) {
   const type = item.itemType || '';
+
+  // Mail / Teams / Calendar — existing rich previews
   if (type === 'EMAIL') return <EmailPreview item={item} />;
   if (type === 'TEAMS_CHAT_MESSAGE' || type === 'TEAMS_MESSAGE' || type === 'TEAMS_MESSAGE_REPLY')
     return <ChatPreview item={item} />;
   if (type === 'CALENDAR_EVENT') return <CalendarPreview item={item} />;
 
-  // Generic fallback
-  return (
-    <div className="item-preview">
-      <div className="preview-header">
-        {item.from && <div className="preview-from"><span className="label">From:</span><span className="value">{item.from}</span></div>}
-        {item.to && <div className="preview-to"><span className="label">To:</span><span className="value">{item.to}</span></div>}
-        <div className="preview-status">{item.subject || item.name}</div>
-        {item.date && <div className="preview-date">{new Date(item.date).toLocaleString()}</div>}
-      </div>
-      <div className="preview-body"><p>{item.body || item.preview || 'No content available'}</p></div>
-    </div>
-  );
+  // OneNote
+  if (type === 'ONENOTE_PAGE' || type === 'ONENOTE_PAGE_CONTENT'
+      || type === 'ONENOTE_SECTION' || type === 'ONENOTE_NOTEBOOK'
+      || type === 'ONENOTE_RESOURCE')
+    return <OneNotePagePreview item={item} />;
+
+  // Planner
+  if (type === 'PLANNER_PLAN' || type === 'PLANNER_TASK' || type === 'PLANNER_TASK_DETAILS')
+    return <PlannerTaskPreview item={item} />;
+
+  // Microsoft To Do
+  if (type === 'TODO_LIST' || type === 'TODO_TASK'
+      || type === 'TODO_TASK_CHECKLIST' || type === 'TODO_TASK_LINKED')
+    return <TodoTaskPreview item={item} />;
+
+  // Power Platform
+  if (type === 'POWER_APP_DEFINITION' || type === 'POWER_APP_PACKAGE')
+    return <PowerAppPreview item={item} />;
+  if (type === 'POWER_FLOW_DEFINITION' || type === 'POWER_FLOW_PACKAGE' || type === 'POWER_FLOW_CONNECTIONS')
+    return <PowerFlowPreview item={item} />;
+  if (type === 'POWER_DLP_POLICY')
+    return <PowerDlpPreview item={item} />;
+
+  // Files (OneDrive / SharePoint)
+  if (type === 'FILE' || type === 'ONEDRIVE_FILE' || type === 'SHAREPOINT_FILE'
+      || type === 'SHAREPOINT_LIST_ITEM')
+    return <FilePreview item={item} />;
+
+  // Anything else — formatted JSON beats the old empty-looking fallback.
+  return <JsonPreview item={item} />;
 }
 
 // ==================== Calendar Month View ====================
