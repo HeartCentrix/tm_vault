@@ -17,6 +17,9 @@ export interface RestoreRequest {
   itemIds?: string[];
   targetUserId?: string;
   targetResourceId?: string;
+  /** For Power Platform restores: target environment to restore the app/flow into.
+   *  When omitted, the restore-worker falls back to the source environment from the snapshot. */
+  targetEnvironmentId?: string;
   exportFormat?: string;
   targetFolder?: string;
   overwrite?: boolean;

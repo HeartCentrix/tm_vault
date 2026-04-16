@@ -35,11 +35,23 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   const [powerBiTargets, setPowerBiTargets] = useState<ResourceItem[]>([]);
   const [powerBiTargetsLoading, setPowerBiTargetsLoading] = useState(false);
   const [powerBiTargetsError, setPowerBiTargetsError] = useState<string | null>(null);
+  const [pPlatformEnvs, setPPlatformEnvs] = useState<ResourceItem[]>([]);
+  const [pPlatformEnvsLoading, setPPlatformEnvsLoading] = useState(false);
+  const [pPlatformEnvsError, setPPlatformEnvsError] = useState<string | null>(null);
+  const [targetEnvironmentId, setTargetEnvironmentId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const isPowerBiItem = Boolean(itemType?.startsWith('POWER_BI'));
+  // Power Platform coverage: canvas/model-driven apps, flows, and DLP policies.
+  // Apps/flows need an environment picker when restoring to a different environment;
+  // DLP is tenant-scoped so it only supports in-place replay.
+  const isPowerAppItem = Boolean(itemType?.startsWith('POWER_APP'));
+  const isPowerFlowItem = Boolean(itemType?.startsWith('POWER_FLOW'));
+  const isPowerDlpItem = Boolean(itemType?.startsWith('POWER_DLP'));
+  const isPowerPlatformItem = isPowerAppItem || isPowerFlowItem || isPowerDlpItem;
+  const powerPlatformWorkload = isPowerAppItem ? 'Power App' : isPowerFlowItem ? 'Power Automate flow' : 'DLP policy';
 
   useEffect(() => {
     if (!isOpen || !isPowerBiItem || !tenantId) {
@@ -71,6 +83,35 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     };
   }, [isOpen, isPowerBiItem, tenantId]);
 
+  // Load Power Platform environments when restoring an app or flow.
+  // Environments come from discovery as POWER_APPS resources whose external_id
+  // starts with 'env_' — that's the convention set by discover_power_platform.
+  useEffect(() => {
+    if (!isOpen || !(isPowerAppItem || isPowerFlowItem) || !tenantId) return;
+    let cancelled = false;
+    setPPlatformEnvsLoading(true);
+    setPPlatformEnvsError(null);
+    getResourcesByType(tenantId, 'POWER_APPS', 1, 500, undefined, 'active')
+      .then((data) => {
+        if (cancelled) return;
+        const envs = (data.items || []).filter((r) =>
+          (r.external_id || '').startsWith('env_') || (r.name || '').endsWith('(Environment)'),
+        );
+        setPPlatformEnvs(envs);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPPlatformEnvs([]);
+        setPPlatformEnvsError(err instanceof Error ? err.message : 'Failed to load environments');
+      })
+      .finally(() => {
+        if (!cancelled) setPPlatformEnvsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isPowerAppItem, isPowerFlowItem, tenantId]);
+
   if (!isOpen) return null;
 
   const toggleWorkload = (w: Workload) => {
@@ -87,6 +128,13 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         setError('Please select a target Power BI workspace');
         return;
       }
+    } else if (isPowerAppItem || isPowerFlowItem) {
+      if (destination === 'another' && !targetEnvironmentId.trim()) {
+        setError('Please select a target environment');
+        return;
+      }
+    } else if (isPowerDlpItem) {
+      // DLP is tenant-scoped — only in-place restore is meaningful
     } else if (destination === 'another' && !targetUserId.trim()) {
       setError('Please enter a target resource ID');
       return;
@@ -96,8 +144,10 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     setError(null);
     try {
       let restoreType: RestoreType;
-      if (isPowerBiItem) {
-        restoreType = destination === 'another' ? 'CROSS_RESOURCE' : 'IN_PLACE';
+      if (isPowerBiItem || isPowerAppItem || isPowerFlowItem) {
+        restoreType = 'IN_PLACE';  // Power Platform uses IN_PLACE + targetEnvironmentId for cross-env
+      } else if (isPowerDlpItem) {
+        restoreType = 'IN_PLACE';
       } else {
         restoreType = destination === 'another' ? 'CROSS_USER' : 'IN_PLACE';
       }
@@ -106,11 +156,12 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         restoreType,
         snapshotIds,
         itemIds: scope === 'selected' ? itemIds : [],
-        targetUserId: !isPowerBiItem && destination === 'another' ? targetUserId : undefined,
+        targetUserId: !isPowerBiItem && !isPowerPlatformItem && destination === 'another' ? targetUserId : undefined,
         targetResourceId: isPowerBiItem && destination === 'another' ? targetResourceId : undefined,
-        targetFolder: !isPowerBiItem && destination === 'original' && originalSub === 'separate_folder' ? folderName : undefined,
-        overwrite: !isPowerBiItem && destination === 'original' && originalSub === 'overwrite',
-        workloads: !isPowerBiItem && scope === 'full' ? Array.from(workloads) : undefined,
+        targetEnvironmentId: (isPowerAppItem || isPowerFlowItem) && destination === 'another' ? targetEnvironmentId : undefined,
+        targetFolder: !isPowerBiItem && !isPowerPlatformItem && destination === 'original' && originalSub === 'separate_folder' ? folderName : undefined,
+        overwrite: !isPowerBiItem && !isPowerPlatformItem && destination === 'original' && originalSub === 'overwrite',
+        workloads: !isPowerBiItem && !isPowerPlatformItem && scope === 'full' ? Array.from(workloads) : undefined,
       });
       setSuccess(response.jobId);
     } catch (err) {
@@ -154,6 +205,18 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         {isPowerBiItem && (
           <div className="restore-item-info">
             <strong>Note:</strong> Power BI restores may require manual datasource rebinds or credential re-entry after replay.
+          </div>
+        )}
+
+        {(isPowerAppItem || isPowerFlowItem) && (
+          <div className="restore-item-info">
+            <strong>Note:</strong> Requires a {powerPlatformWorkload} package backup. Definition-only snapshots cannot be restored — re-run backup with package export enabled first.
+          </div>
+        )}
+
+        {isPowerDlpItem && (
+          <div className="restore-item-info">
+            <strong>Note:</strong> DLP policies are tenant-wide. Restore replaces the current policy with the captured definition; review connector groups before confirming.
           </div>
         )}
 
@@ -202,14 +265,33 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             </div>
           )}
 
+          {isPowerPlatformItem && (
+            <div className="modal-col">
+              <div className="radio-row">
+                <span>
+                  Recover {powerPlatformWorkload}
+                  {itemName && <strong> ({itemName})</strong>}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Right: Destination */}
           <div className="modal-col">
             <label className="radio-row">
               <input type="radio" checked={destination === 'original'} onChange={() => setDestination('original')} />
-              <span>{isPowerBiItem ? 'Recover to the original workspace' : 'Recover to the original resource'}</span>
+              <span>
+                {isPowerBiItem
+                  ? 'Recover to the original workspace'
+                  : isPowerAppItem || isPowerFlowItem
+                  ? 'Recover to the original environment'
+                  : isPowerDlpItem
+                  ? 'Restore policy tenant-wide'
+                  : 'Recover to the original resource'}
+              </span>
             </label>
 
-            {!isPowerBiItem && destination === 'original' && (
+            {!isPowerBiItem && !isPowerPlatformItem && destination === 'original' && (
               <div className="sub-options">
                 <label className="radio-row">
                   <input type="radio" checked={originalSub === 'separate_folder'} onChange={() => setOriginalSub('separate_folder')} />
@@ -229,18 +311,50 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
               </div>
             )}
 
-            <label className="radio-row">
-              <input type="radio" checked={destination === 'another'} onChange={() => setDestination('another')} />
-              <span>{isPowerBiItem ? 'Recover to another workspace' : 'Recover to another resource'}</span>
-            </label>
+            {!isPowerDlpItem && (
+              <label className="radio-row">
+                <input type="radio" checked={destination === 'another'} onChange={() => setDestination('another')} />
+                <span>
+                  {isPowerBiItem
+                    ? 'Recover to another workspace'
+                    : isPowerAppItem || isPowerFlowItem
+                    ? 'Recover to another environment'
+                    : 'Recover to another resource'}
+                </span>
+              </label>
+            )}
 
-            {destination === 'another' && !isPowerBiItem && (
+            {destination === 'another' && !isPowerBiItem && !isPowerPlatformItem && (
               <input
                 className="folder-input"
                 placeholder="Target resource ID"
                 value={targetUserId}
                 onChange={e => setTargetUserId(e.target.value)}
               />
+            )}
+
+            {destination === 'another' && (isPowerAppItem || isPowerFlowItem) && (
+              <>
+                <select
+                  value={targetEnvironmentId}
+                  onChange={(e) => setTargetEnvironmentId(e.target.value)}
+                  className="folder-input"
+                  disabled={pPlatformEnvsLoading}
+                >
+                  <option value="">Select target environment</option>
+                  {pPlatformEnvs.map((env) => (
+                    <option key={env.id} value={(env.external_id || '').replace(/^env_/, '')}>
+                      {env.name}
+                    </option>
+                  ))}
+                </select>
+                {pPlatformEnvsLoading && (
+                  <div className="restore-item-info">Loading available environments...</div>
+                )}
+                {pPlatformEnvsError && (
+                  <div className="modal-error">{pPlatformEnvsError}</div>
+                )}
+              </>
             )}
 
             {destination === 'another' && isPowerBiItem && (
