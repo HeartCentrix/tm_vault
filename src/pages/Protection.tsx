@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, getAllProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -219,41 +219,23 @@ export default function Protection() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Store complete backup status per resource
-  interface BackupStatus {
-    progress_pct: number;
-    status: string; // RUNNING, COMPLETED, FAILED
-    data_backed_up: number;
-    total_data: number;
-    started_at?: string;
-    eta_seconds?: number | null;
-  }
-  const STORAGE_KEY = `backupStatus_${tenantId}`;
-  const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>(() => {
+  // Track which resources have a pending backup. Persisted so status survives navigation/refresh.
+  // Map: resource_id -> ISO timestamp the backup was triggered. When a subsequent refetch shows
+  // the resource's last_backup_at is newer than triggeredAt, we clear the entry.
+  const STORAGE_KEY = `backingUp_${tenantId}`;
+  const [backingUp, setBackingUp] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
   });
-  const [backingUp, setBackingUp] = useState<Set<string>>(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Record<string, BackupStatus>;
-      return new Set(Object.keys(stored).filter(id => stored[id].status === 'RUNNING' || stored[id].status === 'QUEUED'));
-    } catch { return new Set(); }
-  });
 
-  // Persist backupStatus to localStorage so progress bar survives refresh/navigation
   useEffect(() => {
     try {
-      // Only keep active entries to avoid stale localStorage bloat
-      const active: Record<string, BackupStatus> = {};
-      for (const [id, s] of Object.entries(backupStatus)) {
-        if (s.status === 'RUNNING' || s.status === 'QUEUED') active[id] = s;
-      }
-      if (Object.keys(active).length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
+      if (Object.keys(backingUp).length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(backingUp));
       } else {
         localStorage.removeItem(STORAGE_KEY);
       }
-    } catch { /* quota errors etc */ }
-  }, [backupStatus, STORAGE_KEY]);
+    } catch { /* quota */ }
+  }, [backingUp, STORAGE_KEY]);
 
   useEffect(() => {
     function handleSlaClick(e: MouseEvent) {
@@ -265,70 +247,42 @@ export default function Protection() {
     return () => document.removeEventListener('mousedown', handleSlaClick);
   }, []);
 
-  // Poll progress for resources that are backing up
+  // Refresh resource list + reconcile pending backups when the tab regains focus.
+  // (Replaces the old 2s progress-polling loop — progress % is no longer tracked in the UI.)
   useEffect(() => {
-    if (backingUp.size === 0) return;
-    const interval = setInterval(async () => {
-      const updates: Record<string, BackupStatus> = {};
-      const done: string[] = [];
-      for (const rid of backingUp) {
-        try {
-          const p = await getResourceProgress(rid);
-          updates[rid] = {
-            progress_pct: p.progress_pct || 0,
-            status: p.status || 'RUNNING',
-            data_backed_up: p.data_backed_up || 0,
-            total_data: p.total_data || 0,
-            started_at: p.started_at,
-            eta_seconds: p.eta_seconds,
-          };
-          if (p.status === 'COMPLETED' || p.status === 'FAILED') {
-            done.push(rid);
-          }
-        } catch {
-          // ignore
-        }
-      }
-      setBackupStatus(prev => ({ ...prev, ...updates }));
-      if (done.length > 0) {
+    if (!tenantId) return;
+    const reconcile = async () => {
+      try {
+        const data = searchQuery
+          ? await getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
+          : await getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType);
+        const items = data.items || [];
+        setResources(items);
+        // Clear backingUp entries whose last_backup_at is newer than the trigger time.
         setBackingUp(prev => {
-          const next = new Set(prev);
-          done.forEach(d => next.delete(d));
+          const next = { ...prev };
+          for (const r of items) {
+            const triggered = next[r.id];
+            if (!triggered) continue;
+            if (r.last_backup && new Date(r.last_backup).getTime() >= new Date(triggered).getTime()) {
+              delete next[r.id];
+            }
+          }
           return next;
         });
-        // Remove completed/failed entries from localStorage
-        setBackupStatus(prev => {
-          const cleaned = { ...prev };
-          done.forEach(d => { delete cleaned[d]; });
-          try {
-            const active = Object.fromEntries(
-              Object.entries(cleaned).filter(([, s]) => s.status === 'RUNNING' || s.status === 'QUEUED')
-            );
-            if (Object.keys(active).length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
-            else localStorage.removeItem(STORAGE_KEY);
-          } catch { /* ignore */ }
-          return cleaned;
-        });
-        // Refresh resources to show updated backup status and size
-        if (tenantId) {
-          if (searchQuery) {
-            // When searching, fetch all results
-            getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-              .then((data: ResourceListResponse) => {
-                const filtered = data.items || [];
-                setResources(filtered);
-              })
-              .catch(console.error);
-          } else {
-            getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-              .then((data: ResourceListResponse) => setResources(data.items || []))
-              .catch(console.error);
-          }
-        }
+      } catch (err) {
+        console.error(err);
       }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [backingUp, tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter]);
+    };
+    const onFocus = () => { reconcile(); };
+    const onVisibility = () => { if (document.visibilityState === 'visible') reconcile(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -361,34 +315,6 @@ export default function Protection() {
         .finally(() => setLoading(false));
     }
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
-
-  // Seed backupStatus + backingUp from backend on load (survives page refresh)
-  useEffect(() => {
-    if (!tenantId) return;
-    getAllProgress(tenantId).then(progresses => {
-      const statusSeed: Record<string, any> = {};
-      const backingUpSeed = new Set<string>();
-      for (const p of progresses) {
-        if (p.status === 'RUNNING' || p.status === 'QUEUED') {
-          statusSeed[p.resource_id] = {
-            progress_pct: p.progress_pct || 0,
-            status: p.status,
-            data_backed_up: p.data_backed_up || 0,
-            total_data: p.total_data || 0,
-            started_at: p.started_at,
-            eta_seconds: p.eta_seconds,
-          };
-          backingUpSeed.add(p.resource_id);
-        }
-      }
-      setBackupStatus(prev => ({ ...prev, ...statusSeed }));
-      setBackingUp(prev => {
-        const next = new Set(prev);
-        backingUpSeed.forEach(id => next.add(id));
-        return next;
-      });
-    }).catch(console.error);
-  }, [tenantId, activeTab]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
@@ -515,61 +441,38 @@ export default function Protection() {
   };
 
   const handleBackupNow = async (resourceId: string) => {
-    if (backingUp.has(resourceId)) return; // Already backing up
+    if (backingUp[resourceId]) return; // Already pending
+    const triggeredAt = new Date().toISOString();
     try {
-      setBackingUp(prev => new Set(prev).add(resourceId));
-      setBackupStatus(prev => ({
-        ...prev,
-        [resourceId]: { progress_pct: 0, status: 'RUNNING', data_backed_up: 0, total_data: 0, started_at: new Date().toISOString() }
-      }));
+      setBackingUp(prev => ({ ...prev, [resourceId]: triggeredAt }));
       await triggerBackup(resourceId);
     } catch (err) {
       console.error('Failed to trigger backup:', err);
       setBackingUp(prev => {
-        const next = new Set(prev);
-        next.delete(resourceId);
+        const next = { ...prev };
+        delete next[resourceId];
         return next;
-      });
-      setBackupStatus(prev => {
-        const updated = { ...prev };
-        delete updated[resourceId];
-        return updated;
       });
     }
   };
 
   const handleBatchBackup = async () => {
     if (selectedResources.length === 0) return;
-
+    const triggeredAt = new Date().toISOString();
     try {
-      // Add all selected to backing up state
       setBackingUp(prev => {
-        const next = new Set(prev);
-        selectedResources.forEach(r => next.add(r));
+        const next = { ...prev };
+        selectedResources.forEach(r => { next[r] = triggeredAt; });
         return next;
       });
-      // Initialize status for all
-      const initialStatus: Record<string, BackupStatus> = {};
-      selectedResources.forEach(r => {
-        initialStatus[r] = { progress_pct: 0, status: 'RUNNING', data_backed_up: 0, total_data: 0, started_at: new Date().toISOString() };
-      });
-      setBackupStatus(prev => ({ ...prev, ...initialStatus }));
-
-      // Trigger batch backup
       const results = await triggerBatchBackup(selectedResources);
       console.log(`Triggered batch backup for ${results.length} resources`);
     } catch (err) {
       console.error('Failed to trigger batch backup:', err);
-      // Remove from backing up on failure
       setBackingUp(prev => {
-        const next = new Set(prev);
-        selectedResources.forEach(r => next.delete(r));
+        const next = { ...prev };
+        selectedResources.forEach(r => { delete next[r]; });
         return next;
-      });
-      setBackupStatus(prev => {
-        const updated = { ...prev };
-        selectedResources.forEach(r => delete updated[r]);
-        return updated;
       });
     }
   };
@@ -841,48 +744,22 @@ export default function Protection() {
                   )}
                 </td>
                 <td className="size-cell">
-                  {(() => {
-                    const status = backupStatus[resource.id];
-                    const baseSize = resource.usage?.size || 0;
-                    const processedBytes = status?.data_backed_up || 0;
-                    const displaySize = backingUp.has(resource.id) ? baseSize + processedBytes : baseSize;
-                    return (
-                      <>
-                        <div className="size-main">{formatSize(displaySize)}</div>
-                        <div className="size-sub">
-                          {backingUp.has(resource.id) && processedBytes > 0 && (
-                            <span style={{ color: '#3b82f6' }}>+{formatSize(processedBytes)}</span>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
+                  <div className="size-main">{formatSize(resource.usage?.size || 0)}</div>
                 </td>
                 <td className="backup-cell">
                   {(() => {
-                    const status = backupStatus[resource.id];
-                    const isActive = backingUp.has(resource.id) || status?.status === 'RUNNING' || status?.status === 'QUEUED';
+                    const isPending = !!backingUp[resource.id];
 
-                    if (isActive && status) {
-                      const isQueued = status.status === 'QUEUED';
+                    if (isPending) {
                       return (
-                        <div className="backup-progress-cell">
-                          <div className="backup-progress-track">
-                            {isQueued
-                              ? <div className="backup-progress-fill queued-pulse" style={{ width: '100%' }}></div>
-                              : <div className="backup-progress-fill" style={{ width: `${status.progress_pct}%` }}></div>
-                            }
-                          </div>
-                          {!isQueued && <span className="backup-progress-label">{status.progress_pct}%</span>}
-                          <span className={`backup-status ${isQueued ? 'queued' : 'running'}`}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 4 }}>
-                              <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="15">
-                                <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite" />
-                              </circle>
-                            </svg>
-                            {isQueued ? 'Queued...' : 'Backing up...'}
-                          </span>
-                        </div>
+                        <span className="backup-status queued">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 4 }}>
+                            <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="15">
+                              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite" />
+                            </circle>
+                          </svg>
+                          Queued
+                        </span>
                       );
                     }
 
@@ -909,10 +786,10 @@ export default function Protection() {
                   <button
                     className="action-btn-sm"
                     onClick={() => handleBackupNow(resource.id)}
-                    disabled={backingUp.has(resource.id) || !resource.protections?.[0]?.policy_id}
+                    disabled={!!backingUp[resource.id] || !resource.protections?.[0]?.policy_id}
                     title={backupButtonTitle}
                   >
-                    {backingUp.has(resource.id) ? 'Backing up...' : 'Backup now'}
+                    {backingUp[resource.id] ? 'Queued' : 'Backup now'}
                   </button>
                   <button
                     className="action-btn-sm"
