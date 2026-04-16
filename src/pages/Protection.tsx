@@ -26,8 +26,6 @@ const azureTabs: { key: ResourceTab; label: string }[] = [
   { key: 'virtual-machines', label: 'Virtual machines' },
   { key: 'sql-databases', label: 'Azure SQL databases' },
   { key: 'postgresql-servers', label: 'Azure PostgreSQL servers' },
-  { key: 'resource-groups', label: 'Resource groups' },
-  { key: 'dynamic-groups', label: 'Dynamic groups' },
 ];
 
 function getInitials(name: string): string {
@@ -245,8 +243,8 @@ export default function Protection() {
 
   useEffect(() => {
     if (!tenantId) return;
-    getSlaPolicies(tenantId).then(setPolicies).catch(console.error);
-  }, [tenantId]);
+    getSlaPolicies(tenantId, serviceType === 'azure' ? 'azure' : 'm365').then(setPolicies).catch(console.error);
+  }, [tenantId, serviceType]);
 
   useEffect(() => {
     if (!tenantId) return;

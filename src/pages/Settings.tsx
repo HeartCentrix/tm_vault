@@ -9,7 +9,8 @@ import './Settings.css';
 type SettingsTab = 'sla' | 'info' | 'admin-consent';
 
 interface BackupItem {
-  key: string;
+  formKey: string;
+  policyKey: string;
   label: string;
   checked: boolean;
   hasSettings?: boolean;
@@ -18,27 +19,81 @@ interface BackupItem {
 const DAYS = ['M', 'T', 'W', 'R', 'F', 'S', 'U'] as const;
 const DAY_LABELS: Record<string, string> = { M: 'M', T: 'T', W: 'W', R: 'T', F: 'F', S: 'S', U: 'S' };
 
-const BACKUP_ITEMS_LEFT: BackupItem[] = [
-  { key: 'backup_exchange', label: 'Emails', checked: true, hasSettings: true },
-  { key: 'backup_teams_chats', label: 'Chats', checked: true },
-  { key: 'contacts', label: 'Contacts', checked: true },
-  { key: 'calendars', label: 'Calendars', checked: true },
-  { key: 'backup_onedrive', label: 'Drive & OneNote', checked: true },
-  { key: 'tasks', label: 'Tasks', checked: false },
-  { key: 'backup_copilot', label: 'Copilot', checked: false },
+const M365_BACKUP_ITEMS_LEFT: BackupItem[] = [
+  { formKey: 'backup_exchange', policyKey: 'backupExchange', label: 'Emails', checked: true, hasSettings: true },
+  { formKey: 'backup_teams_chats', policyKey: 'backupTeamsChats', label: 'Chats', checked: true },
+  { formKey: 'contacts', policyKey: 'contacts', label: 'Contacts', checked: true },
+  { formKey: 'calendars', policyKey: 'calendars', label: 'Calendars', checked: true },
+  { formKey: 'backup_onedrive', policyKey: 'backupOneDrive', label: 'Drive & OneNote', checked: true },
+  { formKey: 'tasks', policyKey: 'tasks', label: 'Tasks', checked: false },
+  { formKey: 'backup_copilot', policyKey: 'backupCopilot', label: 'Copilot', checked: false },
 ];
 
-const BACKUP_ITEMS_RIGHT: BackupItem[] = [
-  { key: 'backup_sharepoint', label: 'SharePoint', checked: true },
-  { key: 'backup_teams', label: 'Team Channels', checked: true },
-  { key: 'group_mailbox', label: 'Group mailbox', checked: true },
-  { key: 'backup_entra_id', label: 'Entra ID', checked: true },
-  { key: 'backup_power_platform', label: 'Power Platform', checked: true },
-  { key: 'planner', label: 'Planner', checked: false },
+const M365_BACKUP_ITEMS_RIGHT: BackupItem[] = [
+  { formKey: 'backup_sharepoint', policyKey: 'backupSharepoint', label: 'SharePoint', checked: true },
+  { formKey: 'backup_teams', policyKey: 'backupTeams', label: 'Team Channels', checked: true },
+  { formKey: 'group_mailbox', policyKey: 'groupMailbox', label: 'Group mailbox', checked: true },
+  { formKey: 'backup_entra_id', policyKey: 'backupEntraId', label: 'Entra ID', checked: true },
+  { formKey: 'backup_power_platform', policyKey: 'backupPowerPlatform', label: 'Power Platform', checked: true },
+  { formKey: 'planner', policyKey: 'planner', label: 'Planner', checked: false },
 ];
+
+const AZURE_BACKUP_ITEMS_LEFT: BackupItem[] = [
+  { formKey: 'backup_azure_vm', policyKey: 'backupAzureVm', label: 'Virtual machines', checked: true },
+  { formKey: 'backup_azure_sql', policyKey: 'backupAzureSql', label: 'Azure SQL databases', checked: true },
+];
+
+const AZURE_BACKUP_ITEMS_RIGHT: BackupItem[] = [
+  { formKey: 'backup_azure_postgresql', policyKey: 'backupAzurePostgresql', label: 'Azure PostgreSQL servers', checked: true },
+];
+
+function defaultFormBackups(serviceType: 'm365' | 'azure'): Record<string, boolean> {
+  if (serviceType === 'azure') {
+    return {
+      backup_exchange: false,
+      backup_teams_chats: false,
+      contacts: false,
+      calendars: false,
+      backup_onedrive: false,
+      tasks: false,
+      backup_copilot: false,
+      backup_sharepoint: false,
+      backup_teams: false,
+      group_mailbox: false,
+      backup_entra_id: false,
+      backup_power_platform: false,
+      planner: false,
+      backup_exchange_recoverable: false,
+      backup_azure_vm: true,
+      backup_azure_sql: true,
+      backup_azure_postgresql: true,
+    };
+  }
+
+  return {
+    backup_exchange: true,
+    backup_teams_chats: true,
+    contacts: true,
+    calendars: true,
+    backup_onedrive: true,
+    tasks: false,
+    backup_copilot: false,
+    backup_sharepoint: true,
+    backup_teams: true,
+    group_mailbox: true,
+    backup_entra_id: true,
+    backup_power_platform: true,
+    planner: false,
+    backup_exchange_recoverable: false,
+    backup_azure_vm: false,
+    backup_azure_sql: false,
+    backup_azure_postgresql: false,
+  };
+}
 
 export default function Settings() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
+  const effectiveServiceType: 'm365' | 'azure' = serviceType === 'azure' ? 'azure' : 'm365';
   const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
   const subRouteKey = tenantId ? '/protection/settings' : '/settings';
   const tenantSettingsPath = tenantId && serviceType
@@ -61,16 +116,12 @@ export default function Settings() {
   const [powerBiReadiness, setPowerBiReadiness] = useState<PowerBIReadiness | null>(null);
   const [adminConsentLoading, setAdminConsentLoading] = useState(true);
   const [grantingConsent, setGrantingConsent] = useState<'m365' | 'azure' | 'powerbi' | null>(null);
+  const backupItemsLeft = effectiveServiceType === 'azure' ? AZURE_BACKUP_ITEMS_LEFT : M365_BACKUP_ITEMS_LEFT;
+  const backupItemsRight = effectiveServiceType === 'azure' ? AZURE_BACKUP_ITEMS_RIGHT : M365_BACKUP_ITEMS_RIGHT;
 
   // Modal form state
   const [formName, setFormName] = useState('');
-  const [formBackups, setFormBackups] = useState<Record<string, boolean>>({
-    backup_exchange: true, backup_teams_chats: true, contacts: true, calendars: true,
-    backup_onedrive: true, tasks: false, backup_copilot: false,
-    backup_sharepoint: true, backup_teams: true, group_mailbox: true,
-    backup_entra_id: true, backup_power_platform: true, planner: false,
-    backup_exchange_recoverable: false,
-  });
+  const [formBackups, setFormBackups] = useState<Record<string, boolean>>(() => defaultFormBackups(effectiveServiceType));
   const [formFrequency, setFormFrequency] = useState('1x');
   const [formDays, setFormDays] = useState<Set<string>>(new Set(['M', 'T', 'W', 'R', 'F', 'S', 'U']));
   const [formStartTime, setFormStartTime] = useState('21:00');
@@ -93,11 +144,11 @@ export default function Settings() {
       return;
     }
     setLoading(true);
-    getSlaPolicies(tenantId)
+    getSlaPolicies(tenantId, effectiveServiceType)
       .then(setPolicies)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeTab, tenantId]);
+  }, [activeTab, tenantId, effectiveServiceType]);
 
   useEffect(() => {
     if (activeTab !== 'info') return;
@@ -225,13 +276,7 @@ export default function Settings() {
 
   const resetForm = () => {
     setFormName('');
-    setFormBackups({
-      backup_exchange: true, backup_teams_chats: true, contacts: true, calendars: true,
-      backup_onedrive: true, tasks: false, backup_copilot: false,
-      backup_sharepoint: true, backup_teams: true, group_mailbox: true,
-      backup_entra_id: true, backup_power_platform: true, planner: false,
-      backup_exchange_recoverable: false,
-    });
+    setFormBackups(defaultFormBackups(effectiveServiceType));
     setShowEmailSettings(false);
     setFormFrequency('1x');
     setFormDays(new Set(['M', 'T', 'W', 'R', 'F', 'S', 'U']));
@@ -263,6 +308,7 @@ export default function Settings() {
 
       const data: Partial<SlaPolicy> = {
         tenantId,
+        serviceType: effectiveServiceType,
         name: formName.trim(),
         frequency,
         backupDays,
@@ -282,6 +328,9 @@ export default function Settings() {
         tasks: formBackups.tasks,
         groupMailbox: formBackups.group_mailbox,
         planner: formBackups.planner,
+        backupAzureVm: formBackups.backup_azure_vm,
+        backupAzureSql: formBackups.backup_azure_sql,
+        backupAzurePostgresql: formBackups.backup_azure_postgresql,
         retentionType: formRetention,
         enabled: true,
         isDefault: false,
@@ -379,35 +428,20 @@ export default function Settings() {
                     <div className="sla-name">{policy.name}</div>
                     <div className="sla-backups">
                       <div className="sla-backup-col">
-                        {[
-                          { key: 'backupExchange', label: 'Emails' },
-                          { key: 'backupTeamsChats', label: 'Chats' },
-                          { key: 'contacts', label: 'Contacts' },
-                          { key: 'calendars', label: 'Calendars' },
-                          { key: 'backupOneDrive', label: 'Drive & OneNote' },
-                          { key: 'tasks', label: 'Tasks' },
-                          { key: 'backupCopilot', label: 'Copilot' },
-                        ].map(item => (
-                          <label key={item.key} className="sla-check">
-                            <span className={`sla-check-box ${policy[item.key as keyof typeof policy] ? 'checked' : ''}`}>
-                              {policy[item.key as keyof typeof policy] ? '✓' : ''}
+                        {backupItemsLeft.map(item => (
+                          <label key={item.policyKey} className="sla-check">
+                            <span className={`sla-check-box ${policy[item.policyKey as keyof typeof policy] ? 'checked' : ''}`}>
+                              {policy[item.policyKey as keyof typeof policy] ? '✓' : ''}
                             </span>
                             {item.label}
                           </label>
                         ))}
                       </div>
                       <div className="sla-backup-col">
-                        {[
-                          { key: 'backupSharepoint', label: 'SharePoint' },
-                          { key: 'backupTeams', label: 'Team Channels' },
-                          { key: 'groupMailbox', label: 'Group mailbox' },
-                          { key: 'backupEntraId', label: 'Entra ID' },
-                          { key: 'backupPowerPlatform', label: 'Power Platform' },
-                          { key: 'planner', label: 'Planner' },
-                        ].map(item => (
-                          <label key={item.key} className="sla-check">
-                            <span className={`sla-check-box ${policy[item.key as keyof typeof policy] ? 'checked' : ''}`}>
-                              {policy[item.key as keyof typeof policy] ? '✓' : ''}
+                        {backupItemsRight.map(item => (
+                          <label key={item.policyKey} className="sla-check">
+                            <span className={`sla-check-box ${policy[item.policyKey as keyof typeof policy] ? 'checked' : ''}`}>
+                              {policy[item.policyKey as keyof typeof policy] ? '✓' : ''}
                             </span>
                             {item.label}
                           </label>
@@ -682,11 +716,11 @@ export default function Settings() {
               <h4 className="sla-modal-heading">Data to back up:</h4>
               <div className="sla-modal-backup-grid">
                 <div className="sla-modal-backup-col">
-                  {BACKUP_ITEMS_LEFT.map(item => (
-                    <div key={`bl-${item.key}`} className="sla-modal-check-row">
-                      <label className="sla-modal-check" onClick={() => toggleBackup(item.key)}>
-                        <span className={`sla-modal-check-box ${formBackups[item.key] ? 'checked' : ''}`}>
-                          {formBackups[item.key] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
+                  {backupItemsLeft.map(item => (
+                    <div key={`bl-${item.formKey}`} className="sla-modal-check-row">
+                      <label className="sla-modal-check" onClick={() => toggleBackup(item.formKey)}>
+                        <span className={`sla-modal-check-box ${formBackups[item.formKey] ? 'checked' : ''}`}>
+                          {formBackups[item.formKey] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
                         </span>
                         <span>{item.label}</span>
                       </label>
@@ -713,10 +747,10 @@ export default function Settings() {
                   ))}
                 </div>
                 <div className="sla-modal-backup-col">
-                  {BACKUP_ITEMS_RIGHT.map(item => (
-                    <label key={`br-${item.key}`} className="sla-modal-check" onClick={() => toggleBackup(item.key)}>
-                      <span className={`sla-modal-check-box ${formBackups[item.key] ? 'checked' : ''}`}>
-                        {formBackups[item.key] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
+                  {backupItemsRight.map(item => (
+                    <label key={`br-${item.formKey}`} className="sla-modal-check" onClick={() => toggleBackup(item.formKey)}>
+                      <span className={`sla-modal-check-box ${formBackups[item.formKey] ? 'checked' : ''}`}>
+                        {formBackups[item.formKey] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
                       </span>
                       <span>{item.label}</span>
                     </label>
