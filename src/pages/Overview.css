@@ -481,6 +481,11 @@
   color: #991b1b;
 }
 
+.activity-status.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .spinner-small {
   display: inline-block;
   width: 12px;

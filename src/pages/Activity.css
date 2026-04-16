@@ -314,6 +314,11 @@
   color: #991b1b;
 }
 
+.status-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .status-canceled {
   background: #f3f4f6;
   color: #6b7280;

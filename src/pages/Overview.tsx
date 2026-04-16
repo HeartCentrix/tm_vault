@@ -534,6 +534,7 @@ export default function Overview() {
                     <span className={`activity-status ${
                       activity.status === 'Done' ? 'done' :
                       activity.status === 'In Progress' ? 'in-progress' :
+                      activity.status === 'Warning' ? 'warning' :
                       activity.status === 'Canceled' ? 'failed' : 'failed'
                     }`}>
                       {activity.status === 'In Progress' && <span className="spinner-small" />}
