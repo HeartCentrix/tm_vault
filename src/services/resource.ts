@@ -278,23 +278,33 @@ export async function triggerBackup(resourceId: string, fullBackup: boolean = fa
   return res.json();
 }
 
-export async function getResourceProgress(resourceId: string): Promise<{
+export interface ResourceProgress {
   resource_id: string;
   status: string;
   progress_pct: number;
-  total_bytes: number;
-  processed_bytes: number;
-  total_items: number;
-  processed_items: number;
+  data_backed_up: number;
+  total_data: number;
   eta_seconds: number | null;
   started_at?: string;
-}> {
+}
+
+export async function getResourceProgress(resourceId: string): Promise<ResourceProgress> {
   const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.BASE_URL}/progress/resource/${resourceId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to get progress: ${res.statusText}`);
   return res.json();
+}
+
+export async function getAllProgress(tenantId: string): Promise<ResourceProgress[]> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(`${API.BASE_URL}/progress/resources?tenant_id=${tenantId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to get all progress: ${res.statusText}`);
+  const data = await res.json();
+  return data.resources || [];
 }
 
 export async function triggerBatchBackup(resourceIds: string[]): Promise<{ jobId: string; status: string; resourceId: string }[]> {

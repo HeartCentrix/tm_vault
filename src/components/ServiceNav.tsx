@@ -32,8 +32,8 @@ export default function ServiceNav() {
   const tabs = [
     { label: 'Overview', route: buildRoute('/overview') },
     { label: 'Protection', route: buildRoute('/protection'), exact: true },
-    { label: 'Settings', route: buildRoute('/protection/settings') },
-    // { label: 'Global search', route: buildRoute('/global-search') },
+    { label: 'Recovery', route: buildRoute('/protection/recovery'), exact: true },
+    { label: 'Settings', route: buildRoute('/protection/settings'), exact: true },
   ];
 
   const isActive = (route: string, exact?: boolean) => {

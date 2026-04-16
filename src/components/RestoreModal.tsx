@@ -11,39 +11,25 @@ interface RestoreModalProps {
   snapshotIds: string[];
   itemName?: string;
   itemType?: string;
+  snapshotDate?: string;
 }
 
-const RESTORE_TYPES: { key: RestoreType; label: string; description: string }[] = [
-  {
-    key: 'IN_PLACE',
-    label: 'In-place restore',
-    description: 'Restore items to their original location',
-  },
-  {
-    key: 'CROSS_USER',
-    label: 'Cross-user restore',
-    description: 'Restore items to a different user/resource',
-  },
-  {
-    key: 'CROSS_RESOURCE',
-    label: 'Cross-resource restore',
-    description: 'Restore items to a different target resource',
-  },
-  {
-    key: 'EXPORT_ZIP',
-    label: 'Export as ZIP',
-    description: 'Download items as a ZIP file',
-  },
-  {
-    key: 'DOWNLOAD',
-    label: 'Download JSON',
-    description: 'Download items as JSON data',
-  },
-];
+const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
+type Workload = typeof WORKLOADS[number];
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType }: RestoreModalProps) {
+type Scope = 'selected' | 'full';
+type Destination = 'original' | 'another';
+type OriginalSubOption = 'separate_folder' | 'overwrite';
+
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
-  const [restoreType, setRestoreType] = useState<RestoreType>('IN_PLACE');
+  const [scope, setScope] = useState<Scope>('selected');
+  const [workloads, setWorkloads] = useState<Set<Workload>>(new Set(['Mail', 'OneDrive', 'Contacts', 'Calendar']));
+  const [destination, setDestination] = useState<Destination>('original');
+  const [originalSub, setOriginalSub] = useState<OriginalSubOption>('separate_folder');
+  const [folderName, setFolderName] = useState(
+    `Restored by AFI/${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
+  );
   const [targetUserId, setTargetUserId] = useState('');
   const [targetResourceId, setTargetResourceId] = useState('');
   const [powerBiTargets, setPowerBiTargets] = useState<ResourceItem[]>([]);
@@ -51,15 +37,9 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   const [powerBiTargetsError, setPowerBiTargetsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ jobId: string; restoreType: string } | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const isPowerBiItem = Boolean(itemType?.startsWith('POWER_BI'));
-  const availableRestoreTypes = RESTORE_TYPES.filter((type) => {
-    if (isPowerBiItem) {
-      return type.key !== 'CROSS_USER' && type.key !== 'EXPORT_PST';
-    }
-    return type.key !== 'CROSS_RESOURCE';
-  });
 
   useEffect(() => {
     if (!isOpen || !isPowerBiItem || !tenantId) {
@@ -93,29 +73,46 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
 
   if (!isOpen) return null;
 
-  const handleSubmit = async () => {
-    if (restoreType === 'CROSS_USER' && !targetUserId.trim()) {
-      setError('Target user ID is required for cross-user restore');
-      return;
-    }
-    if (restoreType === 'CROSS_RESOURCE' && !targetResourceId.trim()) {
-      setError('Target resource ID is required for cross-resource restore');
+  const toggleWorkload = (w: Workload) => {
+    setWorkloads(prev => {
+      const next = new Set(prev);
+      next.has(w) ? next.delete(w) : next.add(w);
+      return next;
+    });
+  };
+
+  const handleRecover = async () => {
+    if (isPowerBiItem) {
+      if (destination === 'another' && !targetResourceId.trim()) {
+        setError('Please select a target Power BI workspace');
+        return;
+      }
+    } else if (destination === 'another' && !targetUserId.trim()) {
+      setError('Please enter a target resource ID');
       return;
     }
 
     setLoading(true);
     setError(null);
-
     try {
+      let restoreType: RestoreType;
+      if (isPowerBiItem) {
+        restoreType = destination === 'another' ? 'CROSS_RESOURCE' : 'IN_PLACE';
+      } else {
+        restoreType = destination === 'another' ? 'CROSS_USER' : 'IN_PLACE';
+      }
+
       const response = await RestoreService.triggerRestore({
         restoreType,
         snapshotIds,
-        itemIds,
-        targetUserId: restoreType === 'CROSS_USER' ? targetUserId : undefined,
-        targetResourceId: restoreType === 'CROSS_RESOURCE' ? targetResourceId : undefined,
+        itemIds: scope === 'selected' ? itemIds : [],
+        targetUserId: !isPowerBiItem && destination === 'another' ? targetUserId : undefined,
+        targetResourceId: isPowerBiItem && destination === 'another' ? targetResourceId : undefined,
+        targetFolder: !isPowerBiItem && destination === 'original' && originalSub === 'separate_folder' ? folderName : undefined,
+        overwrite: !isPowerBiItem && destination === 'original' && originalSub === 'overwrite',
+        workloads: !isPowerBiItem && scope === 'full' ? Array.from(workloads) : undefined,
       });
-
-      setSuccess({ jobId: response.jobId, restoreType: response.restoreType });
+      setSuccess(response.jobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Restore failed');
     } finally {
@@ -123,27 +120,22 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     }
   };
 
+  const dateLabel = snapshotDate
+    ? new Date(snapshotDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    : '';
+
   if (success) {
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h2>Restore Queued</h2>
+        <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={onClose}>×</button>
-          </div>
-          <div className="modal-body">
-            <div className="success-message">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 48, height: 48, color: '#38a169'}}>
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
+          <div className="modal-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" style={{ width: 48, height: 48 }}>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
               </svg>
-              <p>Restore job has been queued successfully</p>
-              <p><strong>Job ID:</strong> {success.jobId}</p>
-              <p><strong>Type:</strong> {success.restoreType}</p>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button className="btn-primary" onClick={onClose}>Close</button>
+            <p>Restore job queued</p>
+            <span className="success-job-id">Job ID: {success}</span>
+            <button className="btn-recover" onClick={onClose}>Close</button>
           </div>
         </div>
       </div>
@@ -152,114 +144,137 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Restore Items</h2>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
           <button className="modal-close" onClick={onClose}>×</button>
+
+        <div className="modal-title">
+          Recover from backup version{dateLabel ? <> <strong>{dateLabel}</strong></> : ''}
         </div>
 
-        <div className="modal-body">
-          {itemName && (
-            <div className="restore-item-info">
-              <strong>Item:</strong> {itemName}
-              {itemType && <span> ({itemType})</span>}
-            </div>
-          )}
-
-          {isPowerBiItem && (
-            <div className="restore-item-info">
-              <strong>Note:</strong> Power BI restores may require manual datasource rebinds or credential re-entry after replay.
-            </div>
-          )}
-
-          <div className="form-group">
-            <label>Restore Type</label>
-            <div className="restore-type-options">
-              {availableRestoreTypes.map(type => (
-                <label
-                  key={type.key}
-                  className={`restore-type-option ${restoreType === type.key ? 'selected' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="restoreType"
-                    value={type.key}
-                    checked={restoreType === type.key}
-                    onChange={() => setRestoreType(type.key)}
-                  />
-                  <div className="restore-type-label">
-                    <strong>{type.label}</strong>
-                    <span>{type.description}</span>
-                  </div>
-                </label>
-              ))}
-            </div>
+        {isPowerBiItem && (
+          <div className="restore-item-info">
+            <strong>Note:</strong> Power BI restores may require manual datasource rebinds or credential re-entry after replay.
           </div>
+        )}
 
-          {restoreType === 'CROSS_USER' && (
-            <div className="form-group">
-              <label>Target User ID</label>
-              <input
-                type="text"
-                value={targetUserId}
-                onChange={(e) => setTargetUserId(e.target.value)}
-                placeholder="Enter target user external ID"
-                className="form-input"
-              />
-            </div>
-          )}
+        <div className="modal-columns">
+          {/* Left: Scope (non-Power BI only) */}
+          {!isPowerBiItem && (
+            <div className="modal-col">
+              <label className="radio-row">
+                <input type="radio" checked={scope === 'selected'} onChange={() => setScope('selected')} />
+                <span>
+                  Recover selected items
+                  {itemName && <strong> ({itemName})</strong>}
+                </span>
+              </label>
 
-          {restoreType === 'CROSS_RESOURCE' && (
-            <div className="form-group">
-              <label>{isPowerBiItem ? 'Target Power BI workspace' : 'Target resource ID'}</label>
-              {isPowerBiItem ? (
-                <>
-                  <select
-                    value={targetResourceId}
-                    onChange={(e) => setTargetResourceId(e.target.value)}
-                    className="form-input"
-                    disabled={powerBiTargetsLoading}
-                  >
-                    <option value="">Select target workspace</option>
-                    {powerBiTargets.map((resource) => (
-                      <option key={resource.id} value={resource.id}>
-                        {resource.name}
-                        {resource.email ? ` (${resource.email})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {powerBiTargetsLoading && (
-                    <div className="restore-item-info">Loading available Power BI workspaces...</div>
-                  )}
-                  {powerBiTargetsError && (
-                    <div className="error-message">{powerBiTargetsError}</div>
-                  )}
-                </>
-              ) : (
-                <input
-                  type="text"
-                  value={targetResourceId}
-                  onChange={(e) => setTargetResourceId(e.target.value)}
-                  placeholder="Enter target resource ID"
-                  className="form-input"
-                />
+              <label className="radio-row">
+                <input type="radio" checked={scope === 'full'} onChange={() => setScope('full')} />
+                <span>Recover full account</span>
+              </label>
+
+              {scope === 'full' && (
+                <div className="workload-list">
+                  {WORKLOADS.map(w => (
+                    <label key={w} className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={workloads.has(w)}
+                        onChange={() => toggleWorkload(w)}
+                      />
+                      <span>{w}</span>
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           )}
 
-          {error && <div className="error-message">{error}</div>}
+          {isPowerBiItem && (
+            <div className="modal-col">
+              <div className="radio-row">
+                <span>
+                  Recover selected items
+                  {itemName && <strong> ({itemName})</strong>}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Right: Destination */}
+          <div className="modal-col">
+            <label className="radio-row">
+              <input type="radio" checked={destination === 'original'} onChange={() => setDestination('original')} />
+              <span>{isPowerBiItem ? 'Recover to the original workspace' : 'Recover to the original resource'}</span>
+            </label>
+
+            {!isPowerBiItem && destination === 'original' && (
+              <div className="sub-options">
+                <label className="radio-row">
+                  <input type="radio" checked={originalSub === 'separate_folder'} onChange={() => setOriginalSub('separate_folder')} />
+                  <span>Recover to a separate folder <span className="info-icon" title="Items will be placed in a new folder">ℹ</span></span>
+                </label>
+                {originalSub === 'separate_folder' && (
+                  <input
+                    className="folder-input"
+                    value={folderName}
+                    onChange={e => setFolderName(e.target.value)}
+                  />
+                )}
+                <label className="radio-row">
+                  <input type="radio" checked={originalSub === 'overwrite'} onChange={() => setOriginalSub('overwrite')} />
+                  <span>Overwrite existing content</span>
+                </label>
+              </div>
+            )}
+
+            <label className="radio-row">
+              <input type="radio" checked={destination === 'another'} onChange={() => setDestination('another')} />
+              <span>{isPowerBiItem ? 'Recover to another workspace' : 'Recover to another resource'}</span>
+            </label>
+
+            {destination === 'another' && !isPowerBiItem && (
+              <input
+                className="folder-input"
+                placeholder="Target resource ID"
+                value={targetUserId}
+                onChange={e => setTargetUserId(e.target.value)}
+              />
+            )}
+
+            {destination === 'another' && isPowerBiItem && (
+              <>
+                <select
+                  value={targetResourceId}
+                  onChange={(e) => setTargetResourceId(e.target.value)}
+                  className="folder-input"
+                  disabled={powerBiTargetsLoading}
+                >
+                  <option value="">Select target workspace</option>
+                  {powerBiTargets.map((resource) => (
+                    <option key={resource.id} value={resource.id}>
+                      {resource.name}
+                      {resource.email ? ` (${resource.email})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {powerBiTargetsLoading && (
+                  <div className="restore-item-info">Loading available Power BI workspaces...</div>
+                )}
+                {powerBiTargetsError && (
+                  <div className="modal-error">{powerBiTargetsError}</div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
+        {error && <div className="modal-error">{error}</div>}
+
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose} disabled={loading}>
-            Cancel
-          </button>
-          <button
-            className="btn-primary"
-            onClick={handleSubmit}
-            disabled={loading}
-          >
-            {loading ? 'Submitting...' : 'Restore'}
+          <button className="btn-recover" onClick={handleRecover} disabled={loading}>
+            {loading ? 'Recovering...' : 'Recover'}
           </button>
         </div>
       </div>

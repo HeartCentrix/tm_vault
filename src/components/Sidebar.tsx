@@ -8,7 +8,7 @@ export default function Sidebar() {
 
   const isRouteActive = (route: string) => {
     if (route === 'service') {
-      return location.pathname.startsWith('/tenants') && !['/activity', '/alerts', '/settings', '/configuration'].some(r => location.pathname.startsWith(r));
+      return location.pathname.startsWith('/tenants') && !['/activity', '/settings', '/configuration'].some(r => location.pathname.startsWith(r));
     }
     return location.pathname.startsWith(route);
   };
@@ -22,7 +22,7 @@ export default function Sidebar() {
       } else {
         navigate('/tenants');
       }
-    } else if (route === '/activity' || route === '/alerts' || route === '/configuration') {
+    } else if (route === '/activity' || route === '/configuration') {
       // Preserve tenant context by including it in the route
       const state = getNavigationState();
       if (state && state.tenantId && state.serviceType) {
@@ -39,7 +39,6 @@ export default function Sidebar() {
   const menuItems = [
     { label: 'Service', route: 'service' },
     { label: 'Activity', route: '/activity' },
-    { label: 'Alerts', route: '/alerts' },
     { label: 'Configuration', route: '/configuration' },
   ];
 
@@ -70,8 +69,6 @@ export default function Sidebar() {
 
       <div className="sidebar-footer">
         <a href="#" className="footer-link">Docs</a>
-        <a href="#" className="footer-link">Support</a>
-        <a href="mailto:support@tm.vault" className="footer-link">support@tm.vault</a>
       </div>
     </div>
   );

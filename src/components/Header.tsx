@@ -129,7 +129,7 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                     {filteredDataSources.map((source) => (
                       <div
                         key={source.id}
-                        className={`dropdown-item ${selectedSource?.id === source.id ? 'active' : ''}`}
+                        className={`dropdown-item ${selectedSource?.id === source.id && selectedSource?.type === source.type ? 'active' : ''}`}
                         onClick={() => selectDataSource(source)}
                       >
                         {source.type === 'm365' ? (
@@ -199,8 +199,8 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
             {isUserMenuOpen && (
               <div className="user-dropdown">
                 <div className="user-info">
-                  <div className="user-name">Admin User</div>
-                  <div className="user-email">admin@contoso.com</div>
+                  <div className="user-name">{(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').name || 'User'; } catch { return 'User'; } })()}</div>
+                  <div className="user-email">{(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').email || ''; } catch { return ''; } })()}</div>
                 </div>
                 <div className="dropdown-divider"></div>
                 <button className="logout-item" onClick={() => {

@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, getResourceProgress, getAllProgress, triggerBatchBackup, triggerDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -132,10 +132,13 @@ function SlaCell({ resource, policies, onChange, onSettings }: {
   useEffect(() => {
     if (open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
-      setMenuStyle({
-        top: rect.bottom + 4,
-        left: rect.left,
-      });
+      const menuHeight = 320; // approximate max height of SLA menu
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const flipUp = spaceBelow < menuHeight && rect.top > menuHeight;
+      setMenuStyle(flipUp
+        ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
+        : { top: rect.bottom + 4, left: rect.left }
+      );
     }
   }, [open]);
 
@@ -220,19 +223,37 @@ export default function Protection() {
   interface BackupStatus {
     progress_pct: number;
     status: string; // RUNNING, COMPLETED, FAILED
-    processed_bytes: number;
-    total_bytes: number;
+    data_backed_up: number;
+    total_data: number;
     started_at?: string;
     eta_seconds?: number | null;
   }
-  const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>({});
-  const [backingUp, setBackingUp] = useState<Set<string>>(new Set()); // resourceIds currently backing up
+  const STORAGE_KEY = `backupStatus_${tenantId}`;
+  const [backupStatus, setBackupStatus] = useState<Record<string, BackupStatus>>(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+  });
+  const [backingUp, setBackingUp] = useState<Set<string>>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') as Record<string, BackupStatus>;
+      return new Set(Object.keys(stored).filter(id => stored[id].status === 'RUNNING' || stored[id].status === 'QUEUED'));
+    } catch { return new Set(); }
+  });
 
-  // Snapshot browsing state (currently unused - Snapshots button is commented out)
-  // const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
-  // const [selectedResource, setSelectedResource] = useState<ResourceItem | null>(null);
-  // const [snapshots, setSnapshots] = useState<SnapshotListItem[]>([]);
-  // const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  // Persist backupStatus to localStorage so progress bar survives refresh/navigation
+  useEffect(() => {
+    try {
+      // Only keep active entries to avoid stale localStorage bloat
+      const active: Record<string, BackupStatus> = {};
+      for (const [id, s] of Object.entries(backupStatus)) {
+        if (s.status === 'RUNNING' || s.status === 'QUEUED') active[id] = s;
+      }
+      if (Object.keys(active).length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch { /* quota errors etc */ }
+  }, [backupStatus, STORAGE_KEY]);
 
   useEffect(() => {
     function handleSlaClick(e: MouseEvent) {
@@ -256,8 +277,8 @@ export default function Protection() {
           updates[rid] = {
             progress_pct: p.progress_pct || 0,
             status: p.status || 'RUNNING',
-            processed_bytes: p.processed_bytes || 0,
-            total_bytes: p.total_bytes || 0,
+            data_backed_up: p.data_backed_up || 0,
+            total_data: p.total_data || 0,
             started_at: p.started_at,
             eta_seconds: p.eta_seconds,
           };
@@ -274,6 +295,19 @@ export default function Protection() {
           const next = new Set(prev);
           done.forEach(d => next.delete(d));
           return next;
+        });
+        // Remove completed/failed entries from localStorage
+        setBackupStatus(prev => {
+          const cleaned = { ...prev };
+          done.forEach(d => { delete cleaned[d]; });
+          try {
+            const active = Object.fromEntries(
+              Object.entries(cleaned).filter(([, s]) => s.status === 'RUNNING' || s.status === 'QUEUED')
+            );
+            if (Object.keys(active).length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(active));
+            else localStorage.removeItem(STORAGE_KEY);
+          } catch { /* ignore */ }
+          return cleaned;
         });
         // Refresh resources to show updated backup status and size
         if (tenantId) {
@@ -327,6 +361,34 @@ export default function Protection() {
         .finally(() => setLoading(false));
     }
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
+
+  // Seed backupStatus + backingUp from backend on load (survives page refresh)
+  useEffect(() => {
+    if (!tenantId) return;
+    getAllProgress(tenantId).then(progresses => {
+      const statusSeed: Record<string, any> = {};
+      const backingUpSeed = new Set<string>();
+      for (const p of progresses) {
+        if (p.status === 'RUNNING' || p.status === 'QUEUED') {
+          statusSeed[p.resource_id] = {
+            progress_pct: p.progress_pct || 0,
+            status: p.status,
+            data_backed_up: p.data_backed_up || 0,
+            total_data: p.total_data || 0,
+            started_at: p.started_at,
+            eta_seconds: p.eta_seconds,
+          };
+          backingUpSeed.add(p.resource_id);
+        }
+      }
+      setBackupStatus(prev => ({ ...prev, ...statusSeed }));
+      setBackingUp(prev => {
+        const next = new Set(prev);
+        backingUpSeed.forEach(id => next.add(id));
+        return next;
+      });
+    }).catch(console.error);
+  }, [tenantId, activeTab]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
@@ -458,7 +520,7 @@ export default function Protection() {
       setBackingUp(prev => new Set(prev).add(resourceId));
       setBackupStatus(prev => ({
         ...prev,
-        [resourceId]: { progress_pct: 0, status: 'RUNNING', processed_bytes: 0, total_bytes: 0, started_at: new Date().toISOString() }
+        [resourceId]: { progress_pct: 0, status: 'RUNNING', data_backed_up: 0, total_data: 0, started_at: new Date().toISOString() }
       }));
       await triggerBackup(resourceId);
     } catch (err) {
@@ -489,7 +551,7 @@ export default function Protection() {
       // Initialize status for all
       const initialStatus: Record<string, BackupStatus> = {};
       selectedResources.forEach(r => {
-        initialStatus[r] = { progress_pct: 0, status: 'RUNNING', processed_bytes: 0, total_bytes: 0, started_at: new Date().toISOString() };
+        initialStatus[r] = { progress_pct: 0, status: 'RUNNING', data_backed_up: 0, total_data: 0, started_at: new Date().toISOString() };
       });
       setBackupStatus(prev => ({ ...prev, ...initialStatus }));
 
@@ -782,13 +844,12 @@ export default function Protection() {
                   {(() => {
                     const status = backupStatus[resource.id];
                     const baseSize = resource.usage?.size || 0;
-                    const processedBytes = status?.processed_bytes || 0;
+                    const processedBytes = status?.data_backed_up || 0;
                     const displaySize = backingUp.has(resource.id) ? baseSize + processedBytes : baseSize;
                     return (
                       <>
                         <div className="size-main">{formatSize(displaySize)}</div>
                         <div className="size-sub">
-                          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 2, verticalAlign: 'middle' }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>{resource.usage?.backups || 0}</span>
                           {backingUp.has(resource.id) && processedBytes > 0 && (
                             <span style={{ color: '#3b82f6' }}>+{formatSize(processedBytes)}</span>
                           )}
@@ -800,23 +861,26 @@ export default function Protection() {
                 <td className="backup-cell">
                   {(() => {
                     const status = backupStatus[resource.id];
-                    const isBackingUp = backingUp.has(resource.id);
+                    const isActive = backingUp.has(resource.id) || status?.status === 'RUNNING' || status?.status === 'QUEUED';
 
-                    if (isBackingUp && status) {
-                      // Show progress bar during backup
+                    if (isActive && status) {
+                      const isQueued = status.status === 'QUEUED';
                       return (
                         <div className="backup-progress-cell">
                           <div className="backup-progress-track">
-                            <div className="backup-progress-fill" style={{ width: `${status.progress_pct}%` }}></div>
+                            {isQueued
+                              ? <div className="backup-progress-fill queued-pulse" style={{ width: '100%' }}></div>
+                              : <div className="backup-progress-fill" style={{ width: `${status.progress_pct}%` }}></div>
+                            }
                           </div>
-                          <span className="backup-progress-label">{status.progress_pct}%</span>
-                          <span className="backup-status running">
+                          {!isQueued && <span className="backup-progress-label">{status.progress_pct}%</span>}
+                          <span className={`backup-status ${isQueued ? 'queued' : 'running'}`}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 4 }}>
                               <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="15">
                                 <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite" />
                               </circle>
                             </svg>
-                            Backing up...
+                            {isQueued ? 'Queued...' : 'Backing up...'}
                           </span>
                         </div>
                       );

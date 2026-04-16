@@ -7,6 +7,7 @@ export default function Configuration() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [manualReportType, setManualReportType] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Report config state
@@ -14,6 +15,7 @@ export default function Configuration() {
   const [schedule, setSchedule] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [sendEmptyReport, setSendEmptyReport] = useState(true);
   const [emptyMessage, setEmptyMessage] = useState('No updates. No backups occurred.');
+  const [sendDetailedReport, setSendDetailedReport] = useState(false);
 
   // Notification endpoints
   const [emailRecipients, setEmailRecipients] = useState<string[]>([]);
@@ -37,6 +39,7 @@ export default function Configuration() {
       setSchedule(config.schedule_type);
       setSendEmptyReport(config.send_empty_report);
       setEmptyMessage(config.empty_message || 'No updates. No backups occurred.');
+      setSendDetailedReport(config.send_detailed_report ?? false);
       setEmailRecipients(config.email_recipients || []);
       setSlackWebhooks(config.slack_webhooks || []);
       setTeamsWebhooks(config.teams_webhooks || []);
@@ -53,7 +56,7 @@ export default function Configuration() {
     try {
       setSending(true);
       setMessage(null);
-      const reportType = schedule.toUpperCase() as 'DAILY' | 'WEEKLY' | 'MONTHLY';
+      const reportType = manualReportType;
       const result = await reportService.sendReport(reportType);
       setMessage({ type: result.success ? 'success' : 'error', text: result.message });
     } catch (error) {
@@ -74,6 +77,7 @@ export default function Configuration() {
         schedule_type: schedule,
         send_empty_report: sendEmptyReport,
         empty_message: emptyMessage,
+        send_detailed_report: sendDetailedReport,
         email_recipients: emailRecipients,
         slack_webhooks: slackWebhooks,
         teams_webhooks: teamsWebhooks,
@@ -214,6 +218,23 @@ export default function Configuration() {
                   </p>
                 </div>
 
+                <div className="config-row">
+                  <label className="toggle-label">
+                    <div className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={sendDetailedReport}
+                        onChange={(e) => setSendDetailedReport(e.target.checked)}
+                      />
+                      <span className="toggle-slider" />
+                    </div>
+                    <span className="toggle-text">Send detailed report</span>
+                  </label>
+                  <p className="config-help">
+                    When enabled, a CSV attachment with individual backup details (resource name, time, size) will be included in email reports.
+                  </p>
+                </div>
+
                 {sendEmptyReport && (
                   <div className="config-row">
                     <label className="config-label">Empty report message</label>
@@ -231,11 +252,22 @@ export default function Configuration() {
                   <div className="send-report-row">
                     <div>
                       <span className="config-label">Send Report Now</span>
-                      <p className="config-help">Manually trigger a {schedule} report to all configured channels.</p>
+                      <p className="config-help">Manually trigger a report to all configured channels.</p>
                     </div>
-                    <button className="send-report-btn" onClick={handleSendReport} disabled={sending}>
-                      {sending ? 'Sending...' : `Send ${schedule.charAt(0).toUpperCase() + schedule.slice(1)} Report`}
-                    </button>
+                    <div className="send-report-controls">
+                      <select
+                        className="config-select"
+                        value={manualReportType}
+                        onChange={(e) => setManualReportType(e.target.value as 'DAILY' | 'WEEKLY' | 'MONTHLY')}
+                      >
+                        <option value="DAILY">Daily</option>
+                        <option value="WEEKLY">Weekly</option>
+                        <option value="MONTHLY">Monthly</option>
+                      </select>
+                      <button className="send-report-btn" onClick={handleSendReport} disabled={sending}>
+                        {sending ? 'Sending...' : 'Send Now'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>

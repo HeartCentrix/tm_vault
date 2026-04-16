@@ -9,18 +9,42 @@ export interface RecoveryItem {
   externalId: string;
   itemType: string;
   name: string;
+  // Generic
   subject?: string;
   from?: string;
   to?: string;
+  cc?: string;
   date?: string;
   preview?: string;
   body?: string;
+  bodyContentType?: string;
   folderPath?: string;
   contentSize: number;
   metadata: Record<string, any>;
   isDeleted: boolean;
   createdAt: string;
   hasAttachments?: boolean;
+  attachments?: any[];
+  // Email
+  bodyPreview?: string;
+  // Chat
+  sender?: string;
+  senderEmail?: string;
+  chatTopic?: string;
+  channelName?: string;
+  mentions?: any[];
+  isReply?: boolean;
+  // Calendar
+  start?: string;
+  end?: string;
+  timeZone?: string;
+  isAllDay?: boolean;
+  location?: string;
+  organizer?: string;
+  attendees?: any[];
+  isOnlineMeeting?: boolean;
+  recurrence?: any;
+  showAs?: string;
 }
 
 export interface RecoveryItemListResponse {
