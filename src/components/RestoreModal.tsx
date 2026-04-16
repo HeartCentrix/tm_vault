@@ -62,7 +62,9 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     setPowerBiTargetsLoading(true);
     setPowerBiTargetsError(null);
 
-    getResourcesByType(tenantId, 'POWER_BI', 1, 500, undefined, 'active')
+    // Pass includeHidden=true — POWER_BI is filtered out of default listings but
+    // the Restore modal explicitly needs the workspace picker for cross-workspace restore.
+    getResourcesByType(tenantId, 'POWER_BI', 1, 500, undefined, 'active', true)
       .then((data) => {
         if (cancelled) return;
         setPowerBiTargets(data.items || []);

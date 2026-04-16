@@ -163,7 +163,8 @@ export async function getResourcesByType(
   page: number = 1,
   size: number = 500,
   searchQuery?: string,
-  resourceFilter?: string
+  resourceFilter?: string,
+  includeHidden: boolean = false,
 ): Promise<ResourceListResponse> {
   const token = localStorage.getItem('access_token');
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -172,6 +173,7 @@ export async function getResourcesByType(
   if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
   if (resourceFilter === 'active') url += `&status=ACTIVE`;
   if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
+  if (includeHidden) url += `&includeHidden=true`;
 
   const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`Failed to fetch ${resourceType} resources: ${res.statusText}`);
