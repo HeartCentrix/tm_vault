@@ -87,6 +87,60 @@
   padding-left: 13px;
 }
 
+/* Identity grouping: multi-surface M365 groups/users render as an expandable row. */
+.identity-group {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.identity-group.has-selection {
+  background: #f8fafc;
+}
+
+.identity-group .identity-header {
+  align-items: center;
+  border-bottom: none;
+}
+
+.identity-group .identity-header.expanded {
+  background: #f8fafc;
+}
+
+.identity-surfaces {
+  background: #f8fafc;
+  padding: 4px 0 8px;
+}
+
+.identity-surfaces .resource-list-item.surface-item {
+  padding: 8px 16px 8px 52px; /* indent under the parent avatar */
+  border-bottom: none;
+  position: relative;
+}
+
+.identity-surfaces .surface-indent {
+  position: absolute;
+  left: 32px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #cbd5e1;
+}
+
+.identity-surfaces .resource-list-item.surface-item.selected {
+  background: #e0f7f4;
+  border-left: 3px solid #0d9488;
+  padding-left: 49px;
+}
+
+.resource-kind-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #e2e8f0;
+  color: #475569;
+  border-radius: 10px;
+}
+
 .resource-avatar-sm {
   width: 32px;
   height: 32px;

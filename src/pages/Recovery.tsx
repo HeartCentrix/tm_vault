@@ -613,6 +613,171 @@ export function FilePreview({ item }: { item: any }) {
   );
 }
 
+// ==================== Entra User Relationship Previews ====================
+// One dispatcher + four cards for USER_PROFILE and the three relationship subtypes.
+// Shared visual language: circular avatar, identity line, a directional accent bar
+// on the left that signals relationship direction (↑ manager, ↓ direct report,
+// ↔ group membership, ● self). Keeps them feeling like parts of an org view.
+
+function entraInitials(name?: string | null): string {
+  if (!name) return '??';
+  return name.split(/\s+/).map((w: string) => w[0] || '').join('').toUpperCase().slice(0, 2);
+}
+
+function EntraRelationshipCard({
+  accent, icon, label, name, subtitle, meta,
+}: {
+  accent: string;
+  icon: React.ReactNode;
+  label: string;
+  name: string;
+  subtitle?: string | null;
+  meta?: Array<{ label: string; value: React.ReactNode }>;
+}) {
+  return (
+    <div className="item-preview">
+      <div
+        className="preview-header"
+        style={{
+          display: 'flex', gap: 16, alignItems: 'center',
+          borderLeft: `4px solid ${accent}`, paddingLeft: 16,
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: `${accent}14`, color: accent,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, fontWeight: 600, flexShrink: 0,
+          }}
+        >
+          {icon || entraInitials(name)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em', color: accent, fontWeight: 600 }}>
+            {label}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a', marginTop: 2 }}>
+            {name}
+          </div>
+          {subtitle && (
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{subtitle}</div>
+          )}
+        </div>
+      </div>
+      {meta && meta.length > 0 && (
+        <div className="preview-body">
+          {meta.map((m, i) => (
+            <PreviewLabel key={i} label={m.label} value={m.value} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function EntraUserProfilePreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.displayName || item.name;
+  const email = raw.mail || raw.userPrincipalName;
+  return (
+    <EntraRelationshipCard
+      accent="#7c3aed"
+      icon={entraInitials(name)}
+      label="User profile"
+      name={name}
+      subtitle={email}
+      meta={[
+        { label: 'Job title', value: raw.jobTitle },
+        { label: 'Department', value: raw.department },
+        { label: 'Office', value: raw.officeLocation },
+        { label: 'Mobile', value: raw.mobilePhone },
+        { label: 'Business phone', value: (raw.businessPhones || [])[0] },
+        { label: 'Account enabled', value: raw.accountEnabled === false ? 'Disabled' : raw.accountEnabled === true ? 'Enabled' : null },
+      ]}
+    />
+  );
+}
+
+export function EntraManagerPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.displayName || item.name || '(Unknown)';
+  const email = raw.mail || raw.userPrincipalName;
+  return (
+    <EntraRelationshipCard
+      accent="#1e40af"
+      icon={<span style={{ fontSize: 22 }}>↑</span>}
+      label="Reports to"
+      name={name}
+      subtitle={email}
+      meta={[
+        { label: 'Job title', value: raw.jobTitle },
+        { label: 'Department', value: raw.department },
+        { label: 'Office', value: raw.officeLocation },
+      ]}
+    />
+  );
+}
+
+export function EntraDirectReportPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.displayName || item.name || '(Unknown)';
+  const email = raw.mail || raw.userPrincipalName;
+  return (
+    <EntraRelationshipCard
+      accent="#0d9488"
+      icon={<span style={{ fontSize: 22 }}>↓</span>}
+      label="Direct report"
+      name={name}
+      subtitle={email}
+      meta={[
+        { label: 'Job title', value: raw.jobTitle },
+        { label: 'Department', value: raw.department },
+      ]}
+    />
+  );
+}
+
+export function EntraGroupMembershipPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.displayName || item.name || '(Unnamed group)';
+  const description = raw.description;
+  const isSecurity = raw.securityEnabled;
+  const isMail = raw.mailEnabled;
+  const groupType = [
+    isSecurity ? 'Security' : null,
+    isMail ? 'Mail-enabled' : null,
+    (raw.groupTypes || []).includes('Unified') ? 'Microsoft 365' : null,
+    (raw.groupTypes || []).includes('DynamicMembership') ? 'Dynamic' : null,
+  ].filter(Boolean).join(' · ');
+  return (
+    <EntraRelationshipCard
+      accent="#d97706"
+      icon={<span style={{ fontSize: 20 }}>⌘</span>}
+      label="Member of"
+      name={name}
+      subtitle={groupType || null}
+      meta={[
+        { label: 'Description', value: description },
+        { label: 'Visibility', value: raw.visibility },
+        { label: 'Classification', value: raw.classification },
+        { label: 'Mail alias', value: raw.mailNickname },
+        { label: 'Created', value: fmtDate(raw.createdDateTime) },
+      ]}
+    />
+  );
+}
+
+export function EntraUserRelationshipPreview({ item }: { item: any }) {
+  const t = item.itemType;
+  if (t === 'USER_PROFILE' || t === 'ENTRA_USER_PROFILE') return <EntraUserProfilePreview item={item} />;
+  if (t === 'USER_MANAGER') return <EntraManagerPreview item={item} />;
+  if (t === 'USER_DIRECT_REPORT') return <EntraDirectReportPreview item={item} />;
+  if (t === 'USER_GROUP_MEMBERSHIP') return <EntraGroupMembershipPreview item={item} />;
+  return <JsonPreview item={item} />;
+}
+
 export function JsonPreview({ item }: { item: any }) {
   // Deliberately-final fallback: pretty-print whatever we have as read-only JSON.
   // Better than the old generic that read item.from/subject/body which usually returned nothing.
@@ -734,6 +899,12 @@ export function ItemPreview({ item }: { item: any }) {
   if (type === 'FILE' || type === 'ONEDRIVE_FILE' || type === 'SHAREPOINT_FILE'
       || type === 'SHAREPOINT_LIST_ITEM')
     return <FilePreview item={item} />;
+
+  // Entra user + relationship sub-items (manager / direct report / group membership)
+  if (type === 'USER_PROFILE' || type === 'ENTRA_USER_PROFILE'
+      || type === 'USER_MANAGER' || type === 'USER_DIRECT_REPORT'
+      || type === 'USER_GROUP_MEMBERSHIP')
+    return <EntraUserRelationshipPreview item={item} />;
 
   // Anything else — formatted JSON beats the old empty-looking fallback.
   return <JsonPreview item={item} />;
@@ -975,6 +1146,11 @@ export default function Recovery() {
   const [kindFilter, setKindFilter] = useState('');
   const [showKindFilter, setShowKindFilter] = useState(false);
   const [selectedResource, setSelectedResource] = useState<ResourceWithBackups | null>(null);
+  // Identity grouping: a single M365 Group or user often owns several resource surfaces
+  // (Teams channel + SharePoint site + Entra group + Power BI, all sharing the same
+  // name/email). Group by email-or-name so the left panel shows ONE row per identity
+  // and expand inline to see its surfaces. Users with a single surface render flat.
+  const [expandedIdentities, setExpandedIdentities] = useState<Set<string>>(new Set());
 
   // Snapshot selection
   const [snapshots, setSnapshots] = useState<SnapshotItem[]>([]);
@@ -1308,34 +1484,106 @@ export default function Recovery() {
           </div>
           <div className="resource-list">
             {(() => {
-              // Group resources by kind
-              const groups: Record<string, typeof filteredResources> = {};
-              filteredResources.forEach(r => {
-                const k = getKindLabel(r.kind);
-                if (!groups[k]) groups[k] = [];
-                groups[k].push(r);
+              // Group by identity (email preferred, fallback to name). Kind filter
+              // has already been applied upstream, so identities with no matching
+              // surface simply won't appear here.
+              const byIdentity = new Map<string, typeof filteredResources>();
+              const identityKey = (r: typeof filteredResources[number]) =>
+                (r.email || r.name || r.id).toLowerCase().trim();
+              for (const r of filteredResources) {
+                const k = identityKey(r);
+                const list = byIdentity.get(k) || [];
+                list.push(r);
+                byIdentity.set(k, list);
+              }
+              // Stable order: by primary (first) resource's display name.
+              const identityGroups = Array.from(byIdentity.entries()).sort(
+                (a, b) => (a[1][0].name || '').localeCompare(b[1][0].name || ''),
+              );
+
+              const toggle = (k: string) => setExpandedIdentities(prev => {
+                const next = new Set(prev);
+                next.has(k) ? next.delete(k) : next.add(k);
+                return next;
               });
-              return Object.entries(groups).map(([kindLabel, items]) => (
-                <div key={kindLabel}>
-                  <div className="resource-group-header">{kindLabel}</div>
-                  {items.map(resource => (
-              <button
-                key={resource.id}
-                className={`resource-list-item ${selectedResource?.id === resource.id ? 'selected' : ''}`}
-                onClick={() => handleResourceSelect(resource)}
-              >
-                <div className="resource-avatar-sm">{getInitials(resource.name)}</div>
-                <div className="resource-list-info">
-                  <div className="resource-list-name">{resource.name}</div>
-                  {resource.email && <div className="resource-list-email">{resource.email}</div>}
-                  <div className="resource-list-meta">
-                    <span>{resource.snapshot_count} snapshot{resource.snapshot_count !== 1 ? 's' : ''}</span>
+
+              return identityGroups.map(([key, group]) => {
+                const primary = group[0];
+                const totalSnapshots = group.reduce((s, r) => s + (r.snapshot_count || 0), 0);
+                const isSingle = group.length === 1;
+                const selectedInGroup = group.some(r => selectedResource?.id === r.id);
+                // Auto-expand when a surface inside is selected (e.g. after deep-link
+                // via ?resourceId=...), even if the user never clicked the chevron.
+                const isExpanded = expandedIdentities.has(key) || selectedInGroup;
+
+                // Single-surface identity: render as a plain selectable row (no expand).
+                if (isSingle) {
+                  return (
+                    <button
+                      key={key}
+                      className={`resource-list-item ${selectedResource?.id === primary.id ? 'selected' : ''}`}
+                      onClick={() => handleResourceSelect(primary)}
+                    >
+                      <div className="resource-avatar-sm">{getInitials(primary.name)}</div>
+                      <div className="resource-list-info">
+                        <div className="resource-list-name">{primary.name}</div>
+                        {primary.email && <div className="resource-list-email">{primary.email}</div>}
+                        <div className="resource-list-meta">
+                          <span className="resource-kind-pill">{getKindLabel(primary.kind)}</span>
+                          <span>{primary.snapshot_count} snapshot{primary.snapshot_count !== 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+
+                // Multi-surface identity: header row + nested surface rows when expanded.
+                return (
+                  <div key={key} className={`identity-group${selectedInGroup ? ' has-selection' : ''}`}>
+                    <button
+                      className={`resource-list-item identity-header${isExpanded ? ' expanded' : ''}`}
+                      onClick={() => toggle(key)}
+                      aria-expanded={isExpanded}
+                    >
+                      <div className="resource-avatar-sm">{getInitials(primary.name)}</div>
+                      <div className="resource-list-info">
+                        <div className="resource-list-name">{primary.name}</div>
+                        {primary.email && <div className="resource-list-email">{primary.email}</div>}
+                        <div className="resource-list-meta">
+                          <span>{group.length} surfaces</span>
+                          <span>·</span>
+                          <span>{totalSnapshots} snapshot{totalSnapshots !== 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                           style={{ width: 14, height: 14, flexShrink: 0,
+                                    transform: isExpanded ? 'rotate(180deg)' : 'none',
+                                    transition: 'transform 120ms ease' }}>
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    {isExpanded && (
+                      <div className="identity-surfaces">
+                        {group.map(surface => (
+                          <button
+                            key={surface.id}
+                            className={`resource-list-item surface-item${selectedResource?.id === surface.id ? ' selected' : ''}`}
+                            onClick={() => handleResourceSelect(surface)}
+                          >
+                            <div className="surface-indent" aria-hidden />
+                            <div className="resource-list-info">
+                              <div className="resource-list-meta">
+                                <span className="resource-kind-pill">{getKindLabel(surface.kind)}</span>
+                                <span>{surface.snapshot_count} snapshot{surface.snapshot_count !== 1 ? 's' : ''}</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </button>
-            ))}
-                </div>
-              ));
+                );
+              });
             })()}
             {filteredResources.length === 0 && (
               <div className="empty-resource-list">
