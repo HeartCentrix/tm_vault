@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { getSlaPolicies, createSlaPolicy, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
+import { getSlaPolicies, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
 import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../services/auth';
 import { usePersistentTab } from '../hooks/usePersistentTab';
+import SlaWizard from '../components/SlaWizard';
+import ResourceGroupManager from '../components/ResourceGroupManager';
 import './Settings.css';
 
-type SettingsTab = 'sla' | 'info' | 'admin-consent';
+type SettingsTab = 'sla' | 'info' | 'admin-consent' | 'resource-groups';
 
 interface BackupItem {
   formKey: string;
@@ -15,9 +17,6 @@ interface BackupItem {
   checked: boolean;
   hasSettings?: boolean;
 }
-
-const DAYS = ['M', 'T', 'W', 'R', 'F', 'S', 'U'] as const;
-const DAY_LABELS: Record<string, string> = { M: 'M', T: 'T', W: 'W', R: 'T', F: 'F', S: 'S', U: 'S' };
 
 const M365_BACKUP_ITEMS_LEFT: BackupItem[] = [
   { formKey: 'backup_exchange', policyKey: 'backupExchange', label: 'Emails', checked: true, hasSettings: true },
@@ -47,54 +46,10 @@ const AZURE_BACKUP_ITEMS_RIGHT: BackupItem[] = [
   { formKey: 'backup_azure_postgresql', policyKey: 'backupAzurePostgresql', label: 'Azure PostgreSQL servers', checked: true },
 ];
 
-function defaultFormBackups(serviceType: 'm365' | 'azure'): Record<string, boolean> {
-  if (serviceType === 'azure') {
-    return {
-      backup_exchange: false,
-      backup_teams_chats: false,
-      contacts: false,
-      calendars: false,
-      backup_onedrive: false,
-      tasks: false,
-      backup_copilot: false,
-      backup_sharepoint: false,
-      backup_teams: false,
-      group_mailbox: false,
-      backup_entra_id: false,
-      backup_power_platform: false,
-      planner: false,
-      backup_exchange_recoverable: false,
-      backup_azure_vm: true,
-      backup_azure_sql: true,
-      backup_azure_postgresql: true,
-    };
-  }
-
-  return {
-    backup_exchange: true,
-    backup_teams_chats: true,
-    contacts: true,
-    calendars: true,
-    backup_onedrive: true,
-    tasks: false,
-    backup_copilot: false,
-    backup_sharepoint: true,
-    backup_teams: true,
-    group_mailbox: true,
-    backup_entra_id: true,
-    backup_power_platform: true,
-    planner: false,
-    backup_exchange_recoverable: false,
-    backup_azure_vm: false,
-    backup_azure_sql: false,
-    backup_azure_postgresql: false,
-  };
-}
-
 export default function Settings() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const effectiveServiceType: 'm365' | 'azure' = serviceType === 'azure' ? 'azure' : 'm365';
-  const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
+  const settingsTabKeys = ['sla', 'info', 'admin-consent', 'resource-groups'] as const;
   const subRouteKey = tenantId ? '/protection/settings' : '/settings';
   const tenantSettingsPath = tenantId && serviceType
     ? `/tenants/${tenantId}/${serviceType}/protection/settings`
@@ -102,9 +57,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = usePersistentTab<SettingsTab>(subRouteKey, 'sla', settingsTabKeys);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [saving, setSaving] = useState(false);
-  
+
   // Tenant info state
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
@@ -119,22 +72,16 @@ export default function Settings() {
   const backupItemsLeft = effectiveServiceType === 'azure' ? AZURE_BACKUP_ITEMS_LEFT : M365_BACKUP_ITEMS_LEFT;
   const backupItemsRight = effectiveServiceType === 'azure' ? AZURE_BACKUP_ITEMS_RIGHT : M365_BACKUP_ITEMS_RIGHT;
 
-  // Modal form state
-  const [formName, setFormName] = useState('');
-  const [formBackups, setFormBackups] = useState<Record<string, boolean>>(() => defaultFormBackups(effectiveServiceType));
-  const [formFrequency, setFormFrequency] = useState('1x');
-  const [formDays, setFormDays] = useState<Set<string>>(new Set(['M', 'T', 'W', 'R', 'F', 'S', 'U']));
-  const [formStartTime, setFormStartTime] = useState('21:00');
-  const [formRetention, setFormRetention] = useState('INDEFINITE');
-  const [formArchiveRetention, setFormArchiveRetention] = useState('same');
-  const [formArchiving, setFormArchiving] = useState('INDEFINITE');
-  const [showEmailSettings, setShowEmailSettings] = useState(false);
-
   const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'sla', label: 'SLA' },
+    { key: 'resource-groups', label: 'Resource Groups' },
     { key: 'info', label: 'Info' },
     { key: 'admin-consent', label: 'Admin Consent' },
   ];
+
+  // Wizard state — opens for new or edit
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardEditing, setWizardEditing] = useState<SlaPolicy | null>(null);
 
   useEffect(() => {
     if (activeTab !== 'sla') return;
@@ -274,78 +221,6 @@ export default function Settings() {
     return 'action';
   };
 
-  const resetForm = () => {
-    setFormName('');
-    setFormBackups(defaultFormBackups(effectiveServiceType));
-    setShowEmailSettings(false);
-    setFormFrequency('1x');
-    setFormDays(new Set(['M', 'T', 'W', 'R', 'F', 'S', 'U']));
-    setFormStartTime('21:00');
-    setFormRetention('INDEFINITE');
-    setFormArchiveRetention('same');
-    setFormArchiving('INDEFINITE');
-  };
-
-  const handleSave = async () => {
-    if (!formName.trim() || !tenantId) return;
-    setSaving(true);
-    try {
-      // Map frontend day codes to backend day codes
-      const DAY_MAP: Record<string, string> = {
-        M: 'MON', T: 'TUE', W: 'WED', R: 'THU', F: 'FRI', S: 'SAT', U: 'SUN',
-      };
-      const allDays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-      const backupDays = Array.from(formDays).map(d => DAY_MAP[d]).filter(Boolean);
-
-      // Determine frequency: if all 7 days + 1x → DAILY, if all 7 days + 3x → THREE_DAILY, otherwise → CUSTOM
-      const allDaysSelected = backupDays.length === 7 && allDays.every(d => backupDays.includes(d));
-      let frequency: string;
-      if (!allDaysSelected) {
-        frequency = 'CUSTOM';
-      } else {
-        frequency = formFrequency === '3x' ? 'THREE_DAILY' : 'DAILY';
-      }
-
-      const data: Partial<SlaPolicy> = {
-        tenantId,
-        serviceType: effectiveServiceType,
-        name: formName.trim(),
-        frequency,
-        backupDays,
-        backupWindowStart: formStartTime,
-        backupExchange: formBackups.backup_exchange,
-        backupExchangeArchive: false,
-        backupExchangeRecoverable: formBackups.backup_exchange_recoverable,
-        backupOneDrive: formBackups.backup_onedrive,
-        backupSharepoint: formBackups.backup_sharepoint,
-        backupTeams: formBackups.backup_teams,
-        backupTeamsChats: formBackups.backup_teams_chats,
-        backupEntraId: formBackups.backup_entra_id,
-        backupPowerPlatform: formBackups.backup_power_platform,
-        backupCopilot: formBackups.backup_copilot,
-        contacts: formBackups.contacts,
-        calendars: formBackups.calendars,
-        tasks: formBackups.tasks,
-        groupMailbox: formBackups.group_mailbox,
-        planner: formBackups.planner,
-        backupAzureVm: formBackups.backup_azure_vm,
-        backupAzureSql: formBackups.backup_azure_sql,
-        backupAzurePostgresql: formBackups.backup_azure_postgresql,
-        retentionType: formRetention,
-        enabled: true,
-        isDefault: false,
-      };
-      const newPolicy = await createSlaPolicy(data);
-      setPolicies(prev => [...prev, newPolicy]);
-      setShowModal(false);
-      resetForm();
-    } catch (err) {
-      console.error('Failed to save SLA:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this SLA?')) return;
     try {
@@ -354,18 +229,6 @@ export default function Settings() {
     } catch (err) {
       console.error('Failed to delete SLA:', err);
     }
-  };
-
-  const toggleBackup = (key: string) => {
-    setFormBackups(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const toggleDay = (day: string) => {
-    setFormDays(prev => {
-      const next = new Set(prev);
-      if (next.has(day)) next.delete(day); else next.add(day);
-      return next;
-    });
   };
 
   const DAY_LABELS_FULL: Record<string, string> = {
@@ -408,11 +271,11 @@ export default function Settings() {
         <div className="sla-tab">
           <div className="sla-header">
             <div />
-            <button className="add-sla-btn" onClick={() => { resetForm(); setShowModal(true); }}>
+            <button className="add-sla-btn" onClick={() => { setWizardEditing(null); setShowWizard(true); }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              Add new SLA
+              New SLA
             </button>
           </div>
 
@@ -460,6 +323,11 @@ export default function Settings() {
                       <div className="sla-sched-row"><span className="sla-sched-label">Archiving:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType || '')}</span></div>
                     </div>
                     <div className="sla-actions">
+                      <button className="sla-action-btn" title="Edit (advanced)" onClick={() => { setWizardEditing(policy); setShowWizard(true); }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
                       <button className="sla-action-btn" onClick={() => handleDelete(policy.id)}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 16, height: 16}}>
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -472,6 +340,10 @@ export default function Settings() {
             </div>
           )}
         </div>
+      )}
+
+      {tenantId && activeTab === 'resource-groups' && (
+        <ResourceGroupManager tenantId={tenantId} policies={policies} />
       )}
 
       {tenantId && activeTab === 'info' && (
@@ -695,180 +567,22 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Add SLA Modal */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="sla-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="sla-modal-close" onClick={() => setShowModal(false)}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 20, height: 20}}>
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
 
-            {/* Name */}
-            <div className="sla-modal-name">
-              <span className="sla-modal-label">Name:</span>
-              <input type="text" className="sla-modal-name-input" value={formName} onChange={e => setFormName(e.target.value)} placeholder="" />
-            </div>
-
-            {/* Data to back up */}
-            <div className="sla-modal-section">
-              <h4 className="sla-modal-heading">Data to back up:</h4>
-              <div className="sla-modal-backup-grid">
-                <div className="sla-modal-backup-col">
-                  {backupItemsLeft.map(item => (
-                    <div key={`bl-${item.formKey}`} className="sla-modal-check-row">
-                      <label className="sla-modal-check" onClick={() => toggleBackup(item.formKey)}>
-                        <span className={`sla-modal-check-box ${formBackups[item.formKey] ? 'checked' : ''}`}>
-                          {formBackups[item.formKey] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
-                        </span>
-                        <span>{item.label}</span>
-                      </label>
-                      {item.hasSettings && (
-                        <div className="sla-modal-email-settings-inline">
-                          <button className="sla-modal-settings-btn" onClick={(e) => { e.stopPropagation(); setShowEmailSettings(!showEmailSettings); }}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 20, height: 20}}>
-                              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                            </svg>
-                          </button>
-                          {showEmailSettings && (
-                            <div className="sla-modal-email-popup" onClick={(e) => e.stopPropagation()}>
-                              <label className="sla-modal-email-option">
-                                <span>Backup Recoverable Items:</span>
-                                <span className={`sla-modal-toggle ${formBackups.backup_exchange_recoverable ? 'active' : ''}`} onClick={(e) => { e.stopPropagation(); setFormBackups(prev => ({ ...prev, backup_exchange_recoverable: !prev.backup_exchange_recoverable })); }}>
-                                  <span className="sla-modal-toggle-slider"></span>
-                                </span>
-                              </label>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="sla-modal-backup-col">
-                  {backupItemsRight.map(item => (
-                    <label key={`br-${item.formKey}`} className="sla-modal-check" onClick={() => toggleBackup(item.formKey)}>
-                      <span className={`sla-modal-check-box ${formBackups[item.formKey] ? 'checked' : ''}`}>
-                        {formBackups[item.formKey] && <svg viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2"><polyline points="2 6 5 9 10 3"/></svg>}
-                      </span>
-                      <span>{item.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Exclusions */}
-            <div className="sla-modal-section">
-              <span className="sla-modal-label-inline">
-                Exclusions
-                <span className="sla-modal-info-icon">i</span>
-                <button className="sla-modal-add-btn">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: 14, height: 14}}>
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-                  </svg>
-                  add
-                </button>
-              </span>
-            </div>
-
-            {/* Schedule */}
-            <div className="sla-modal-section">
-              <h4 className="sla-modal-heading">Schedule:</h4>
-              <div className="sla-modal-schedule-row">
-                <span className="sla-modal-schedule-label">Frequency:</span>
-                <select className="sla-modal-select" value={formFrequency} onChange={e => setFormFrequency(e.target.value)}>
-                  <option value="1x">1x per day</option>
-                  <option value="3x">3x per day</option>
-                </select>
-              </div>
-              {formFrequency === '1x' && (
-                <>
-                  <div className="sla-modal-schedule-row">
-                    <span className="sla-modal-schedule-label">Day:</span>
-                    <div className="sla-modal-day-btns">
-                      {DAYS.map((d) => (
-                        <button key={`day-${d}`} className={`sla-modal-day-btn ${formDays.has(d) ? 'active' : ''}`} onClick={() => toggleDay(d)}>{DAY_LABELS[d]}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="sla-modal-schedule-row">
-                    <span className="sla-modal-schedule-label">Starts at:</span>
-                    <div className="sla-modal-time-group">
-                      <select className="sla-modal-select" value={formStartTime} onChange={e => setFormStartTime(e.target.value)}>
-                        {Array.from({length: 24}, (_, i) => (
-                          <option key={i} value={`${i.toString().padStart(2, '0')}:00`}>{`${i.toString().padStart(2, '0')}:00`}</option>
-                        ))}
-                      </select>
-                      <span className="sla-modal-timezone">GMT+5:30</span>
-                    </div>
-                  </div>
-                </>
-              )}
-              {formFrequency === '3x' && (
-                <div className="sla-modal-schedule-row">
-                  <span className="sla-modal-schedule-label">Day:</span>
-                  <div className="sla-modal-day-btns">
-                    {DAYS.map((d) => (
-                      <button key={`day3-${d}`} className={`sla-modal-day-btn ${formDays.has(d) ? 'active' : ''}`} onClick={() => toggleDay(d)}>{DAY_LABELS[d]}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Retention */}
-            <div className="sla-modal-section">
-              <div className="sla-modal-schedule-row">
-                <span className="sla-modal-schedule-label">
-                  Retention <span className="sla-modal-info-icon">i</span>:
-                </span>
-                <select className="sla-modal-select" value={formRetention} onChange={e => setFormRetention(e.target.value)}>
-                  <option value="INDEFINITE">Unlimited</option>
-                  <option value="DAYS">Number of days</option>
-                  <option value="VERSIONS">Number of versions</option>
-                </select>
-              </div>
-              <div className="sla-modal-schedule-row" style={{paddingLeft: 24, marginTop: 8}}>
-                <span className="sla-modal-schedule-label" style={{fontSize: 13, color: '#64748b'}}>
-                  Apply data retention rules to archived data:
-                </span>
-                <select className="sla-modal-select" value={formArchiveRetention} onChange={e => setFormArchiveRetention(e.target.value)} style={{minWidth: 180}}>
-                  <option value="same">Same retention rules</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Archiving */}
-            <div className="sla-modal-section">
-              <div className="sla-modal-schedule-row">
-                <span className="sla-modal-schedule-label">
-                  Archiving <span className="sla-modal-info-icon">i</span>:
-                </span>
-                <select className="sla-modal-select" value={formArchiving} onChange={e => setFormArchiving(e.target.value)}>
-                  <option value="INDEFINITE">Unlimited</option>
-                  <option value="DAYS">Number of days</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Encryption */}
-            <div className="sla-modal-section">
-              <div className="sla-modal-schedule-row">
-                <span className="sla-modal-schedule-label">Encryption key:</span>
-                <span style={{fontSize: 13, color: '#475569'}}>Service-managed encryption key</span>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="sla-modal-actions">
-              <button className="sla-modal-save-btn" onClick={handleSave} disabled={saving || !formName.trim()}>
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Phase 3: Advanced wizard (multi-step, all SLA fields + exclusions) */}
+      {showWizard && tenantId && (
+        <SlaWizard
+          tenantId={tenantId}
+          serviceType={effectiveServiceType}
+          initialPolicy={wizardEditing}
+          onClose={() => { setShowWizard(false); setWizardEditing(null); }}
+          onSaved={(p) => {
+            setPolicies(prev => {
+              const idx = prev.findIndex(x => x.id === p.id);
+              if (idx >= 0) { const next = [...prev]; next[idx] = p; return next; }
+              return [...prev, p];
+            });
+          }}
+        />
       )}
     </div>
   );

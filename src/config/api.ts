@@ -127,7 +127,23 @@ export const API = {
   POLICIES: {
     LIST: `${API_URL}/policies`,
     CREATE: `${API_URL}/policies`,
+    UPDATE: (id: string) => `${API_URL}/policies/${id}`,
     DELETE: (id: string) => `${API_URL}/policies/${id}`,
+    EXCLUSIONS: (policyId: string) => `${API_URL}/policies/${policyId}/exclusions`,
+    EXCLUSION: (policyId: string, exclusionId: string) =>
+      `${API_URL}/policies/${policyId}/exclusions/${exclusionId}`,
+  },
+
+  // Resource Groups (Phase 2 — afi.ai-style auto-protection)
+  RESOURCE_GROUPS: {
+    LIST: `${API_URL}/resource-groups`,
+    CREATE: `${API_URL}/resource-groups`,
+    GET: (id: string) => `${API_URL}/resource-groups/${id}`,
+    UPDATE: (id: string) => `${API_URL}/resource-groups/${id}`,
+    DELETE: (id: string) => `${API_URL}/resource-groups/${id}`,
+    ATTACH_POLICY: (id: string) => `${API_URL}/resource-groups/${id}/policies`,
+    DETACH_POLICY: (id: string, policyId: string) =>
+      `${API_URL}/resource-groups/${id}/policies/${policyId}`,
   },
 
   // Alerts

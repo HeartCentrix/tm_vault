@@ -1,0 +1,113 @@
+.rgm-root { padding: 12px 0; }
+
+.rgm-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 16px;
+}
+.rgm-header h3 { margin: 0; font-size: 16px; color: #e5e7eb; }
+.rgm-header p { margin: 4px 0 0; color: #9ca3af; font-size: 12px; }
+
+.rgm-empty {
+  background: #11151b; border: 1px dashed #2a2f3a;
+  border-radius: 6px; padding: 16px;
+  text-align: center; color: #6b7280; font-size: 13px;
+}
+
+.rgm-table {
+  width: 100%; border-collapse: collapse;
+  background: #11151b; border: 1px solid #2a2f3a; border-radius: 6px;
+  font-size: 13px;
+}
+.rgm-table th, .rgm-table td {
+  padding: 10px 12px; text-align: left;
+  border-bottom: 1px solid #2a2f3a;
+}
+.rgm-table th { color: #9ca3af; font-weight: 500; font-size: 12px; }
+.rgm-table tr:last-child td { border-bottom: none; }
+.rgm-desc { color: #6b7280; font-size: 11px; margin-top: 2px; }
+.rgm-actions { white-space: nowrap; text-align: right; }
+
+.rgm-link {
+  background: none; border: none; color: #93c5fd; cursor: pointer;
+  font-size: 12px; padding: 4px 6px;
+}
+.rgm-link.danger { color: #fca5a5; }
+.rgm-link:hover { text-decoration: underline; }
+
+.rgm-error {
+  background: rgba(239, 68, 68, 0.15); color: #fca5a5;
+  border: 1px solid #ef4444; padding: 8px 12px;
+  border-radius: 6px; font-size: 12px; margin-bottom: 12px;
+}
+
+.rgm-btn {
+  background: #11151b; color: #e5e7eb;
+  border: 1px solid #2a2f3a; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; cursor: pointer;
+}
+.rgm-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.rgm-btn.primary:hover:not(:disabled) { background: #1d4ed8; }
+.rgm-btn.ghost { background: transparent; }
+.rgm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rgm-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.rgm-modal {
+  background: #1c1f26; color: #e5e7eb; border-radius: 10px;
+  width: 720px; max-height: 90vh;
+  display: flex; flex-direction: column;
+  border: 1px solid #2a2f3a;
+}
+.rgm-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid #2a2f3a;
+}
+.rgm-modal-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.rgm-close {
+  background: none; border: none; color: #9ca3af; font-size: 24px; cursor: pointer;
+}
+.rgm-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.rgm-modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 20px; border-top: 1px solid #2a2f3a;
+}
+
+.rgm-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.rgm-row.inline { flex-direction: row; align-items: center; gap: 8px; }
+.rgm-row > span { color: #9ca3af; font-size: 12px; }
+.rgm-row input, .rgm-row select {
+  background: #11151b; color: #e5e7eb;
+  border: 1px solid #2a2f3a; border-radius: 6px;
+  padding: 8px 10px; font-size: 13px;
+}
+
+.rgm-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+
+.rgm-rules { margin: 16px 0; }
+.rgm-rules-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.rgm-rules-header span { color: #9ca3af; font-size: 12px; }
+.rgm-rule {
+  display: grid; grid-template-columns: 1.2fr 1.2fr 2fr auto;
+  gap: 8px; margin-bottom: 6px;
+}
+.rgm-rule select, .rgm-rule input {
+  background: #11151b; color: #e5e7eb;
+  border: 1px solid #2a2f3a; border-radius: 6px;
+  padding: 8px 10px; font-size: 13px;
+}
+
+.rgm-attached { margin: 16px 0; }
+.rgm-policy-list { list-style: none; padding: 0; margin: 8px 0 0; max-height: 180px; overflow-y: auto; }
+.rgm-policy-list li {
+  background: #11151b; border: 1px solid #2a2f3a; border-radius: 6px;
+  padding: 6px 10px; margin-bottom: 4px;
+}
+.rgm-policy-list label {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; font-size: 13px;
+}
+.rgm-policy-list strong { color: #e5e7eb; flex: 1; }
+.rgm-policy-meta { color: #6b7280; font-size: 11px; }
+.rgm-hint { font-style: italic; }
