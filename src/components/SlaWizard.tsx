@@ -20,14 +20,16 @@ interface Props {
   onSaved: (p: SlaPolicy) => void;
 }
 
+// Cadences match afi.ai exactly: 3x/day, 1x/day, or Manual. afi doesn't expose
+// hourly/2x/4x/weekly/monthly as configurable tiers, so neither do we.
 const PRESETS = [
-  { key: 'gold',   name: 'Gold',   freq: 'HOURLY', retentionMode: 'GFS' as const,
+  { key: 'gold',   name: 'Gold',   freq: 'THREE_DAILY', retentionMode: 'GFS' as const,
     gfsDailyCount: 14, gfsWeeklyCount: 8, gfsMonthlyCount: 12, gfsYearlyCount: 7,
     retentionHotDays: 30, retentionCoolDays: 180, retentionArchiveDays: 2555 },
   { key: 'silver', name: 'Silver', freq: 'DAILY',  retentionMode: 'GFS' as const,
     gfsDailyCount: 7, gfsWeeklyCount: 4, gfsMonthlyCount: 12, gfsYearlyCount: 3,
     retentionHotDays: 14, retentionCoolDays: 90, retentionArchiveDays: 1095 },
-  { key: 'bronze', name: 'Bronze', freq: 'WEEKLY', retentionMode: 'FLAT' as const,
+  { key: 'bronze', name: 'Bronze', freq: 'DAILY', retentionMode: 'FLAT' as const,
     retentionHotDays: 7, retentionCoolDays: 30, retentionArchiveDays: 365 },
   { key: 'manual', name: 'Manual / Custom', freq: 'MANUAL', retentionMode: 'FLAT' as const,
     retentionHotDays: 7, retentionCoolDays: 30, retentionArchiveDays: 90 },
@@ -55,7 +57,12 @@ const AZURE_WORKLOADS: Array<[keyof SlaPolicy, string]> = [
   ['backupAzurePostgresql', 'Azure PostgreSQL'],
 ];
 
-const FREQUENCIES = ['HOURLY', '4x', '2x', 'DAILY', 'WEEKLY', 'MONTHLY', 'MANUAL'];
+// afi only exposes 1x/3x/Manual. Drop-down values mirror the backend strings.
+const FREQUENCIES: Array<{ value: string; label: string }> = [
+  { value: 'THREE_DAILY', label: '3x per day (every 8h)' },
+  { value: 'DAILY',       label: '1x per day' },
+  { value: 'MANUAL',      label: 'Manual only' },
+];
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
 const STEP_ORDER: Step[] = ['tier', 'workloads', 'schedule', 'retention', 'exclusions', 'storage'];
@@ -251,7 +258,7 @@ export default function SlaWizard({ tenantId, serviceType, initialPolicy, onClos
               <label className="wiz-row">
                 <span>Frequency</span>
                 <select value={policy.frequency || 'DAILY'} onChange={e => patch({ frequency: e.target.value })}>
-                  {FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
+                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                 </select>
               </label>
               <label className="wiz-row">
