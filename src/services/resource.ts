@@ -395,11 +395,38 @@ export async function triggerDiscovery(
 }
 
 /**
- * Tier 2 discovery: fetch the five fixed content categories (Mail, OneDrive,
- * Contacts, Calendar, Chats) for one ENTRA_USER and persist them as child
- * rows. Called from Protection.tsx before kicking off a per-user backup so
- * the backup worker has the IDs (drive id, chat ids, etc.) it needs without
- * re-walking Graph.
+ * Fire-and-forget: kick off Tier 2 content discovery + bulk backup for a
+ * user in one server-side hop. Returns 202 immediately; the actual work
+ * (Graph round-trips for Mail/OneDrive/Contacts/Calendar/Chats and the
+ * subsequent bulk-backup queueing) runs in the backend's background, so
+ * the UI can navigate away the moment this resolves.
+ */
+export async function backupUserWithDiscovery(
+  tenantId: string,
+  userResourceId: string,
+): Promise<{ accepted: boolean; message: string }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(
+    `${API.BASE_URL}/tenants/${tenantId}/users/${userResourceId}/backup`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to queue user backup: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+/**
+ * Tier 2 discovery only — kept for callers that just want to materialize
+ * child rows without queueing a backup. The Protection page no longer uses
+ * this directly; it goes through `backupUserWithDiscovery` so the user
+ * doesn't have to wait on a Graph round-trip.
  */
 export async function discoverUserContent(
   tenantId: string,

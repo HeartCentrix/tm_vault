@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerBatchBackup, triggerDiscovery, discoverUserContent } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerBatchBackup, triggerDiscovery, discoverUserContent, backupUserWithDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -470,51 +470,23 @@ export default function Protection() {
     const triggeredAt = new Date().toISOString();
     setBackingUp(prev => ({ ...prev, [resourceId]: triggeredAt }));
 
-    // Tier 2 prerequisite for Entra users:
-    //   1. Discover the user's content categories (creates Mail / OneDrive /
-    //      Contacts / Calendar / Chats child rows under this resource).
-    //   2. Fan the backup out across the parent + every child via bulk so
-    //      each category produces its own snapshot the Recovery page can
-    //      render. Without the fan-out, the parent backup only captures
-    //      identity (profile / manager / group memberships).
-    let backupTargets: string[] = [resourceId];
     // resource-service serializes the ResourceType enum to lowercase
-    // ("entra_user"), so accept either form to keep this resilient if the
-    // mapping ever changes back.
+    // ("entra_user"), so accept either form.
     const isEntraUser = (resource.kind || '').toLowerCase() === 'entra_user';
-    if (isEntraUser && tenantId) {
-      setDiscovering(prev => new Set(prev).add(resourceId));
-      try {
-        const result = await discoverUserContent(tenantId, resourceId);
-        backupTargets = [resourceId, ...(result.childResourceIds || [])];
-        setBackingUp(prev => {
-          const n = { ...prev };
-          backupTargets.forEach(id => { n[id] = triggeredAt; });
-          return n;
-        });
-      } catch (e) {
-        console.error('Per-user content discovery failed; not triggering backup:', e);
-        setDiscovering(prev => { const n = new Set(prev); n.delete(resourceId); return n; });
-        setBackingUp(prev => { const n = { ...prev }; delete n[resourceId]; return n; });
-        return;
-      } finally {
-        setDiscovering(prev => { const n = new Set(prev); n.delete(resourceId); return n; });
-      }
-    }
 
     try {
-      if (backupTargets.length > 1) {
-        await triggerBatchBackup(backupTargets);
+      if (isEntraUser && tenantId) {
+        // Fire-and-forget. The backend runs Tier 2 discovery (which talks
+        // to Microsoft Graph) AND queues the bulk backup for parent +
+        // children — all in a background task. We return as soon as it's
+        // accepted (~milliseconds) so the user can navigate away.
+        await backupUserWithDiscovery(tenantId, resourceId);
       } else {
         await triggerBackup(resourceId);
       }
     } catch (err) {
       console.error('Failed to trigger backup:', err);
-      setBackingUp(prev => {
-        const n = { ...prev };
-        backupTargets.forEach(id => { delete n[id]; });
-        return n;
-      });
+      setBackingUp(prev => { const n = { ...prev }; delete n[resourceId]; return n; });
     }
   };
 
