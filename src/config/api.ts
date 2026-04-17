@@ -86,10 +86,13 @@ export const API = {
     ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
     FOLDERS: `${API_URL}/resources/snapshots/folders`,
-    CONTENT_TYPES: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/content-types`,
-    EMAILS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/emails`,
-    MESSAGES: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/messages`,
+    // Five fixed per-content-type endpoints — replace the dynamic
+    // /content-types lookup. Recovery hardcodes its tabs and queries these.
+    MAIL: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/mail`,
+    ONEDRIVE: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/onedrive`,
+    CONTACTS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/contacts`,
     CALENDAR: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/calendar`,
+    CHATS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats`,
   },
 
   // Recovery

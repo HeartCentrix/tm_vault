@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerBatchBackup, triggerDiscovery } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerBatchBackup, triggerDiscovery, discoverUserContent } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -26,6 +26,9 @@ const azureTabs: { key: ResourceTab; label: string }[] = [
   { key: 'virtual-machines', label: 'Virtual machines' },
   { key: 'sql-databases', label: 'Azure SQL databases' },
   { key: 'postgresql-servers', label: 'Azure PostgreSQL servers' },
+  // Auto-protection
+  { key: 'resource-groups', label: 'Resource groups' },
+  { key: 'dynamic', label: 'Dynamic groups' },
 ];
 
 function getInitials(name: string): string {
@@ -258,13 +261,22 @@ export default function Protection() {
           : await getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType);
         const items = data.items || [];
         setResources(items);
-        // Clear backingUp entries whose last_backup_at is newer than the trigger time.
+        // Clear backingUp entries once the server reflects any non-pending
+        // state for that resource — either a fresh successful backup
+        // (last_backup_at advanced past the trigger time) OR the latest job
+        // reaching a terminal/active status (CANCELLED / FAILED / RUNNING /
+        // COMPLETED). Without the status check, a cancelled job leaves the
+        // optimistic "Starting…" flag stuck because last_backup_at never
+        // advances.
         setBackingUp(prev => {
           const next = { ...prev };
+          const TERMINAL = new Set(['COMPLETED', 'CANCELLED', 'FAILED', 'RUNNING']);
           for (const r of items) {
             const triggered = next[r.id];
             if (!triggered) continue;
-            if (r.last_backup && new Date(r.last_backup).getTime() >= new Date(triggered).getTime()) {
+            const advanced = r.last_backup && new Date(r.last_backup).getTime() >= new Date(triggered).getTime();
+            const settled = r.last_backup_status && TERMINAL.has(r.last_backup_status);
+            if (advanced || settled) {
               delete next[r.id];
             }
           }
@@ -293,7 +305,13 @@ export default function Protection() {
     if (!tenantId) return;
     setLoading(true);
     setResources([]);
-    
+
+    // Fresh data on load is authoritative — wipe the optimistic backingUp
+    // map so a "Starting…" / "In Progress" flag from a previous interaction
+    // can't outlive the resource it was attached to. The reconcile-on-focus
+    // effect handles in-session updates; this handles every navigation.
+    setBackingUp({});
+
     // If there's a search query, fetch all resources and filter client-side
     if (searchQuery) {
       getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
@@ -440,11 +458,24 @@ export default function Protection() {
     }
   };
 
-  const handleBackupNow = async (resourceId: string) => {
+  const handleBackupNow = async (resource: ResourceItem) => {
+    const resourceId = resource.id;
     if (backingUp[resourceId]) return; // Already pending
     const triggeredAt = new Date().toISOString();
     try {
       setBackingUp(prev => ({ ...prev, [resourceId]: triggeredAt }));
+      // Tier 2: for an Entra user we first discover their per-content
+      // categories (Mail/OneDrive/Contacts/Calendar/Chats) so the backup
+      // worker has the IDs it needs without re-walking Graph. Failures are
+      // logged but non-fatal — the backup will still kick off and the worker
+      // can fall back to enumerating from scratch.
+      if (resource.kind === 'ENTRA_USER' && tenantId) {
+        try {
+          await discoverUserContent(tenantId, resourceId);
+        } catch (e) {
+          console.warn('Per-user content discovery failed, continuing with backup:', e);
+        }
+      }
       await triggerBackup(resourceId);
     } catch (err) {
       console.error('Failed to trigger backup:', err);
@@ -748,48 +779,50 @@ export default function Protection() {
                 </td>
                 <td className="backup-cell">
                   {(() => {
-                    const isPending = !!backingUp[resource.id];
+                    // Display rules (per spec):
+                    //   1. Backup is actively RUNNING → show "In Progress"
+                    //      indicator only (no date, no historical label).
+                    //   2. Has any backed-up data (size > 0) → show the
+                    //      last-backup date and time. No status badge — old
+                    //      terminal states (Done / Failed / Canceled) are
+                    //      already discoverable from the Activity page.
+                    //   3. Otherwise → "No backups yet".
+                    // The local `backingUp` flag lets us show "In Progress"
+                    // optimistically right after a click, until the next
+                    // resource refresh confirms it from server data.
+                    const sizeBytes = resource.usage?.size || 0;
+                    const status = resource.last_backup_status;
+                    const isRunning = status === 'RUNNING' || !!backingUp[resource.id];
 
-                    if (isPending) {
+                    if (isRunning) {
                       return (
-                        <span className="backup-status queued">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12, marginRight: 4 }}>
-                            <circle cx="12" cy="12" r="10" strokeDasharray="60" strokeDashoffset="15">
-                              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite" />
-                            </circle>
-                          </svg>
-                          Queued
+                        <span className="backup-status in-progress">
+                          <span className="bps-spinner" />
+                          In Progress
                         </span>
                       );
                     }
 
-                    if (resource.last_backup) {
+                    if (sizeBytes > 0 && resource.last_backup) {
                       return (
                         <>
                           <div className="backup-date">{new Date(resource.last_backup).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                           <div className="backup-time">{new Date(resource.last_backup).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
-                          {resource.last_backup_status === 'COMPLETED' ? (
-                            <span className="backup-status done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4 }}><polyline points="20 6 9 17 4 12" /></svg>Done</span>
-                          ) : resource.last_backup_status === 'FAILED' ? (
-                            <span className="backup-status failed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4 }}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>Failed</span>
-                          ) : (
-                            <span className="backup-status done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4 }}><polyline points="20 6 9 17 4 12" /></svg>Done</span>
-                          )}
                         </>
                       );
                     }
 
-                    return <span className="backup-status never">Never backed up</span>;
+                    return <span className="backup-status never">No backups yet</span>;
                   })()}
                 </td>
                 <td className="actions-cell">
                   <button
                     className="action-btn-sm"
-                    onClick={() => handleBackupNow(resource.id)}
+                    onClick={() => handleBackupNow(resource)}
                     disabled={!!backingUp[resource.id] || !resource.protections?.[0]?.policy_id}
                     title={backupButtonTitle}
                   >
-                    {backingUp[resource.id] ? 'Queued' : 'Backup now'}
+                    {backingUp[resource.id] ? 'Starting…' : 'Backup now'}
                   </button>
                   <button
                     className="action-btn-sm"

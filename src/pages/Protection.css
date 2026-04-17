@@ -646,6 +646,34 @@
   color: #92400e;
 }
 
+.backup-status.in-progress {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.backup-status.canceled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Mini spinner for in-progress backups in the Protection table — matches
+   the Activity page's spinner-small in look + animation. */
+.bps-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  border: 2px solid #fde68a;
+  border-top-color: #b45309;
+  border-radius: 50%;
+  animation: bps-spin 0.6s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes bps-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Actions */
 .actions-cell {
   display: flex;

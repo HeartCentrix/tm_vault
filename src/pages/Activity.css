@@ -307,6 +307,43 @@
 .status-in-progress {
   background: #fef3c7;
   color: #92400e;
+  padding-right: 4px; /* tighten so the cancel button hugs the right edge */
+}
+
+/* Inline cancel button on the In Progress badge — sits flush against the
+   label, becomes a red filled circle on hover so the destructive action is
+   unmistakable. */
+.status-badge-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(146, 64, 14, 0.12);
+  color: #92400e;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+.status-badge-cancel:hover:not(:disabled) {
+  background: #dc2626;
+  color: #fff;
+  transform: scale(1.05);
+}
+.status-badge-cancel:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+.status-badge-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.status-badge-cancel svg {
+  width: 11px;
+  height: 11px;
 }
 
 .status-failed {

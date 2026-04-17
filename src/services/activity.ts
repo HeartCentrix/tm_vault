@@ -63,6 +63,17 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
   };
 }
 
+export async function cancelJob(jobId: string): Promise<void> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(API.JOBS.CANCEL(jobId), {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Failed to cancel job: ${res.statusText}`);
+  }
+}
+
 export async function downloadActivityCSV(params?: ActivityListParams): Promise<Blob> {
   const token = localStorage.getItem('access_token');
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};

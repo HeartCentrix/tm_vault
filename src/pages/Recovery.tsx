@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent } from '../services/snapshot';
+import {
+  SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
+  type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent, type ContentTab,
+} from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import { API } from '../config/api';
 import './Recovery.css';
 
-type ContentType = string;
+// Five fixed content tabs — was previously a string discovered at runtime
+// from the snapshot's actual item types.
+type ContentType = ContentTab | '';
 
 function formatContentTypeLabel(type: string): string {
   const labels: Record<string, string> = {
@@ -1136,9 +1141,10 @@ export default function Recovery() {
   const navigate = useNavigate();
   
   // Dynamic content types from snapshot items
-  const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
-  const [contentTypesLoading, setContentTypesLoading] = useState(false);
-  const [activeContentType, setActiveContentType] = useState<ContentType>('');
+  // Five fixed tabs — no runtime discovery. Default to first tab (mail).
+  const contentTypes: ContentTab[] = CONTENT_TABS;
+  const contentTypesLoading = false;
+  const [activeContentType, setActiveContentType] = useState<ContentType>('mail');
 
   // Resource selection
   const [resources, setResources] = useState<ResourceWithBackups[]>([]);
@@ -1222,24 +1228,10 @@ export default function Recovery() {
       .finally(() => setSnapshotsLoading(false));
   }, [selectedResource]);
 
-  // Load content types for selected snapshot
+  // Reset to first tab whenever the snapshot changes — tabs themselves are
+  // fixed (mail/onedrive/contacts/calendar/chats), so no fetch needed.
   useEffect(() => {
-    if (!selectedSnapshotId) {
-      setContentTypes([]);
-      setActiveContentType('');
-      return;
-    }
-
-    setContentTypesLoading(true);
-    SnapshotService.getContentTypes(selectedSnapshotId)
-      .then((types) => {
-        setContentTypes(types);
-        if (types.length > 0) {
-          setActiveContentType(types[0]);
-        }
-      })
-      .catch(console.error)
-      .finally(() => setContentTypesLoading(false));
+    setActiveContentType('mail');
   }, [selectedSnapshotId]);
 
   // Load recovery items with server-side pagination
@@ -1251,9 +1243,11 @@ export default function Recovery() {
       return;
     }
 
-    const pageSize = activeContentType === 'CALENDAR_EVENT' ? 500 : 50;
+    // Calendar dumps benefit from a larger page (no pagination control on the
+    // calendar layout); the other four tabs use the standard list size.
+    const pageSize = activeContentType === 'calendar' ? 500 : 50;
     setItemsLoading(true);
-    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType)
+    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType as ContentTab)
       .then((data) => {
         setRecoveryItems(data.content);
         setItemCount(data.totalElements);
@@ -1653,26 +1647,17 @@ export default function Recovery() {
                 </div>
               </div>
 
-              {/* Content Type Tabs */}
+              {/* Content Type Tabs — fixed five (Mail / OneDrive / Contacts / Calendar / Chats) */}
               <div className="content-type-tabs">
-                {contentTypesLoading ? (
-                  <div className="tabs-loading">
-                    <div className="spinner-sm" />
-                    Loading content types...
-                  </div>
-                ) : contentTypes.length === 0 ? (
-                  <div className="tabs-empty">No content types found</div>
-                ) : (
-                  contentTypes.map(type => (
-                    <button
-                      key={type}
-                      className={`content-tab ${activeContentType === type ? 'active' : ''}`}
-                      onClick={() => setActiveContentType(type)}
-                    >
-                      {formatContentTypeLabel(type)}
-                    </button>
-                  ))
-                )}
+                {contentTypes.map(type => (
+                  <button
+                    key={type}
+                    className={`content-tab ${activeContentType === type ? 'active' : ''}`}
+                    onClick={() => setActiveContentType(type)}
+                  >
+                    {CONTENT_TAB_LABELS[type]}
+                  </button>
+                ))}
               </div>
 
               {/* Toolbar */}
@@ -1715,8 +1700,8 @@ export default function Recovery() {
               </div>
 
               {/* Three Panel Layout */}
-              <div className={`three-panel-layout${activeContentType === 'CALENDAR_EVENT' ? ' cal-layout-mode' : ''}`}>
-                {activeContentType === 'CALENDAR_EVENT' ? (
+              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}`}>
+                {activeContentType === 'calendar' ? (
                   /* Calendar Month View — replaces folder tree + item list */
                   <div className="panel-calendar">
                     {itemsLoading ? (
@@ -1802,9 +1787,12 @@ export default function Recovery() {
                       </div>
                     ) : (
                       (() => {
+                        // Item-level types still flow through (server returns
+                        // EMAIL / TEAMS_CHAT_MESSAGE / etc.) — pick the right
+                        // row component from the active tab.
                         const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
-                        const isChatContentType = CHAT_TYPES.has(activeContentType);
-                        const isEmailType = activeContentType === 'EMAIL';
+                        const isChatContentType = activeContentType === 'chats';
+                        const isEmailType = activeContentType === 'mail';
                         return recoveryItems.map(item => {
                           const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
                           const isEmailItem = isEmailType || item.itemType === 'EMAIL';
@@ -1853,8 +1841,8 @@ export default function Recovery() {
                   </>
                 )}
 
-                {/* Right Panel: Item Preview — hidden for Teams chat and Calendar (shown inline / in month view) */}
-                {!['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY', 'CALENDAR_EVENT'].includes(activeContentType) && (
+                {/* Right Panel: Item Preview — hidden for Chats and Calendar (shown inline / in month view) */}
+                {!['chats', 'calendar'].includes(activeContentType) && (
                 <div className="panel-right">
                   {selectedItem
                     ? <ItemPreview item={selectedItem} />

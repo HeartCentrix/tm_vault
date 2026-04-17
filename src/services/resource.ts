@@ -38,30 +38,60 @@ export interface ResourceListResponse {
 }
 
 // Map Protection tabs to backend resource types (must match ResourceType enum in DB)
-// M365 resource types
+//
+// Post-Tier-2-refactor: only Tier 1 container types appear here. Per-user
+// content (USER_MAIL / USER_ONEDRIVE / USER_CONTACTS / USER_CALENDAR /
+// USER_CHATS) is fetched on demand via the discover-content endpoint and
+// rendered under each user — not as standalone Protection rows.
 const M365_TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
   users: ['ENTRA_USER'],
   shared: ['SHARED_MAILBOX'],
   rooms: ['ROOM_MAILBOX'],
   sharepoint: ['SHAREPOINT_SITE'],
-  groups: ['TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_GROUP'],
-  entra: ['ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE'],
-  power: ['POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'],
-  dynamic: [],
-  'entra-groups': ['ENTRA_GROUP'],
+  // Groups & Teams: group containers + channel containers (chats moved to Tier 2).
+  groups: ['ENTRA_GROUP', 'M365_GROUP', 'TEAMS_CHANNEL'],
+  // Entra ID: user accounts + group identities.
+  entra: ['ENTRA_USER', 'ENTRA_GROUP', 'M365_GROUP'],
+  // Power Platform — DLP/Copilot/Planner aren't in Tier 1.
+  power: ['POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE'],
+  // Auto-protection bucket: Entra groups + dynamic groups.
+  'entra-groups': ['ENTRA_GROUP', 'M365_GROUP'],
+  dynamic: ['DYNAMIC_GROUP'],
 };
 
-// Azure resource types
+// Azure resource types — only the Tier 1 set the user listed.
 const AZURE_TAB_TYPE_MAP: Record<string, string[]> = {
   all: [],
   'virtual-machines': ['AZURE_VM'],
   'sql-databases': ['AZURE_SQL_DB'],
   'postgresql-servers': ['AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE'],
+  // Auto-protection
+  'resource-groups': ['RESOURCE_GROUP'],
+  dynamic: ['DYNAMIC_GROUP'],
 };
 
-const M365_ALL_TYPES = ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'SHAREPOINT_SITE', 'TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE', 'POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'];
-const AZURE_ALL_TYPES = ['AZURE_VM', 'AZURE_SQL_DB', 'AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE'];
+const M365_ALL_TYPES = [
+  'ENTRA_USER',
+  'SHARED_MAILBOX',
+  'ROOM_MAILBOX',
+  'SHAREPOINT_SITE',
+  'ENTRA_GROUP',
+  'M365_GROUP',
+  'TEAMS_CHANNEL',
+  'POWER_BI',
+  'POWER_APPS',
+  'POWER_AUTOMATE',
+  'DYNAMIC_GROUP',
+];
+const AZURE_ALL_TYPES = [
+  'AZURE_VM',
+  'AZURE_SQL_DB',
+  'AZURE_POSTGRESQL',
+  'AZURE_POSTGRESQL_SINGLE',
+  'RESOURCE_GROUP',
+  'DYNAMIC_GROUP',
+];
 
 export function getTabTypeMap(serviceType?: string): Record<string, string[]> {
   if (serviceType === 'azure') {
@@ -361,5 +391,33 @@ export async function triggerDiscovery(
     throw new Error(`Failed to trigger discovery: ${res.statusText}`);
   }
 
+  return res.json();
+}
+
+/**
+ * Tier 2 discovery: fetch the five fixed content categories (Mail, OneDrive,
+ * Contacts, Calendar, Chats) for one ENTRA_USER and persist them as child
+ * rows. Called from Protection.tsx before kicking off a per-user backup so
+ * the backup worker has the IDs (drive id, chat ids, etc.) it needs without
+ * re-walking Graph.
+ */
+export async function discoverUserContent(
+  tenantId: string,
+  userResourceId: string,
+): Promise<{ contentDiscovered: number; categories: string[] }> {
+  const token = localStorage.getItem('access_token');
+  const res = await fetch(
+    `${API.BASE_URL}/tenants/${tenantId}/users/${userResourceId}/discover-content`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to discover user content: ${res.statusText}`);
+  }
   return res.json();
 }

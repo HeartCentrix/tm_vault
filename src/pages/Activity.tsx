@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { getActivities, downloadActivityCSV, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
+import { getActivities, downloadActivityCSV, cancelJob, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import './Activity.css';
@@ -48,6 +48,10 @@ export default function Activity() {
   const [showModal, setShowModal] = useState(false);
   const [rawDetails, setRawDetails] = useState<Record<string, any> | null>(null);
   const [showRawModal, setShowRawModal] = useState(false);
+
+  // Tracks job IDs we're awaiting a cancel response for, so the cross button
+  // disables itself between click and the optimistic local status flip.
+  const [cancellingJobs, setCancellingJobs] = useState<Set<string>>(new Set());
 
   // Sort
   const [sortColumn, setSortColumn] = useState<string>('date');
@@ -213,7 +217,25 @@ export default function Activity() {
     });
   };
 
-  const getStatusIcon = (status: string) => {
+  const handleCancelJob = async (jobId: string) => {
+    if (cancellingJobs.has(jobId)) return;
+    setCancellingJobs(prev => new Set(prev).add(jobId));
+    try {
+      await cancelJob(jobId);
+      // Optimistic: flip the row to Canceled locally; the next poll/refresh
+      // confirms it from the server.
+      setActivities(prev => prev.map(a => a.id === jobId ? { ...a, status: 'Canceled' } : a));
+    } catch (e) {
+      console.error('Failed to cancel job:', e);
+      setCancellingJobs(prev => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+    }
+  };
+
+  const getStatusIcon = (status: string, jobId?: string) => {
     switch (status) {
       case 'Done':
         return (
@@ -229,6 +251,21 @@ export default function Activity() {
           <span className="status-badge status-in-progress">
             <span className="spinner-small" />
             In Progress
+            {jobId && (
+              <button
+                type="button"
+                className="status-badge-cancel"
+                title="Cancel job"
+                aria-label="Cancel job"
+                disabled={cancellingJobs.has(jobId)}
+                onClick={(e) => { e.stopPropagation(); handleCancelJob(jobId); }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
           </span>
         );
       case 'Failed':
@@ -492,7 +529,7 @@ export default function Activity() {
                     <td>{formatDate(activity.start_time)}</td>
                     <td><span className="operation-badge">{activity.operation}</span></td>
                     <td className="object-cell">{activity.object}</td>
-                    <td>{getStatusIcon(activity.status)}</td>
+                    <td>{getStatusIcon(activity.status, activity.id)}</td>
                     <td>{formatDate(activity.finish_time)}</td>
                     <td className="details-cell">{activity.details || '—'}</td>
                   </tr>
