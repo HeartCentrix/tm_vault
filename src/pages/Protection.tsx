@@ -230,6 +230,12 @@ export default function Protection() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
   });
 
+  // Resource IDs currently waiting on Tier 2 content discovery (per-user
+  // Mail/OneDrive/Contacts/Calendar/Chats). Backup is gated on this — we
+  // don't queue the job until discovery for that resource has completed,
+  // so the worker has the IDs it needs.
+  const [discovering, setDiscovering] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     try {
       if (Object.keys(backingUp).length > 0) {
@@ -460,49 +466,127 @@ export default function Protection() {
 
   const handleBackupNow = async (resource: ResourceItem) => {
     const resourceId = resource.id;
-    if (backingUp[resourceId]) return; // Already pending
+    if (backingUp[resourceId] || discovering.has(resourceId)) return; // Already pending
     const triggeredAt = new Date().toISOString();
-    try {
-      setBackingUp(prev => ({ ...prev, [resourceId]: triggeredAt }));
-      // Tier 2: for an Entra user we first discover their per-content
-      // categories (Mail/OneDrive/Contacts/Calendar/Chats) so the backup
-      // worker has the IDs it needs without re-walking Graph. Failures are
-      // logged but non-fatal — the backup will still kick off and the worker
-      // can fall back to enumerating from scratch.
-      if (resource.kind === 'ENTRA_USER' && tenantId) {
-        try {
-          await discoverUserContent(tenantId, resourceId);
-        } catch (e) {
-          console.warn('Per-user content discovery failed, continuing with backup:', e);
-        }
+    setBackingUp(prev => ({ ...prev, [resourceId]: triggeredAt }));
+
+    // Tier 2 prerequisite for Entra users:
+    //   1. Discover the user's content categories (creates Mail / OneDrive /
+    //      Contacts / Calendar / Chats child rows under this resource).
+    //   2. Fan the backup out across the parent + every child via bulk so
+    //      each category produces its own snapshot the Recovery page can
+    //      render. Without the fan-out, the parent backup only captures
+    //      identity (profile / manager / group memberships).
+    let backupTargets: string[] = [resourceId];
+    // resource-service serializes the ResourceType enum to lowercase
+    // ("entra_user"), so accept either form to keep this resilient if the
+    // mapping ever changes back.
+    const isEntraUser = (resource.kind || '').toLowerCase() === 'entra_user';
+    if (isEntraUser && tenantId) {
+      setDiscovering(prev => new Set(prev).add(resourceId));
+      try {
+        const result = await discoverUserContent(tenantId, resourceId);
+        backupTargets = [resourceId, ...(result.childResourceIds || [])];
+        setBackingUp(prev => {
+          const n = { ...prev };
+          backupTargets.forEach(id => { n[id] = triggeredAt; });
+          return n;
+        });
+      } catch (e) {
+        console.error('Per-user content discovery failed; not triggering backup:', e);
+        setDiscovering(prev => { const n = new Set(prev); n.delete(resourceId); return n; });
+        setBackingUp(prev => { const n = { ...prev }; delete n[resourceId]; return n; });
+        return;
+      } finally {
+        setDiscovering(prev => { const n = new Set(prev); n.delete(resourceId); return n; });
       }
-      await triggerBackup(resourceId);
+    }
+
+    try {
+      if (backupTargets.length > 1) {
+        await triggerBatchBackup(backupTargets);
+      } else {
+        await triggerBackup(resourceId);
+      }
     } catch (err) {
       console.error('Failed to trigger backup:', err);
       setBackingUp(prev => {
-        const next = { ...prev };
-        delete next[resourceId];
-        return next;
+        const n = { ...prev };
+        backupTargets.forEach(id => { delete n[id]; });
+        return n;
       });
     }
   };
 
   const handleBatchBackup = async () => {
-    if (selectedResources.length === 0) return;
+    if (selectedResources.length === 0 || !tenantId) return;
     const triggeredAt = new Date().toISOString();
+    setBackingUp(prev => {
+      const next = { ...prev };
+      selectedResources.forEach(r => { next[r] = triggeredAt; });
+      return next;
+    });
+
+    // Tier 2 prerequisite — same as the single-resource path. Discover
+    // content for every selected ENTRA_USER first, in parallel. If any
+    // discovery fails we still proceed with the rest (one bad user
+    // shouldn't block the whole batch), but the failed resource is dropped
+    // from the backup so the worker doesn't get a job it can't fulfil.
+    const userIds = resources
+      .filter(r => selectedResources.includes(r.id) && (r.kind || '').toLowerCase() === 'entra_user')
+      .map(r => r.id);
+
+    let extraChildIds: string[] = [];
+    let droppedIds = new Set<string>();
+
+    if (userIds.length > 0) {
+      setDiscovering(prev => { const n = new Set(prev); userIds.forEach(id => n.add(id)); return n; });
+      const discoveryResults = await Promise.all(
+        userIds.map(async (id) => {
+          try {
+            const r = await discoverUserContent(tenantId, id);
+            return { id, ok: true, childIds: r.childResourceIds || [] };
+          } catch (e) {
+            console.warn(`Discovery failed for ${id}; dropping from batch:`, e);
+            return { id, ok: false, childIds: [] };
+          }
+        })
+      );
+      setDiscovering(prev => { const n = new Set(prev); userIds.forEach(id => n.delete(id)); return n; });
+
+      droppedIds = new Set(discoveryResults.filter(r => !r.ok).map(r => r.id));
+      // Collect all child IDs so the bulk backup actually persists each
+      // user's Mail/OneDrive/Contacts/Calendar/Chats content.
+      extraChildIds = discoveryResults.flatMap(r => r.childIds);
+      if (droppedIds.size > 0) {
+        setBackingUp(prev => {
+          const next = { ...prev };
+          droppedIds.forEach(id => { delete next[id]; });
+          return next;
+        });
+      }
+      if (extraChildIds.length > 0) {
+        setBackingUp(prev => {
+          const next = { ...prev };
+          extraChildIds.forEach(id => { next[id] = triggeredAt; });
+          return next;
+        });
+      }
+    }
+
+    const finalIds = [
+      ...selectedResources.filter(id => !droppedIds.has(id)),
+      ...extraChildIds,
+    ];
+
     try {
-      setBackingUp(prev => {
-        const next = { ...prev };
-        selectedResources.forEach(r => { next[r] = triggeredAt; });
-        return next;
-      });
-      const results = await triggerBatchBackup(selectedResources);
+      const results = await triggerBatchBackup(finalIds);
       console.log(`Triggered batch backup for ${results.length} resources`);
     } catch (err) {
       console.error('Failed to trigger batch backup:', err);
       setBackingUp(prev => {
         const next = { ...prev };
-        selectedResources.forEach(r => { delete next[r]; });
+        finalIds.forEach(r => { delete next[r]; });
         return next;
       });
     }
@@ -792,7 +876,17 @@ export default function Protection() {
                     // resource refresh confirms it from server data.
                     const sizeBytes = resource.usage?.size || 0;
                     const status = resource.last_backup_status;
+                    const isDiscovering = discovering.has(resource.id);
                     const isRunning = status === 'RUNNING' || !!backingUp[resource.id];
+
+                    if (isDiscovering) {
+                      return (
+                        <span className="backup-status in-progress" title="Discovering content before backup">
+                          <span className="bps-spinner" />
+                          Discovering…
+                        </span>
+                      );
+                    }
 
                     if (isRunning) {
                       return (
@@ -819,10 +913,10 @@ export default function Protection() {
                   <button
                     className="action-btn-sm"
                     onClick={() => handleBackupNow(resource)}
-                    disabled={!!backingUp[resource.id] || !resource.protections?.[0]?.policy_id}
+                    disabled={!!backingUp[resource.id] || discovering.has(resource.id) || !resource.protections?.[0]?.policy_id}
                     title={backupButtonTitle}
                   >
-                    {backingUp[resource.id] ? 'Starting…' : 'Backup now'}
+                    {discovering.has(resource.id) ? 'Discovering…' : backingUp[resource.id] ? 'Starting…' : 'Backup now'}
                   </button>
                   <button
                     className="action-btn-sm"

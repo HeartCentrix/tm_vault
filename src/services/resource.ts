@@ -404,7 +404,7 @@ export async function triggerDiscovery(
 export async function discoverUserContent(
   tenantId: string,
   userResourceId: string,
-): Promise<{ contentDiscovered: number; categories: string[] }> {
+): Promise<{ contentDiscovered: number; categories: string[]; childResourceIds: string[] }> {
   const token = localStorage.getItem('access_token');
   const res = await fetch(
     `${API.BASE_URL}/tenants/${tenantId}/users/${userResourceId}/discover-content`,

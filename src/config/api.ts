@@ -82,6 +82,7 @@ export const API = {
   // Snapshots
   SNAPSHOTS: {
     LIST: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots`,
+    CONTENT_SNAPSHOTS: (resourceId: string) => `${API_URL}/resources/${resourceId}/content-snapshots`,
     DETAIL: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}`,
     ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
@@ -93,6 +94,7 @@ export const API = {
     CONTACTS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/contacts`,
     CALENDAR: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/calendar`,
     CHATS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats`,
+    CHAT_GROUPS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats/groups`,
   },
 
   // Recovery

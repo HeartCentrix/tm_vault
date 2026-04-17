@@ -3,18 +3,6 @@
  */
 import { API } from '../config/api';
 
-// Five fixed content tabs rendered on Recovery. Hardcoded — no longer derived
-// from snapshot contents at runtime.
-export type ContentTab = 'mail' | 'onedrive' | 'contacts' | 'calendar' | 'chats';
-export const CONTENT_TABS: ContentTab[] = ['mail', 'onedrive', 'contacts', 'calendar', 'chats'];
-export const CONTENT_TAB_LABELS: Record<ContentTab, string> = {
-  mail: 'Mail',
-  onedrive: 'OneDrive',
-  contacts: 'Contacts',
-  calendar: 'Calendar',
-  chats: 'Chats',
-};
-
 export interface SnapshotItem {
   id: string;
   resourceId: string;
@@ -126,23 +114,6 @@ export interface SnapshotFolder {
   count: number;
 }
 
-/** Per-content latest-snapshot resolver. Backend computes the latest
- *  COMPLETED snapshot for each content tab (resolves through Tier 2
- *  children automatically) so Recovery doesn't need to surface a snapshot
- *  picker to the user. */
-export interface ContentSnapshotEntry {
-  snapshotId: string;
-  childResourceId: string;
-  itemCount: number;
-  bytesTotal: number;
-  createdAt: string | null;
-}
-export interface ContentSnapshotsResponse {
-  resourceId: string;
-  snapshotCount: number;
-  byContent: Record<ContentTab, ContentSnapshotEntry | null>;
-}
-
 const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('access_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -158,20 +129,6 @@ export const SnapshotService = {
     return res.json();
   },
 
-  async getChatGroups(snapshotId: string): Promise<Array<{ chatId: string; displayName: string; count: number; lastMessageAt: string | null }>> {
-    const url = API.SNAPSHOTS.CHAT_GROUPS(snapshotId);
-    const res = await fetch(url, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error('Failed to fetch chat groups');
-    return res.json();
-  },
-
-  async getContentSnapshots(resourceId: string): Promise<ContentSnapshotsResponse> {
-    const url = API.SNAPSHOTS.CONTENT_SNAPSHOTS(resourceId);
-    const res = await fetch(url, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error('Failed to fetch content snapshots');
-    return res.json();
-  },
-
   async getSnapshotDetail(snapshotId: string): Promise<SnapshotItem> {
     const url = API.SNAPSHOTS.DETAIL(snapshotId);
     const res = await fetch(url, { headers: getAuthHeaders() });
@@ -179,41 +136,30 @@ export const SnapshotService = {
     return res.json();
   },
 
-  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string): Promise<SnapshotItemListResponse> {
-    // Recovery passes one of the 5 fixed tabs (mail/onedrive/contacts/
-    // calendar/chats). Each maps to its own backend endpoint — no more
-    // /items?itemType=X fallback, no /content-types lookup.
-    //
-    // `group` narrows to a single grouping bucket from the left panel:
-    //   mail / onedrive / contacts → folder path
-    //   chats                       → chatId (uses ?chatId= per the messages handler)
-    const endpoint: Record<ContentTab, string> = {
-      mail: API.SNAPSHOTS.MAIL(snapshotId),
-      onedrive: API.SNAPSHOTS.ONEDRIVE(snapshotId),
-      contacts: API.SNAPSHOTS.CONTACTS(snapshotId),
-      calendar: API.SNAPSHOTS.CALENDAR(snapshotId),
-      chats: API.SNAPSHOTS.CHATS(snapshotId),
+  async listItems(snapshotId: string, page = 1, size = 50, itemType?: string): Promise<SnapshotItemListResponse> {
+    // Route to content-specific endpoint for richer fields
+    const contentEndpoint: Record<string, string> = {
+      EMAIL: API.SNAPSHOTS.EMAILS(snapshotId),
+      TEAMS_CHAT_MESSAGE: API.SNAPSHOTS.MESSAGES(snapshotId),
+      TEAMS_MESSAGE: API.SNAPSHOTS.MESSAGES(snapshotId),
+      TEAMS_MESSAGE_REPLY: API.SNAPSHOTS.MESSAGES(snapshotId),
+      CALENDAR_EVENT: API.SNAPSHOTS.CALENDAR(snapshotId),
     };
-    const base = contentType ? endpoint[contentType] : API.SNAPSHOTS.MAIL(snapshotId);
-    let url = `${base}?page=${page}&size=${size}`;
-    if (group !== undefined && group !== '' && group !== 'all') {
-      // Uniform `folder` filter across all tabs — chats now also have
-      // folder_path set ("chats/<friendly name>") by the backup handler.
-      url += `&folder=${encodeURIComponent(group)}`;
-    }
+    const isContentSpecific = !!(itemType && contentEndpoint[itemType]);
+    const base = isContentSpecific ? contentEndpoint[itemType!] : API.SNAPSHOTS.ITEMS(snapshotId);
+    const url = `${base}?page=${page}&size=${size}${itemType && !isContentSpecific ? `&itemType=${itemType}` : ''}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch snapshot items');
     const data = await res.json();
 
-    // Preview components (EmailPreview, ChatPreview, CalendarPreview, etc.)
-    // expect metadata.raw — inject the flat row as raw when the backend hasn't
-    // already nested one inside metadata.
-    if (data.content) {
+    // For content-specific endpoints, ensure metadata.raw is populated
+    // so preview components (EmailPreview, ChatPreview, CalendarPreview) work
+    if (isContentSpecific && data.content) {
       data.content = data.content.map((item: any) => ({
         ...item,
         metadata: item.metadata && Object.keys(item.metadata).length > 0
           ? item.metadata
-          : { raw: item },
+          : { raw: item },  // inject flat fields as raw so previews can read them
       }));
     }
     return data;
@@ -254,6 +200,17 @@ export const SnapshotService = {
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch folders');
     return res.json();
+  },
+
+  /**
+   * Get distinct content types available in a snapshot.
+   */
+  async getContentTypes(snapshotId: string): Promise<string[]> {
+    const url = API.SNAPSHOTS.CONTENT_TYPES(snapshotId);
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch content types');
+    const data = await res.json();
+    return data.contentTypes || [];
   },
 
   /**

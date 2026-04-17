@@ -1,19 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import {
-  SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
-  type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent, type ContentTab,
-  type ContentSnapshotsResponse,
-} from '../services/snapshot';
+import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import { API } from '../config/api';
 import './Recovery.css';
 
-// Five fixed content tabs — was previously a string discovered at runtime
-// from the snapshot's actual item types.
-type ContentType = ContentTab | '';
+type ContentType = string;
 
 function formatContentTypeLabel(type: string): string {
   const labels: Record<string, string> = {
@@ -323,76 +317,6 @@ export function CalendarPreview({ item }: { item: any }) {
 // Each preview reads from item.metadata.raw (populated by backup handlers) and
 // falls back to flat fields. Styles piggyback on the existing .item-preview /
 // .preview-* CSS classes plus inline for card-specific details.
-
-// Folder-tree builder for OneDrive. Takes flat paths like "/A/B" and "/A/C"
-// and produces a nested {name, fullPath, count, children[]} structure so the
-// left panel can render a real file-explorer-style tree.
-type FolderNode = { name: string; fullPath: string; count: number; children: FolderNode[] };
-
-function buildFolderTree(folders: Array<{ path: string; count: number }>): FolderNode {
-  const root: FolderNode = { name: '/', fullPath: '/', count: 0, children: [] };
-  for (const f of folders) {
-    const path = f.path || '/';
-    const parts = path.split('/').filter(Boolean);
-    let cursor = root;
-    cursor.count += f.count;
-    let acc = '';
-    for (const part of parts) {
-      acc += '/' + part;
-      let child = cursor.children.find(c => c.name === part);
-      if (!child) {
-        child = { name: part, fullPath: acc, count: 0, children: [] };
-        cursor.children.push(child);
-      }
-      child.count += f.count;
-      cursor = child;
-    }
-  }
-  // Sort children alphabetically at every level for stable display.
-  const sortRec = (n: FolderNode) => {
-    n.children.sort((a, b) => a.name.localeCompare(b.name));
-    n.children.forEach(sortRec);
-  };
-  sortRec(root);
-  return root;
-}
-
-function FolderTreeNode({
-  node, depth, selected, onSelect,
-}: { node: FolderNode; depth: number; selected: string; onSelect: (path: string) => void }) {
-  const [open, setOpen] = useState(depth < 1);  // expand the top level by default
-  const hasKids = node.children.length > 0;
-  return (
-    <div className="folder-tree-node">
-      <button
-        type="button"
-        className={`folder-item folder-tree-item ${selected === node.fullPath ? 'active' : ''}`}
-        style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => onSelect(node.fullPath)}
-      >
-        {hasKids ? (
-          <span
-            className={`folder-tree-toggle ${open ? 'open' : ''}`}
-            onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
-            aria-label={open ? 'Collapse' : 'Expand'}
-          >▸</span>
-        ) : <span className="folder-tree-spacer" />}
-        <span className="folder-tree-icon" aria-hidden>
-          {hasKids ? (open ? '📂' : '📁') : '📄'}
-        </span>
-        <span className="folder-name">{node.name}</span>
-        {node.count > 0 && <span className="folder-count">{node.count}</span>}
-      </button>
-      {open && hasKids && (
-        <div className="folder-tree-children">
-          {node.children.map(child => (
-            <FolderTreeNode key={child.fullPath} node={child} depth={depth + 1} selected={selected} onSelect={onSelect} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function PreviewLabel({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === '') return null;
@@ -1212,10 +1136,9 @@ export default function Recovery() {
   const navigate = useNavigate();
   
   // Dynamic content types from snapshot items
-  // Five fixed tabs — no runtime discovery. Default to first tab (mail).
-  const contentTypes: ContentTab[] = CONTENT_TABS;
-  const contentTypesLoading = false;
-  const [activeContentType, setActiveContentType] = useState<ContentType>('mail');
+  const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
+  const [contentTypesLoading, setContentTypesLoading] = useState(false);
+  const [activeContentType, setActiveContentType] = useState<ContentType>('');
 
   // Resource selection
   const [resources, setResources] = useState<ResourceWithBackups[]>([]);
@@ -1273,42 +1196,51 @@ export default function Recovery() {
       .finally(() => setResourcesLoading(false));
   }, [tenantId]);
 
-  // Per-content-tab snapshot resolver. The backend returns the latest
-  // COMPLETED snapshot per tab (mail / onedrive / contacts / calendar /
-  // chats) — no snapshot dropdown to surface to the user. Clicking a tab
-  // auto-jumps to the right snapshot ID.
-  const [contentSnapshots, setContentSnapshots] = useState<ContentSnapshotsResponse | null>(null);
-
+  // Load snapshots for selected resource
   useEffect(() => {
     if (!selectedResource) {
       setSnapshots([]);
       setSelectedSnapshotId('');
-      setContentSnapshots(null);
       return;
     }
 
     setSnapshotsLoading(true);
-    Promise.all([
-      // Sparkline still needs the historical snapshot list (date + size).
-      SnapshotService.listByResource(selectedResource.id, 1, 50).catch(() => ({ content: [] })),
-      SnapshotService.getContentSnapshots(selectedResource.id),
-    ])
-      .then(([list, content]) => {
-        setSnapshots(list.content || []);
-        setContentSnapshots(content);
+    SnapshotService.listByResource(selectedResource.id, 1, 50)
+      .then((data) => {
+        setSnapshots(data.content);
+        if (data.content.length > 0) {
+          const snapshotParam = searchParams.get('snapshotId');
+          const initial = snapshotParam && data.content.find(s => s.id === snapshotParam)
+            ? snapshotParam
+            : data.content[0].id;
+          setSelectedSnapshotId(initial);
+        } else {
+          setSelectedSnapshotId('');
+        }
       })
       .catch(console.error)
       .finally(() => setSnapshotsLoading(false));
   }, [selectedResource]);
 
-  // When the resolver loads OR the active tab changes, swap selectedSnapshotId
-  // to whatever snapshot the backend says backs that tab — null means "no
-  // snapshot for this content yet" and the items list will render empty.
+  // Load content types for selected snapshot
   useEffect(() => {
-    if (!contentSnapshots) return;
-    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
-    setSelectedSnapshotId(entry?.snapshotId || '');
-  }, [contentSnapshots, activeContentType]);
+    if (!selectedSnapshotId) {
+      setContentTypes([]);
+      setActiveContentType('');
+      return;
+    }
+
+    setContentTypesLoading(true);
+    SnapshotService.getContentTypes(selectedSnapshotId)
+      .then((types) => {
+        setContentTypes(types);
+        if (types.length > 0) {
+          setActiveContentType(types[0]);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setContentTypesLoading(false));
+  }, [selectedSnapshotId]);
 
   // Load recovery items with server-side pagination
   useEffect(() => {
@@ -1319,13 +1251,9 @@ export default function Recovery() {
       return;
     }
 
-    // Calendar dumps benefit from a larger page (no pagination control on the
-    // calendar layout); the other four tabs use the standard list size.
-    const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    const pageSize = activeContentType === 'CALENDAR_EVENT' ? 500 : 50;
     setItemsLoading(true);
-    // Pass the selected left-panel group as a filter — folder path for
-    // mail/onedrive/contacts, chatId for chats. "all" means no filter.
-    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType as ContentTab, selectedFolder)
+    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType)
       .then((data) => {
         setRecoveryItems(data.content);
         setItemCount(data.totalElements);
@@ -1336,25 +1264,21 @@ export default function Recovery() {
         setRecoveryItems([]);
       })
       .finally(() => setItemsLoading(false));
-  }, [selectedSnapshotId, selectedResource, activeContentType, itemPage, selectedFolder]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, itemPage]);
 
-  // Reset item page + clear left-panel selection when tab/snapshot changes.
+  // Reset item page when content type or snapshot changes
   useEffect(() => { setItemPage(1); setSelectedItem(null); }, [selectedSnapshotId, activeContentType]);
 
-  // Left-panel grouping is now uniform across mail / onedrive / contacts /
-  // chats — all driven by the snapshot's distinct folder_paths. Chats just
-  // happen to use "chats/<friendly name>" as their path (set by the Tier 2
-  // backup handler from the chat's display name, e.g. "chats/Vinay
-  // Chauhan" or "chats/Group: Hemant, Vinay +5 more"). Calendar owns its
-  // own layout and skips this entirely.
+  // Load folders for selected snapshot (all folders, not filtered by content type)
   useEffect(() => {
-    if (!selectedSnapshotId || activeContentType === 'calendar') {
+    if (!selectedSnapshotId) {
       setFolders([]);
       setSelectedFolder('all');
       return;
     }
 
     setFoldersLoading(true);
+    // Load folders without contentType filter to show all available folders
     SnapshotService.getFolders(selectedSnapshotId)
       .then((data) => {
         const folderList = [{ path: '', count: data.reduce((sum, f) => sum + f.count, 0) }, ...data];
@@ -1363,7 +1287,7 @@ export default function Recovery() {
       })
       .catch(console.error)
       .finally(() => setFoldersLoading(false));
-  }, [selectedSnapshotId, activeContentType]);
+  }, [selectedSnapshotId]);
 
 
 
@@ -1377,6 +1301,12 @@ export default function Recovery() {
     setSelectedItem(null);
     setSelectedItems(new Set());
     setSearchParams({ resourceId: resource.id });
+  };
+
+  const handleSnapshotChange = (snapshotId: string) => {
+    setSelectedSnapshotId(snapshotId);
+    setSelectedItem(null);
+    setSelectedItems(new Set());
   };
 
   const toggleSelectItem = (itemId: string) => {
@@ -1704,42 +1634,45 @@ export default function Recovery() {
                     totalBytes={selectedResource.storage_bytes}
                   />
 
-                  {/* Snapshot picker is gone — the user no longer chooses a
-                      version; clicking a content tab auto-resolves to the
-                      latest snapshot for that tab. We surface the count so
-                      the user can see backup activity at a glance. */}
-                  <div className="snapshot-count">
-                    <div className="snapshot-count-num">
-                      {contentSnapshots?.snapshotCount ?? (snapshotsLoading ? '…' : 0)}
-                    </div>
-                    <div className="snapshot-count-label">
-                      snapshot{(contentSnapshots?.snapshotCount ?? 0) === 1 ? '' : 's'}
-                    </div>
+                  <div className="backup-version-selector">
+                    <label>Backup version</label>
+                    <select
+                      value={selectedSnapshotId}
+                      onChange={(e) => handleSnapshotChange(e.target.value)}
+                      disabled={snapshotsLoading}
+                    >
+                      {snapshotsLoading && <option>Loading...</option>}
+                      {snapshots.map(snapshot => (
+                        <option key={snapshot.id} value={snapshot.id}>
+                          {new Date(snapshot.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {snapshot.label ? ` — ${snapshot.label}` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
 
-              {/* Content Type Tabs — fixed five (Mail / OneDrive / Contacts / Calendar / Chats).
-                  Each tab shows its backed-up item count from the content-
-                  snapshots resolver; tabs with no snapshot yet stay clickable
-                  but render an empty state on click. */}
+              {/* Content Type Tabs */}
               <div className="content-type-tabs">
-                {contentTypes.map(type => {
-                  const entry = contentSnapshots?.byContent[type] || null;
-                  const count = entry?.itemCount ?? 0;
-                  const hasBackup = !!entry;
-                  return (
+                {contentTypesLoading ? (
+                  <div className="tabs-loading">
+                    <div className="spinner-sm" />
+                    Loading content types...
+                  </div>
+                ) : contentTypes.length === 0 ? (
+                  <div className="tabs-empty">No content types found</div>
+                ) : (
+                  contentTypes.map(type => (
                     <button
                       key={type}
-                      className={`content-tab ${activeContentType === type ? 'active' : ''}${hasBackup ? '' : ' content-tab-empty'}`}
+                      className={`content-tab ${activeContentType === type ? 'active' : ''}`}
                       onClick={() => setActiveContentType(type)}
-                      title={hasBackup ? `${count.toLocaleString()} item${count === 1 ? '' : 's'} backed up` : 'No backup yet'}
                     >
-                      {CONTENT_TAB_LABELS[type]}
-                      {hasBackup && <span className="content-tab-count">{count.toLocaleString()}</span>}
+                      {formatContentTypeLabel(type)}
                     </button>
-                  );
-                })}
+                  ))
+                )}
               </div>
 
               {/* Toolbar */}
@@ -1782,8 +1715,8 @@ export default function Recovery() {
               </div>
 
               {/* Three Panel Layout */}
-              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}`}>
-                {activeContentType === 'calendar' ? (
+              <div className={`three-panel-layout${activeContentType === 'CALENDAR_EVENT' ? ' cal-layout-mode' : ''}`}>
+                {activeContentType === 'CALENDAR_EVENT' ? (
                   /* Calendar Month View — replaces folder tree + item list */
                   <div className="panel-calendar">
                     {itemsLoading ? (
@@ -1798,11 +1731,7 @@ export default function Recovery() {
                   </div>
                 ) : (
                   <>
-                {/* Left Panel: tab-aware groupings.
-                    - Mail / OneDrive / Contacts → folder tree.
-                    - Chats → list of chats (display name + message count).
-                    Clicking a row filters the items list via the `group`
-                    parameter. "All" resets the filter. */}
+                {/* Left Panel: Folder Tree */}
                 <div className="panel-left">
                   <div className="folder-list">
                     <button
@@ -1816,45 +1745,20 @@ export default function Recovery() {
                         <div className="spinner-sm" />
                       </div>
                     )}
-                    {activeContentType === 'onedrive' ? (
-                      // OneDrive uses a hierarchical tree built from
-                      // /drive/root: paths so the user can drill into folders
-                      // like a file explorer.
-                      (() => {
-                        const tree = buildFolderTree(folders.filter(f => f.path));
-                        if (tree.children.length === 0 && !foldersLoading) {
-                          return <div className="folder-empty"><p>No folders found</p></div>;
-                        }
-                        return (
-                          <div className="folder-tree">
-                            {tree.children.map(child => (
-                              <FolderTreeNode
-                                key={child.fullPath}
-                                node={child}
-                                depth={0}
-                                selected={selectedFolder}
-                                onSelect={setSelectedFolder}
-                              />
-                            ))}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <>
-                        {folders.filter(f => f.path).map(folder => (
-                          <button
-                            key={folder.path}
-                            className={`folder-item ${selectedFolder === folder.path ? 'active' : ''}`}
-                            onClick={() => setSelectedFolder(folder.path)}
-                          >
-                            <span className="folder-name">{folder.path}</span>
-                            {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
-                          </button>
-                        ))}
-                        {!foldersLoading && folders.filter(f => f.path).length === 0 && (
-                          <div className="folder-empty"><p>No folders found</p></div>
-                        )}
-                      </>
+                    {folders.filter(f => f.path).map(folder => (
+                      <button
+                        key={folder.path}
+                        className={`folder-item ${selectedFolder === folder.path ? 'active' : ''}`}
+                        onClick={() => setSelectedFolder(folder.path)}
+                      >
+                        <span className="folder-name">{folder.path}</span>
+                        {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
+                      </button>
+                    ))}
+                    {!foldersLoading && folders.filter(f => f.path).length === 0 && (
+                      <div className="folder-empty">
+                        <p>No folders found</p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1898,12 +1802,9 @@ export default function Recovery() {
                       </div>
                     ) : (
                       (() => {
-                        // Item-level types still flow through (server returns
-                        // EMAIL / TEAMS_CHAT_MESSAGE / etc.) — pick the right
-                        // row component from the active tab.
                         const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
-                        const isChatContentType = activeContentType === 'chats';
-                        const isEmailType = activeContentType === 'mail';
+                        const isChatContentType = CHAT_TYPES.has(activeContentType);
+                        const isEmailType = activeContentType === 'EMAIL';
                         return recoveryItems.map(item => {
                           const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
                           const isEmailItem = isEmailType || item.itemType === 'EMAIL';
@@ -1952,8 +1853,8 @@ export default function Recovery() {
                   </>
                 )}
 
-                {/* Right Panel: Item Preview — hidden for Chats and Calendar (shown inline / in month view) */}
-                {!['chats', 'calendar'].includes(activeContentType) && (
+                {/* Right Panel: Item Preview — hidden for Teams chat and Calendar (shown inline / in month view) */}
+                {!['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY', 'CALENDAR_EVENT'].includes(activeContentType) && (
                 <div className="panel-right">
                   {selectedItem
                     ? <ItemPreview item={selectedItem} />

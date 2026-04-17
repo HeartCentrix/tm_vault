@@ -421,33 +421,6 @@
   cursor: not-allowed;
 }
 
-/* Snapshot count display — replaces the old version dropdown.
-   Stacked numeric block: large count + lowercase "snapshots" caption. */
-.snapshot-count {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 8px 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-  min-width: 96px;
-}
-.snapshot-count-num {
-  font-size: 22px;
-  font-weight: 600;
-  color: #0d9488;
-  line-height: 1;
-}
-.snapshot-count-label {
-  font-size: 11px;
-  color: #64748b;
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
-}
-
 /* Content Type Tabs */
 .content-type-tabs {
   display: flex;
@@ -478,86 +451,6 @@
   color: #0f172a;
   font-weight: 600;
   border-bottom-color: #0d9488;
-}
-
-/* Per-tab item count badge — pulled from the content-snapshots resolver.
-   Subtle pill that complements the tab label. */
-.content-tab-count {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  background: #e2e8f0;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 500;
-  vertical-align: 1px;
-}
-.content-tab.active .content-tab-count {
-  background: #ccfbf1;
-  color: #0f766e;
-}
-.content-tab-empty {
-  color: #94a3b8;
-}
-
-/* OneDrive folder tree — file-explorer style. Each node has a chevron
-   toggle (when it has children), a folder/file icon, the name, and an
-   item count. Indentation is set inline based on depth. */
-.folder-tree {
-  display: flex;
-  flex-direction: column;
-}
-.folder-tree-node {
-  display: flex;
-  flex-direction: column;
-}
-.folder-tree-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-  text-align: left;
-  font-size: 13px;
-  color: #334155;
-  width: 100%;
-}
-.folder-tree-item:hover {
-  background: #f1f5f9;
-}
-.folder-tree-item.active {
-  background: #ccfbf1;
-  color: #0f766e;
-  font-weight: 600;
-}
-.folder-tree-toggle {
-  display: inline-block;
-  width: 14px;
-  text-align: center;
-  font-size: 10px;
-  color: #94a3b8;
-  cursor: pointer;
-  transition: transform 120ms ease;
-  user-select: none;
-}
-.folder-tree-toggle.open {
-  transform: rotate(90deg);
-}
-.folder-tree-spacer {
-  display: inline-block;
-  width: 14px;
-}
-.folder-tree-icon {
-  font-size: 13px;
-  line-height: 1;
-}
-.folder-tree-children {
-  display: flex;
-  flex-direction: column;
 }
 
 /* Tabs Loading & Empty States */
