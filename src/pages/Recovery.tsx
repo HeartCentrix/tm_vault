@@ -15,33 +15,6 @@ import './Recovery.css';
 // from the snapshot's actual item types.
 type ContentType = ContentTab | '';
 
-function formatContentTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    'USER_PROFILE': 'User Profile',
-    'ONEDRIVE': 'OneDrive',
-    'POWER_BI_WORKSPACE': 'Workspace Metadata',
-    'POWER_BI_REPORT': 'Reports',
-    'POWER_BI_PAGINATED_REPORT': 'Paginated Reports',
-    'POWER_BI_SEMANTIC_MODEL': 'Semantic Models',
-    'POWER_BI_DATAFLOW': 'Dataflows',
-    'POWER_BI_DASHBOARD': 'Dashboards',
-    'POWER_BI_TILE': 'Dashboard Tiles',
-    'POWER_BI_DATASOURCE': 'Datasource Metadata',
-    'POWER_BI_REFRESH_SCHEDULE': 'Refresh Schedules',
-    'POWER_BI_PERMISSIONS': 'Permissions',
-    'POWER_BI_LINEAGE': 'Lineage',
-  };
-  
-  if (labels[type]) return labels[type];
-  
-  // Convert to title case: replace underscores with spaces, capitalize first letter, lowercase rest
-  return type
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
-}
-
 function formatSize(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
   if (bytes >= 1099511627776) return `${(bytes / 1099511627776).toFixed(1)} TB`;
@@ -1211,10 +1184,8 @@ export default function Recovery() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   
-  // Dynamic content types from snapshot items
   // Five fixed tabs — no runtime discovery. Default to first tab (mail).
   const contentTypes: ContentTab[] = CONTENT_TABS;
-  const contentTypesLoading = false;
   const [activeContentType, setActiveContentType] = useState<ContentType>('mail');
 
   // Resource selection

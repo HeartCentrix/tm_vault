@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerBatchBackup, triggerDiscovery, discoverUserContent, backupUserWithDiscovery } from '../services/resource';
+import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerDiscovery, backupUserWithDiscovery } from '../services/resource';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
@@ -230,11 +230,11 @@ export default function Protection() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
   });
 
-  // Resource IDs currently waiting on Tier 2 content discovery (per-user
-  // Mail/OneDrive/Contacts/Calendar/Chats). Backup is gated on this — we
-  // don't queue the job until discovery for that resource has completed,
-  // so the worker has the IDs it needs.
-  const [discovering, setDiscovering] = useState<Set<string>>(new Set());
+  // Tier 2 discovery now runs server-side via backupUserWithDiscovery, so
+  // the UI no longer tracks a "discovering" phase. Stable empty set kept
+  // so the existing badge/button checks (`discovering.has(id)`) stay
+  // truthy-safe without restructuring the JSX.
+  const [discovering] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -420,12 +420,6 @@ export default function Protection() {
 
   const activeFilterCount = (resourceFilter ? 1 : 0) + (sizeFilter ? 1 : 0) + (slaFilter ? 1 : 0);
 
-  // Check if any selected resources don't have an SLA policy
-  const hasUnprotectedSelected = selectedResources.some(id => {
-    const resource = displayedResources.find(r => r.id === id);
-    return !resource?.protections?.[0]?.policy_id;
-  });
-
   const toggleSelectAll = () => {
     setSelectedResources(selectedResources.length === displayedResources.length ? [] : displayedResources.map(r => r.id));
   };
@@ -487,80 +481,6 @@ export default function Protection() {
     } catch (err) {
       console.error('Failed to trigger backup:', err);
       setBackingUp(prev => { const n = { ...prev }; delete n[resourceId]; return n; });
-    }
-  };
-
-  const handleBatchBackup = async () => {
-    if (selectedResources.length === 0 || !tenantId) return;
-    const triggeredAt = new Date().toISOString();
-    setBackingUp(prev => {
-      const next = { ...prev };
-      selectedResources.forEach(r => { next[r] = triggeredAt; });
-      return next;
-    });
-
-    // Tier 2 prerequisite — same as the single-resource path. Discover
-    // content for every selected ENTRA_USER first, in parallel. If any
-    // discovery fails we still proceed with the rest (one bad user
-    // shouldn't block the whole batch), but the failed resource is dropped
-    // from the backup so the worker doesn't get a job it can't fulfil.
-    const userIds = resources
-      .filter(r => selectedResources.includes(r.id) && (r.kind || '').toLowerCase() === 'entra_user')
-      .map(r => r.id);
-
-    let extraChildIds: string[] = [];
-    let droppedIds = new Set<string>();
-
-    if (userIds.length > 0) {
-      setDiscovering(prev => { const n = new Set(prev); userIds.forEach(id => n.add(id)); return n; });
-      const discoveryResults = await Promise.all(
-        userIds.map(async (id) => {
-          try {
-            const r = await discoverUserContent(tenantId, id);
-            return { id, ok: true, childIds: r.childResourceIds || [] };
-          } catch (e) {
-            console.warn(`Discovery failed for ${id}; dropping from batch:`, e);
-            return { id, ok: false, childIds: [] };
-          }
-        })
-      );
-      setDiscovering(prev => { const n = new Set(prev); userIds.forEach(id => n.delete(id)); return n; });
-
-      droppedIds = new Set(discoveryResults.filter(r => !r.ok).map(r => r.id));
-      // Collect all child IDs so the bulk backup actually persists each
-      // user's Mail/OneDrive/Contacts/Calendar/Chats content.
-      extraChildIds = discoveryResults.flatMap(r => r.childIds);
-      if (droppedIds.size > 0) {
-        setBackingUp(prev => {
-          const next = { ...prev };
-          droppedIds.forEach(id => { delete next[id]; });
-          return next;
-        });
-      }
-      if (extraChildIds.length > 0) {
-        setBackingUp(prev => {
-          const next = { ...prev };
-          extraChildIds.forEach(id => { next[id] = triggeredAt; });
-          return next;
-        });
-      }
-    }
-
-    const finalIds = [
-      ...selectedResources.filter(id => !droppedIds.has(id)),
-      ...extraChildIds,
-    ];
-
-    try {
-      const results = await triggerBatchBackup(finalIds);
-      console.log(`Triggered batch backup for ${results.length} resources`);
-    } catch (err) {
-      console.error('Failed to trigger batch backup:', err);
-      setBackingUp(prev => {
-        const next = { ...prev };
-        finalIds.forEach(r => { delete next[r]; });
-        return next;
-      });
     }
   };
 
