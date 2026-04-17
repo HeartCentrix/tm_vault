@@ -47,10 +47,7 @@ const M365_TAB_TYPE_MAP: Record<string, string[]> = {
   sharepoint: ['SHAREPOINT_SITE'],
   groups: ['TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_GROUP'],
   entra: ['ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE'],
-  // POWER_BI workspaces intentionally excluded here — they share identity with M365
-  // Groups and appear as duplicate "group-like" entries. Discovery + backup still run
-  // for POWER_BI; they just don't surface in the Power Platform tab.
-  power: ['POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'],
+  power: ['POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'],
   dynamic: [],
   'entra-groups': ['ENTRA_GROUP'],
 };
@@ -63,9 +60,7 @@ const AZURE_TAB_TYPE_MAP: Record<string, string[]> = {
   'postgresql-servers': ['AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE'],
 };
 
-// Full resource type lists for filtering "all" tab by service type
-// POWER_BI excluded: workspaces duplicate M365 group entries in the UI.
-const M365_ALL_TYPES = ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'SHAREPOINT_SITE', 'TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'];
+const M365_ALL_TYPES = ['MAILBOX', 'SHARED_MAILBOX', 'ROOM_MAILBOX', 'ONEDRIVE', 'SHAREPOINT_SITE', 'TEAMS_CHANNEL', 'TEAMS_CHAT', 'ENTRA_USER', 'ENTRA_GROUP', 'ENTRA_APP', 'ENTRA_DEVICE', 'POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE', 'POWER_DLP', 'COPILOT', 'PLANNER'];
 const AZURE_ALL_TYPES = ['AZURE_VM', 'AZURE_SQL_DB', 'AZURE_POSTGRESQL', 'AZURE_POSTGRESQL_SINGLE'];
 
 export function getTabTypeMap(serviceType?: string): Record<string, string[]> {
