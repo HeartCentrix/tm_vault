@@ -663,6 +663,7 @@ export default function Protection() {
             <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </div>
           <div className="action-buttons">
+            {/*}
             <div className="action-btn-wrapper" style={{ position: 'relative' }}>
               <button
                 className="action-btn"
@@ -677,7 +678,8 @@ export default function Protection() {
                   Resources that are not protected can't get data backups
                 </div>
               )}
-            </div>
+              </div>
+              */}
             <div className="sla-assign-wrapper" ref={slaDropdownRef} style={{ position: 'relative' }}>
               <button className="action-btn" disabled={selectedResources.length === 0} onClick={() => setShowSlaDropdown(!showSlaDropdown)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
