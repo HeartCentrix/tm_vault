@@ -294,6 +294,15 @@ export default function Activity() {
   const currentPage = viewType === 'tasks' ? taskPage : viewType === 'audit' ? auditPage : riskPage;
   const totalPages = Math.ceil(totalItems / pageSize);
 
+  // Clamp page back if totals shrunk (e.g. filter change left us past the last page)
+  useEffect(() => {
+    if (totalItems === 0) return;
+    const max = Math.max(1, totalPages);
+    if (viewType === 'tasks' && taskPage > max) setTaskPage(max);
+    else if (viewType === 'audit' && auditPage > max) setAuditPage(max);
+    else if (viewType === 'risk' && riskPage > max) setRiskPage(max);
+  }, [viewType, totalPages, totalItems, taskPage, auditPage, riskPage]);
+
   return (
     <div className="activity-page">
       <div className="activity-header">
@@ -426,9 +435,10 @@ export default function Activity() {
               <button
                 disabled={currentPage <= 1}
                 onClick={() => {
-                  if (viewType === 'tasks') setTaskPage(p => p - 1);
-                  else if (viewType === 'audit') setAuditPage(p => p - 1);
-                  else setRiskPage(p => p - 1);
+                  const prev = (p: number) => Math.max(1, p - 1);
+                  if (viewType === 'tasks') setTaskPage(prev);
+                  else if (viewType === 'audit') setAuditPage(prev);
+                  else setRiskPage(prev);
                 }}
               >
                 &laquo; Prev
@@ -437,9 +447,11 @@ export default function Activity() {
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => {
-                  if (viewType === 'tasks') setTaskPage(p => p + 1);
-                  else if (viewType === 'audit') setAuditPage(p => p + 1);
-                  else setRiskPage(p => p + 1);
+                  const max = Math.max(1, totalPages);
+                  const next = (p: number) => Math.min(max, p + 1);
+                  if (viewType === 'tasks') setTaskPage(next);
+                  else if (viewType === 'audit') setAuditPage(next);
+                  else setRiskPage(next);
                 }}
               >
                 Next &raquo;
