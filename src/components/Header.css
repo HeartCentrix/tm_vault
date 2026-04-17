@@ -80,7 +80,9 @@
   min-width: 400px;
   max-width: 450px;
   z-index: 1000;
-  overflow: hidden;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .header .header-left .data-source-selector .dropdown-menu .dropdown-header {
@@ -365,7 +367,9 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   min-width: 240px;
   z-index: 1000;
-  overflow: hidden;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: dropdownFadeIn 0.15s ease-out;
 }
 

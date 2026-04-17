@@ -181,15 +181,18 @@ export default function GlobalSearch() {
   };
 
   const handlePageChange = async (newPage: number) => {
+    const safeMax = Math.max(1, totalPages || 1);
+    const clampedPage = Math.min(safeMax, Math.max(1, newPage));
+    if (clampedPage === page) return;
     setLoading(true);
-    setPage(newPage);
+    setPage(clampedPage);
 
     try {
       const workloadType = workloads.find(w => w.key === workload)?.backendType;
       const response = await SearchService.search(query, {
         tenantId: selectedScope !== 'all' ? selectedScope : undefined,
         workloadType,
-        page: newPage,
+        page: clampedPage,
         size: 20,
       });
       setResults(response.results);
