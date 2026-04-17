@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
+import BackupSizeSummary from '../components/BackupSizeSummary';
 import { API } from '../config/api';
 import './Recovery.css';
 
@@ -1625,15 +1626,13 @@ export default function Recovery() {
                 </div>
 
                 <div className="header-stats">
-                  <div className="stats-box">
-                    <div className="stats-label">Backup size</div>
-                    <div className="stats-value">{formatSize(selectedResource.storage_bytes)}</div>
-                    <div className="stats-legend">
-                      <span>{selectedResource.snapshot_count} snapshot{selectedResource.snapshot_count !== 1 ? 's' : ''}</span>
-                      <span>·</span>
-                      <span>{selectedResource.total_items.toLocaleString()} total items</span>
-                    </div>
-                  </div>
+                  {/* afi-style size panel: total + 1w/1m/1y deltas + 7-day sparkline
+                      centered on today. All derived client-side from the `snapshots`
+                      array already loaded for this resource. */}
+                  <BackupSizeSummary
+                    snapshots={snapshots}
+                    totalBytes={selectedResource.storage_bytes}
+                  />
 
                   <div className="backup-version-selector">
                     <label>Backup version</label>
