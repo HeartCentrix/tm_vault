@@ -1360,14 +1360,19 @@ export default function Recovery() {
         if (statusRes.ok) {
           const job = await statusRes.json();
           if (job.status === 'COMPLETED') {
-            // Fetch with auth header and trigger download via blob URL
-            const dlRes = await fetch(`${API.BASE_URL}/exports/${jobId}/download`, { headers });
+            // Use the API constant — the hardcoded `/exports/{id}/download`
+            // path 404s because job-service only implements the canonical
+            // `/jobs/export/{id}/download` route (gateway proxies both).
+            const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
             if (!dlRes.ok) throw new Error('Download failed');
             const blob = await dlRes.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `export-${jobId.slice(0, 8)}.json`;
+            // Export is now a ZIP (built by restore-worker.export_as_zip);
+            // the JSON-only download path was retired. Filename matches the
+            // backend-set Content-Disposition for clarity.
+            a.download = `export-${jobId.slice(0, 8)}.zip`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
