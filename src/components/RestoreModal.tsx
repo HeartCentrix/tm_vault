@@ -125,6 +125,14 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   };
 
   const handleRecover = async () => {
+    // Full-account restore requires at least one workload selected —
+    // otherwise the backend receives an empty filter list and silently
+    // skips every item. The error surfaces the misconfiguration before
+    // the restore job gets created.
+    if (scope === 'full' && !isPowerBiItem && !isPowerAppItem && !isPowerFlowItem && !isPowerDlpItem && workloads.size === 0) {
+      setError('Select at least one workload to restore (Mail, OneDrive, Contacts, Calendar, or Chats).');
+      return;
+    }
     if (isPowerBiItem) {
       if (destination === 'another' && !targetResourceId.trim()) {
         setError('Please select a target Power BI workspace');

@@ -179,7 +179,7 @@ export const SnapshotService = {
     return res.json();
   },
 
-  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string): Promise<SnapshotItemListResponse> {
+  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string, search?: string): Promise<SnapshotItemListResponse> {
     // Recovery passes one of the 5 fixed tabs (mail/onedrive/contacts/
     // calendar/chats). Each maps to its own backend endpoint — no more
     // /items?itemType=X fallback, no /content-types lookup.
@@ -200,6 +200,9 @@ export const SnapshotService = {
       // Uniform `folder` filter across all tabs — chats now also have
       // folder_path set ("chats/<friendly name>") by the backup handler.
       url += `&folder=${encodeURIComponent(group)}`;
+    }
+    if (search && search.trim()) {
+      url += `&search=${encodeURIComponent(search.trim())}`;
     }
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch snapshot items');

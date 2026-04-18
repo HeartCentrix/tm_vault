@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
@@ -152,6 +152,87 @@ export function ChatPreview({ item }: { item: any }) {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function ContactPreview({ item }: { item: any }) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.displayName || item.name || '(Unnamed)';
+  const given = raw.givenName;
+  const surname = raw.surname;
+  const company = raw.companyName;
+  const title = raw.jobTitle;
+  const initials = name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+  const emails: Array<{ address?: string; name?: string }> = raw.emailAddresses || [];
+  const phones: string[] = [
+    ...(raw.businessPhones || []),
+    ...(raw.homePhones || []),
+    ...(raw.mobilePhone ? [raw.mobilePhone] : []),
+  ];
+  const fullName = [given, surname].filter(Boolean).join(' ') || name;
+  const created = raw.createdDateTime || item.createdAt;
+
+  return (
+    <div className="item-preview">
+      <div className="preview-header" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="chat-avatar" aria-hidden style={{ width: 40, height: 40, fontSize: 14 }}>{initials}</div>
+        <div>
+          <div className="preview-status" style={{ fontSize: 16 }}>{fullName}</div>
+          {(title || company) && (
+            <div style={{ color: '#555', fontSize: 13 }}>
+              {[title, company].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="preview-body">
+        {emails.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Email</div>
+            {emails.map((e, i) => (
+              <div key={i} style={{ fontSize: 13 }}>
+                <a href={e.address ? `mailto:${e.address}` : undefined} style={{ color: '#0d9488' }}>
+                  {e.name ? `${e.name} <${e.address}>` : e.address}
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+        {phones.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Phone</div>
+            {phones.map((p, i) => <div key={i} style={{ fontSize: 13 }}>{p}</div>)}
+          </div>
+        )}
+        <PreviewLabel label="Department" value={raw.department} />
+        <PreviewLabel label="Office" value={raw.officeLocation} />
+        <PreviewLabel label="Created" value={fmtDate(created)} />
+      </div>
+    </div>
+  );
+}
+
+function ContactItemRow({ item, selected, checked, onSelect, onCheck }: {
+  item: any; selected: boolean; checked: boolean;
+  onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
+}) {
+  const raw = item.metadata?.raw || {};
+  const name = raw.displayName || item.name || '(Unnamed)';
+  const initials = name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
+  const email = (raw.emailAddresses?.[0]?.address) || '';
+  const subtitle = [raw.jobTitle, raw.companyName].filter(Boolean).join(' · ');
+  return (
+    <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
+      <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
+      <div className="chat-item-avatar">{initials}</div>
+      <div className="chat-item-body">
+        <div className="chat-item-header">
+          <span className="chat-item-sender">{name}</span>
+          {email && <span className="chat-item-time">{email}</span>}
+        </div>
+        {subtitle && <div className="chat-item-text">{subtitle}</div>}
       </div>
     </div>
   );
@@ -852,8 +933,8 @@ export function JsonPreview({ item }: { item: any }) {
 }
 
 
-function ChatItemRow({ item, selected, onSelect, onCheck }: {
-  item: any; selected: boolean;
+function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
+  item: any; selected: boolean; checked: boolean;
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
@@ -863,18 +944,48 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
   const body = raw.body?.content || item.preview || item.body || '';
   const isHtml = raw.body?.contentType === 'html';
   const sentAt = raw.createdDateTime || item.date;
-  const displayBody = isHtml ? body.replace(/<[^>]+>/g, ' ').trim() : body;
+  // HTML → plain text with structure + entity preservation. Regex-strip
+  // collapsed paragraph breaks into one unbreakable line and didn't decode
+  // entities (&nbsp;, &amp;, …). Here:
+  //   Step 1: rewrite block-level closings as newlines so paragraph breaks
+  //           survive the text extraction.
+  //   Step 2: use a detached <div> so the browser's HTML parser does the
+  //           entity decoding. textContent is XSS-safe — the parsed nodes
+  //           never enter the live DOM.
+  //   Step 3: normalize decoded &nbsp; back to plain space so wrap points
+  //           exist at every word boundary, and cap blank-line runs at 2.
+  const displayBody = isHtml
+    ? (() => {
+        const withBreaks = body
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
+          .replace(/<\/(ul|ol|table)>/gi, '\n');
+        const d = document.createElement('div');
+        d.innerHTML = withBreaks;
+        return (d.textContent || '')
+          .replace(/\u00a0/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      })()
+    : body;
 
   return (
     <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
-      <input type="checkbox" checked={false} onChange={() => {}} onClick={onCheck} />
+      <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
       <div className="chat-item-avatar">{initials}</div>
       <div className="chat-item-body">
         <div className="chat-item-header">
           <span className="chat-item-sender">{sender}{senderEmail && senderEmail !== sender ? ` <${senderEmail}>` : ''}</span>
           {sentAt && (
             <span className="chat-item-time">
-              {new Date(sentAt).toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
+              {/* Render in UTC — the canonical send time. Avoids the observer's
+                  local timezone shifting the value, which gets misleading when
+                  reviewing chat history across regions. */}
+              {new Date(sentAt).toLocaleString('en-US', {
+                month:'short', day:'numeric', year:'numeric',
+                hour:'numeric', minute:'2-digit', hour12:true,
+                timeZone: 'UTC',
+              })} UTC
             </span>
           )}
         </div>
@@ -884,8 +995,8 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
   );
 }
 
-function EmailItemRow({ item, selected, onSelect, onCheck }: {
-  item: any; selected: boolean;
+function EmailItemRow({ item, selected, checked, onSelect, onCheck }: {
+  item: any; selected: boolean; checked: boolean;
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
@@ -900,7 +1011,7 @@ function EmailItemRow({ item, selected, onSelect, onCheck }: {
 
   return (
     <div className={`email-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
-      <input type="checkbox" checked={false} onChange={() => {}} onClick={onCheck} />
+      <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
       <div className="email-item-body">
         <div className="email-item-top">
           <span className="email-item-sender">{sender}</span>
@@ -921,6 +1032,7 @@ export function ItemPreview({ item }: { item: any }) {
   if (type === 'TEAMS_CHAT_MESSAGE' || type === 'TEAMS_MESSAGE' || type === 'TEAMS_MESSAGE_REPLY')
     return <ChatPreview item={item} />;
   if (type === 'CALENDAR_EVENT') return <CalendarPreview item={item} />;
+  if (type === 'USER_CONTACT' || type === 'CONTACT') return <ContactPreview item={item} />;
 
   // OneNote
   if (type === 'ONENOTE_PAGE' || type === 'ONENOTE_PAGE_CONTENT'
@@ -1213,10 +1325,26 @@ export default function Recovery() {
 
   // Recovery items - server-side paginated
   const [recoveryItems, setRecoveryItems] = useState<RecoveryItem[]>([]);
+  // Infinite-scroll state: `hasMore` gates the scroll trigger; `loadingMore`
+  // prevents duplicate append fetches while one is in flight. `requestKeyRef`
+  // is bumped on every fresh load so late-arriving responses for a stale
+  // filter/tab can be ignored. `itemListRef` is the scrolling container.
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestKeyRef = useRef(0);
+  // Separate from requestKeyRef so folder + items requests can invalidate
+  // independently — a late folders response should never clobber when the
+  // items request has already advanced to a new snapshot, and vice versa.
+  const foldersKeyRef = useRef(0);
+  const itemListRef = useRef<HTMLDivElement | null>(null);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemCount, setItemCount] = useState(0);
   const [itemPage, setItemPage] = useState(1);
-  const [itemTotalPages, setItemTotalPages] = useState(1);
+  // Total page count is still tracked for the hasMore gate (`itemPage <
+  // totalPages` in the append effect). Value is read via the state callback
+  // inside the append effect rather than via the raw state getter, but we
+  // keep the setter so the fresh-load can store it.
+  const [, setItemTotalPages] = useState(1);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
@@ -1273,68 +1401,162 @@ export default function Recovery() {
   }, [selectedResource]);
 
   // When the resolver loads OR the active tab changes, swap selectedSnapshotId
-  // to whatever snapshot the backend says backs that tab — null means "no
-  // snapshot for this content yet" and the items list will render empty.
+  // to whatever snapshot the backend says backs that tab. `null` means the
+  // tab has no content yet — render empty state, do NOT fall back to the
+  // parent's snapshot: each Tier 2 child owns its own snapshots, and the
+  // parent only holds identity items (profile/manager/group memberships),
+  // so cross-using its folder_paths on another tab leaks folder rows from
+  // an unrelated snapshot into the left panel.
   useEffect(() => {
     if (!contentSnapshots) return;
     const entry = contentSnapshots.byContent[activeContentType as ContentTab];
     setSelectedSnapshotId(entry?.snapshotId || '');
   }, [contentSnapshots, activeContentType]);
 
-  // Load recovery items with server-side pagination
+  // Debounce the search box so we don't refetch on every keystroke. 300ms
+  // strikes a reasonable balance between responsiveness and request volume
+  // on typical typing speeds.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Fresh load: any time the underlying filter (snapshot / tab / folder /
+  // search) changes, reset to page 1, kill any in-flight older fetch via
+  // requestKeyRef, and scroll the list back to the top so the user doesn't
+  // land mid-page on the previous filter's scroll position.
   useEffect(() => {
     if (!selectedSnapshotId || !selectedResource || !activeContentType) {
       setRecoveryItems([]);
       setItemCount(0);
       setItemTotalPages(1);
+      setHasMore(false);
+      setItemPage(1);
       return;
     }
 
+    const myKey = ++requestKeyRef.current;
+    setItemPage(1);
+    setItemsLoading(true);
+    if (itemListRef.current) itemListRef.current.scrollTop = 0;
     // Calendar dumps benefit from a larger page (no pagination control on the
     // calendar layout); the other four tabs use the standard list size.
     const pageSize = activeContentType === 'calendar' ? 500 : 50;
-    setItemsLoading(true);
-    // Pass the selected left-panel group as a filter — folder path for
-    // mail/onedrive/contacts, chatId for chats. "all" means no filter.
-    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType as ContentTab, selectedFolder)
+    SnapshotService.listItems(
+      selectedSnapshotId, 1, pageSize,
+      activeContentType as ContentTab, selectedFolder, debouncedSearch,
+    )
       .then((data) => {
+        if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
         setRecoveryItems(data.content);
         setItemCount(data.totalElements);
         setItemTotalPages(data.totalPages || 1);
+        setHasMore(1 < (data.totalPages || 1));
       })
       .catch((error) => {
+        if (myKey !== requestKeyRef.current) return;
         console.error('Failed to load items:', error);
         setRecoveryItems([]);
       })
-      .finally(() => setItemsLoading(false));
-  }, [selectedSnapshotId, selectedResource, activeContentType, itemPage, selectedFolder]);
+      .finally(() => {
+        if (myKey === requestKeyRef.current) setItemsLoading(false);
+      });
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch]);
 
-  // Reset item page + clear left-panel selection when tab/snapshot changes.
-  useEffect(() => { setItemPage(1); setSelectedItem(null); }, [selectedSnapshotId, activeContentType]);
-
-  // Left-panel grouping is now uniform across mail / onedrive / contacts /
-  // chats — all driven by the snapshot's distinct folder_paths. Chats just
-  // happen to use "chats/<friendly name>" as their path (set by the Tier 2
-  // backup handler from the chat's display name, e.g. "chats/Vinay
-  // Chauhan" or "chats/Group: Hemant, Vinay +5 more"). Calendar owns its
-  // own layout and skips this entirely.
+  // Append next page when itemPage advances (driven by the scroll handler
+  // below). Separate effect so the fresh-load above doesn't re-run on every
+  // scroll-triggered page bump.
   useEffect(() => {
-    if (!selectedSnapshotId || activeContentType === 'calendar') {
-      setFolders([]);
-      setSelectedFolder('all');
+    if (itemPage <= 1 || !selectedSnapshotId || !activeContentType) return;
+    const myKey = requestKeyRef.current;
+    setLoadingMore(true);
+    const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    SnapshotService.listItems(
+      selectedSnapshotId, itemPage, pageSize,
+      activeContentType as ContentTab, selectedFolder, debouncedSearch,
+    )
+      .then((data) => {
+        if (myKey !== requestKeyRef.current) return;  // filter changed mid-fetch
+        setRecoveryItems(prev => [...prev, ...data.content]);
+        setHasMore(itemPage < (data.totalPages || 1));
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (myKey === requestKeyRef.current) setLoadingMore(false);
+      });
+  }, [itemPage]);
+
+  // Bump itemPage when the items pane is scrolled past 60% — triggers the
+  // append effect above. Guarded by hasMore + loadingMore so we don't re-fire
+  // while a page is in-flight.
+  const handleItemListScroll = useCallback(() => {
+    const el = itemListRef.current;
+    if (!el || loadingMore || !hasMore) return;
+    const fraction = (el.scrollTop + el.clientHeight) / Math.max(1, el.scrollHeight);
+    if (fraction >= 0.6) {
+      setItemPage(p => p + 1);
+    }
+  }, [loadingMore, hasMore]);
+
+  // Clear preview + drop any checked items when the snapshot or tab changes.
+  // Without clearing selectedItems, ids from one tab leak into another
+  // (Download/Recover would act on stale ids). Folder changes deliberately
+  // keep the current selection — the user may be narrowing a subset.
+  useEffect(() => {
+    setSelectedItem(null);
+    setSelectedItems(new Set());
+  }, [selectedSnapshotId, activeContentType]);
+
+  // Left-panel grouping is uniform across mail / onedrive / contacts /
+  // chats — all driven by the active tab's snapshot's distinct folder_paths.
+  // Chats use "chats/<friendly name>" as their path. Calendar has its own
+  // layout and skips this entirely.
+  //
+  // Important: we derive the snapshot id FROM THE RESOLVER (contentSnapshots
+  // + activeContentType), not from selectedSnapshotId. selectedSnapshotId is
+  // a derived cached state — the tab-click flips activeContentType one render
+  // BEFORE the resolver updates selectedSnapshotId, so an effect keyed on
+  // selectedSnapshotId would fire twice per tab switch: once with the
+  // previous tab's id (wrong — leaks its folders into the new panel), then
+  // correctly. Deriving directly fires exactly once per tab switch with the
+  // right id. The requestKey is kept as a safety net for edge cases (e.g.
+  // overlapping resource switches).
+  useEffect(() => {
+    setFolders([]);
+    setSelectedFolder('all');
+
+    if (activeContentType === 'calendar' || !contentSnapshots) {
+      return;
+    }
+    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
+    const snapId = entry?.snapshotId;
+    if (!snapId) {
       return;
     }
 
+    const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(selectedSnapshotId)
+    SnapshotService.getFolders(snapId)
       .then((data) => {
+        if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
         const folderList = [{ path: '', count: data.reduce((sum, f) => sum + f.count, 0) }, ...data];
         setFolders(folderList);
-        setSelectedFolder('all');
+        // Chats tab: no "All" — auto-pick the top chat so the message list
+        // opens on real content instead of an aggregate view.
+        if (activeContentType === 'chats') {
+          const firstChat = data.find(f => f.path);
+          if (firstChat) setSelectedFolder(firstChat.path);
+        }
       })
-      .catch(console.error)
-      .finally(() => setFoldersLoading(false));
-  }, [selectedSnapshotId, activeContentType]);
+      .catch((err) => {
+        if (myKey !== foldersKeyRef.current) return;
+        console.error(err);
+      })
+      .finally(() => {
+        if (myKey === foldersKeyRef.current) setFoldersLoading(false);
+      });
+  }, [contentSnapshots, activeContentType]);
 
 
 
@@ -1738,14 +1960,16 @@ export default function Recovery() {
                   <button
                     className="action-button download"
                     onClick={handleDownload}
-                    disabled={selectedItems.size === 0 || downloading}
+                    // Also guard against tabs with no backup (selectedSnapshotId='')
+                    // — otherwise we POST an export job with no snapshot context.
+                    disabled={selectedItems.size === 0 || downloading || !selectedSnapshotId}
                   >
                     {downloading ? 'Preparing...' : `Download${selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}`}
                   </button>
                   <button
                     className="action-button recover"
                     onClick={handleRecover}
-                    disabled={selectedItems.size === 0}
+                    disabled={selectedItems.size === 0 || !selectedSnapshotId}
                   >
                     Recover{selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}
                   </button>
@@ -1776,12 +2000,20 @@ export default function Recovery() {
                     parameter. "All" resets the filter. */}
                 <div className="panel-left">
                   <div className="folder-list">
-                    <button
-                      className={`folder-item ${selectedFolder === 'all' ? 'active' : ''}`}
-                      onClick={() => setSelectedFolder('all')}
-                    >
-                      <span className="folder-name">All</span>
-                    </button>
+                    {/* "All" aggregates across every folder — useful on mail /
+                        onedrive / contacts to see the flat stream. On the
+                        chats tab we skip it: each chat is a standalone
+                        conversation, so "all messages from every chat mixed
+                        together" isn't useful — the top chat is auto-
+                        selected in the folders-load effect instead. */}
+                    {activeContentType !== 'chats' && (
+                      <button
+                        className={`folder-item ${selectedFolder === 'all' ? 'active' : ''}`}
+                        onClick={() => setSelectedFolder('all')}
+                      >
+                        <span className="folder-name">All</span>
+                      </button>
+                    )}
                     {foldersLoading && (
                       <div className="folder-loading">
                         <div className="spinner-sm" />
@@ -1844,20 +2076,15 @@ export default function Recovery() {
                       />
                     </label>
                     <span className="item-count">
-                      {selectedItems.size > 0 ? `${selectedItems.size} / ${itemCount} selected` : `Items: ${itemCount}`}
+                      {selectedItems.size > 0
+                        ? `${selectedItems.size} / ${itemCount} selected`
+                        : `Showing ${recoveryItems.length} of ${itemCount}`}
                     </span>
-                    <div className="item-pagination">
-                      <button className="pagination-btn" disabled={itemPage <= 1} onClick={() => setItemPage(p => p - 1)}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polyline points="15 18 9 12 15 6" /></svg>
-                      </button>
-                      <span className="pagination-page">{itemPage} / {itemTotalPages}</span>
-                      <button className="pagination-btn" disabled={itemPage >= itemTotalPages} onClick={() => setItemPage(p => p + 1)}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polyline points="9 18 15 12 9 6" /></svg>
-                      </button>
-                    </div>
+                    {/* Pagination replaced by infinite scroll — scroll the
+                        list past 60% to auto-load the next page. */}
                   </div>
 
-                  <div className="item-list">
+                  <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
                     {itemsLoading ? (
                       <div className="loading-container">
                         <div className="spinner" />
@@ -1875,14 +2102,17 @@ export default function Recovery() {
                         const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
                         const isChatContentType = activeContentType === 'chats';
                         const isEmailType = activeContentType === 'mail';
+                        const isContactsContentType = activeContentType === 'contacts';
                         return recoveryItems.map(item => {
                           const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
                           const isEmailItem = isEmailType || item.itemType === 'EMAIL';
+                          const isContactItem = isContactsContentType || item.itemType === 'USER_CONTACT' || item.itemType === 'CONTACT';
                           return isChatItem ? (
                           <ChatItemRow
                             key={item.id}
                             item={item}
                             selected={selectedItem?.id === item.id}
+                            checked={selectedItems.has(item.id)}
                             onSelect={() => handleItemSelect(item)}
                             onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
                           />
@@ -1891,6 +2121,16 @@ export default function Recovery() {
                             key={item.id}
                             item={item}
                             selected={selectedItem?.id === item.id}
+                            checked={selectedItems.has(item.id)}
+                            onSelect={() => handleItemSelect(item)}
+                            onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
+                          />
+                        ) : isContactItem ? (
+                          <ContactItemRow
+                            key={item.id}
+                            item={item}
+                            selected={selectedItem?.id === item.id}
+                            checked={selectedItems.has(item.id)}
                             onSelect={() => handleItemSelect(item)}
                             onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
                           />
@@ -1917,6 +2157,22 @@ export default function Recovery() {
                         );
                         });
                       })()
+                    )}
+                    {/* Infinite-scroll bottom indicator — only while appending
+                        a page. When hasMore is false we render nothing (the
+                        list is fully loaded). */}
+                    {loadingMore && (
+                      <div className="item-list-loading-more">
+                        <div className="spinner-sm" />
+                        <span>Loading more…</span>
+                      </div>
+                    )}
+                    {/* End-of-list marker when the scroll can't advance but
+                        the visible count trails the total — happens when
+                        the server caps page count. Lets the user know we
+                        hit the end rather than looking like a stuck load. */}
+                    {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                      <div className="item-list-end">End of list</div>
                     )}
                   </div>
                 </div>
