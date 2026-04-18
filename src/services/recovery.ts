@@ -61,6 +61,8 @@ export interface RecoveryRequest {
   snapshotIds: string[];
   itemIds: string[];
   targetUserId?: string;
+  exportFormat?: string;
+  workloads?: string[];
 }
 
 export interface RecoveryResponse {

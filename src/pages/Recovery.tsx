@@ -5,8 +5,9 @@ import {
   type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent, type ContentTab,
   type ContentSnapshotsResponse,
 } from '../services/snapshot';
-import { RecoveryService, type RecoveryItem } from '../services/recovery';
+import { type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
+import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import { API } from '../config/api';
 import { parseAsUtc, fmtLocal, fmtLocalDate, fmtLocalTime } from '../utils/datetime';
@@ -2187,8 +2188,8 @@ export default function Recovery() {
     }
   }, [selectedSnapshotId, oneDriveFolderBusy]);
 
-  const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
 
   const handleItemSelect = async (item: RecoveryItem) => {
     setSelectedItem(item);
@@ -2210,57 +2211,10 @@ export default function Recovery() {
     setRestoreModalOpen(true);
   };
 
-  const handleDownload = async () => {
-    if (!selectedSnapshotId || selectedItems.size === 0) return;
-    setDownloading(true);
+  const handleDownload = () => {
+    if (!selectedSnapshotId) return;
     setDownloadError(null);
-    try {
-      const response = await RecoveryService.triggerExport({
-      restoreType: 'EXPORT_ZIP',
-      snapshotIds: [selectedSnapshotId],
-      itemIds: Array.from(selectedItems),
-      });
-      const jobId = response.jobId;
-      // Poll until complete (max 60s)
-      const token = localStorage.getItem('access_token');
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
-        if (statusRes.ok) {
-          const job = await statusRes.json();
-          if (job.status === 'COMPLETED') {
-            // Use the API constant — the hardcoded `/exports/{id}/download`
-            // path 404s because job-service only implements the canonical
-            // `/jobs/export/{id}/download` route (gateway proxies both).
-            const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
-            if (!dlRes.ok) throw new Error('Download failed');
-            const blob = await dlRes.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            // Export is now a ZIP (built by restore-worker.export_as_zip);
-            // the JSON-only download path was retired. Filename matches the
-            // backend-set Content-Disposition for clarity.
-            a.download = `export-${jobId.slice(0, 8)}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            return;
-          }
-          if (job.status === 'FAILED') {
-            setDownloadError('Export failed. Please try again.');
-            return;
-          }
-        }
-      }
-      setDownloadError('Export timed out. Try again later.');
-    } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : 'Download failed');
-    } finally {
-      setDownloading(false);
-    }
+    setDownloadModalOpen(true);
   };
 
   // Filter resources by search
@@ -2571,11 +2525,11 @@ export default function Recovery() {
                   <button
                     className="action-button download"
                     onClick={handleDownload}
-                    // Also guard against tabs with no backup (selectedSnapshotId='')
-                    // — otherwise we POST an export job with no snapshot context.
-                    disabled={selectedItems.size === 0 || downloading || !selectedSnapshotId}
+                    // Modal handles scope: allow click even with 0 selected so user
+                    // can pick "Download all". Still guard against tabs with no backup.
+                    disabled={!selectedSnapshotId}
                   >
-                    {downloading ? 'Preparing...' : `Download${selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}`}
+                    {`Download${selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}`}
                   </button>
                   <button
                     className="action-button recover"
@@ -2878,6 +2832,23 @@ export default function Recovery() {
         itemName={restoreItemName}
         itemType={restoreItemType}
         snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
+      />
+      <DownloadModal
+        isOpen={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+        itemIds={Array.from(selectedItems)}
+        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+        selectedCount={selectedItems.size}
+        contentType={activeContentType as ContentTab}
+        snapshotDate={
+          // Tab-selected snapshot's date lives on contentSnapshots.byContent — the
+          // top-level `snapshots` list is just the first 50 from listByResource
+          // and may not contain the active tab's snapshotId, so .find() often
+          // returned undefined and the modal title showed no date.
+          contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
+          || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
+          || undefined
+        }
       />
     </>
   );
