@@ -529,11 +529,6 @@
 .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo.azure svg {
   color: #0078d4;
 }
-
-.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo.kubernetes svg {
-  color: #326ce5;
-}
-
 .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-name {
   font-size: 15px;
   font-weight: 600;
@@ -564,21 +559,6 @@
 }
 
 .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.microsoft:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.kubernetes {
-  background: #326ce5;
-  color: #fff;
-  border-color: #326ce5;
-}
-
-.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.kubernetes:hover:not(:disabled) {
-  background: #2859c9;
-}
-
-.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.kubernetes:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

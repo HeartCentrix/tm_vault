@@ -17,7 +17,7 @@ export default function Layout() {
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as DataSourceType;
-      if (parsed && parsed.id && parsed.name && (parsed.type === 'm365' || parsed.type === 'azure' || parsed.type === 'kubernetes')) {
+      if (parsed && parsed.id && parsed.name && (parsed.type === 'm365' || parsed.type === 'azure')) {
         return parsed;
       }
       return null;

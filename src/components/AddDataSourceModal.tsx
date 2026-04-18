@@ -61,16 +61,6 @@ export default function AddDataSourceModal({ onClose }: AddDataSourceModalProps)
               <span className="source-name">Azure</span>
               <button className="source-btn azure" onClick={handleAzureConnect}>Connect</button>
             </div>
-
-            <div className="data-source-item">
-              <div className="source-logo kubernetes">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                </svg>
-              </div>
-              <span className="source-name">Kubernetes</span>
-              <button className="source-btn kubernetes" disabled>Coming Soon</button>
-            </div>
           </div>
         </div>
       </div>
