@@ -64,18 +64,18 @@
   align-items: center;
   justify-content: center;
   padding: 0 12px;
-  background: #b2dfdb;
-  border: 1px solid #b2dfdb;
-  border-left: none;
-  border-radius: 0 6px 6px 0;
+  background: transparent;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
   height: 36px;
   cursor: pointer;
-  color: #1f2937;
-  transition: background 0.15s;
+  color: #475569;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 .search-icon-btn:hover:not(:disabled) {
-  background: #80cbc4;
+  border-color: #94a3b8;
+  color: #1e293b;
 }
 
 .search-icon-btn:disabled {

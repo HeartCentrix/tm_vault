@@ -118,6 +118,7 @@ export function EmailPreview({ item }: { item: any }) {
                           key={a.id}
                           className="email-ol-attach-chip email-ol-attach-link"
                           href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(item.snapshotId, a.id)}
+                          download={a.name || undefined}
                           target="_blank"
                           rel="noopener noreferrer"
                           title={`Download ${a.name}`}
@@ -1031,6 +1032,7 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
                         key={a.id}
                         className="email-ol-attach-chip email-ol-attach-link"
                         href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(item.snapshotId, a.id)}
+                        download={a.name || undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         title={`Download ${a.name}`}
@@ -1690,6 +1692,10 @@ function OneDriveTable({
                   <a
                     className="od-row-link"
                     href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(snapshotId, item.id)}
+                    // `download` attribute hints the browser to save with
+                    // this filename even if Content-Disposition gets
+                    // stripped by a proxy/gateway along the way.
+                    download={item.name || undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={e => e.stopPropagation()}
@@ -2553,9 +2559,8 @@ export default function Recovery() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                     <button className="search-btn">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ width: 16, height: 16 }}>
+                        <path d="M8.5 8.5L10.5 10.5M7 9.5C5.61929 9.5 4.5 8.38071 4.5 7C4.5 5.61929 5.61929 4.5 7 4.5C8.38071 4.5 9.5 5.61929 9.5 7C9.5 8.38071 8.38071 9.5 7 9.5Z" />
                       </svg>
                     </button>
                   </div>

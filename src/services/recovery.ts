@@ -20,6 +20,7 @@ export interface RecoveryItem {
   bodyContentType?: string;
   folderPath?: string;
   contentSize: number;
+  blobPath?: string;
   metadata: Record<string, any>;
   isDeleted: boolean;
   createdAt: string;
