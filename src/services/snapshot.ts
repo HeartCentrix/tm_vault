@@ -186,6 +186,28 @@ export const SnapshotService = {
     return res.json();
   },
 
+  /** Return EVERY item in a snapshot as a uniform file-row shape. Used by
+   *  the Recovery page for resource kinds outside the five fixed tabs
+   *  (Power BI workspaces today; SharePoint sites, Azure workloads, etc.
+   *  can share the same render path). No item_type filter — whatever was
+   *  backed up shows up. */
+  async listSnapshotFiles(snapshotId: string, page = 1, size = 200, search?: string): Promise<SnapshotItemListResponse> {
+    let url = `${API.SNAPSHOTS.DETAIL(snapshotId)}/files?page=${page}&size=${size}`;
+    if (search && search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch snapshot files');
+    const data = await res.json();
+    if (data.content) {
+      data.content = data.content.map((item: any) => ({
+        ...item,
+        metadata: item.metadata && Object.keys(item.metadata).length > 0
+          ? item.metadata
+          : { raw: item },
+      }));
+    }
+    return data;
+  },
+
   /** Return every ONEDRIVE_FILE item id in this snapshot whose folder_path
    *  starts with `folderPrefix`. Used by the Recovery UI's folder-row
    *  checkbox to bulk-select everything under a folder, including files

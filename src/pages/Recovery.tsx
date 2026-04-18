@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
@@ -1723,6 +1723,148 @@ function OneDriveTable({
   );
 }
 
+// ==================== Power BI Files view ====================
+// Power BI workspaces don't fit the five fixed Mail/OneDrive/... tabs —
+// they have reports, datasets, dashboards, permissions blobs, etc. The
+// Recovery page collapses all that into a single "Files" panel for
+// power_bi resources: one flat list pulled from the generic
+// /snapshots/{id}/files endpoint.
+
+function PowerBiFilesView({
+  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  // Pick the newest COMPLETED snapshot for this resource. Power BI
+  // resources aren't Tier 1/Tier 2 — just one resource = one lineage of
+  // snapshots, so we just take the latest one that finished.
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!latestSnapshot) {
+      setItems([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 500)
+      .then(data => setItems(data.content || []))
+      .catch(err => { setError(err.message || 'Failed to load files'); setItems([]); })
+      .finally(() => setLoading(false));
+  }, [latestSnapshot?.id]);
+
+  if (!latestSnapshot) {
+    return (
+      <div className="pbi-empty">
+        <p>No completed backup for this resource yet.</p>
+      </div>
+    );
+  }
+
+  const allChecked = items.length > 0 && items.every(i => selectedItems.has(i.id));
+
+  return (
+    <div className="pbi-files">
+      <div className="content-type-tabs">
+        <button className="content-tab active">
+          Files
+          {items.length > 0 && <span className="content-tab-count">{items.length.toLocaleString()}</span>}
+        </button>
+      </div>
+
+      <div className="pbi-files-panel">
+        {loading ? (
+          <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
+        ) : error ? (
+          <div className="pbi-empty"><p>{error}</p></div>
+        ) : items.length === 0 ? (
+          <div className="pbi-empty"><p>No files captured in this snapshot.</p></div>
+        ) : (
+          <div className="od-table">
+            <div className="od-table-head pbi-head">
+              <div className="od-th od-th-check">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={e => onSelectAll(items.map(i => i.id), e.target.checked)}
+                />
+              </div>
+              <div className="od-th od-th-name">Name</div>
+              <div className="od-th">Type</div>
+              <div className="od-th od-th-size">Size</div>
+              <div className="od-th od-th-modified">Captured at</div>
+            </div>
+            <div className="od-table-body">
+              {items.map((item: any) => {
+                const hasBlob = !!item.blobPath;
+                const size = item.contentSize || 0;
+                const typeLabel = (item.itemType || '').replace(/^POWER_BI_/, '').toLowerCase();
+                return (
+                  <div
+                    key={item.id}
+                    className={`od-row od-row-file pbi-row${selectedItems.has(item.id) ? ' selected' : ''}`}
+                  >
+                    <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.has(item.id)}
+                        onChange={() => onToggleItem(item.id)}
+                      />
+                    </div>
+                    <div className="od-td od-td-name" title={item.name}>
+                      {hasBlob ? (
+                        <a
+                          className="od-row-link"
+                          href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, item.id)}
+                          download={item.name || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          title={`Download ${item.name}`}
+                        >
+                          <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                          <span className="od-row-name">{item.name}</span>
+                        </a>
+                      ) : (
+                        <>
+                          <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                          <span className="od-row-name">{item.name}</span>
+                          <span className="od-row-tag">metadata only</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="od-td pbi-type">{typeLabel || '—'}</div>
+                    <div className="od-td od-td-size">{size ? bytesToSize(size) : '—'}</div>
+                    <div className="od-td od-td-modified">
+                      {item.createdAt ? fmtLocalDate(item.createdAt, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2541,6 +2683,22 @@ export default function Recovery() {
                 </div>
               </div>
 
+              {selectedResource.kind === 'power_bi' ? (
+                /* Power BI workspaces don't fit the five fixed tabs — swap
+                   the whole content area for a single Files panel pulled
+                   from the generic /snapshots/{id}/files endpoint. */
+                <PowerBiFilesView
+                  resourceId={selectedResource.id}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                />
+              ) : (
+                <>
               {/* Content Type Tabs — fixed five (Mail / OneDrive / Contacts / Calendar / Chats).
                   Each tab shows its backed-up item count from the content-
                   snapshots resolver; tabs with no snapshot yet stay clickable
@@ -2888,6 +3046,8 @@ export default function Recovery() {
                           </div>
                         )}
               </div>
+                </>
+              )}
             </>
           )}
         </div>
