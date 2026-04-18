@@ -11,7 +11,6 @@ export interface ExportFormatOption {
 
 export const EXPORT_FORMATS: Record<ContentTab, ExportFormatOption[]> = {
   mail: [
-    { value: 'PST', label: 'Export as PST' },
     { value: 'MBOX', label: 'Export as MBOX' },
     { value: 'EML', label: 'Export as EML' },
   ],
