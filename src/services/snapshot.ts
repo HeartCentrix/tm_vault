@@ -181,6 +181,18 @@ export const SnapshotService = {
     return res.json();
   },
 
+  /** Return every ONEDRIVE_FILE item id in this snapshot whose folder_path
+   *  starts with `folderPrefix`. Used by the Recovery UI's folder-row
+   *  checkbox to bulk-select everything under a folder, including files
+   *  in nested subfolders. Pass '/' to grab the entire drive. */
+  async getOneDriveIdsByPrefix(snapshotId: string, folderPrefix: string): Promise<string[]> {
+    const url = `${API.SNAPSHOTS.ONEDRIVE(snapshotId)}/ids?folder_prefix=${encodeURIComponent(folderPrefix)}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch folder file ids');
+    const data = await res.json();
+    return Array.isArray(data.ids) ? data.ids : [];
+  },
+
   async getContentSnapshots(resourceId: string): Promise<ContentSnapshotsResponse> {
     const url = API.SNAPSHOTS.CONTENT_SNAPSHOTS(resourceId);
     const res = await fetch(url, { headers: getAuthHeaders() });
@@ -195,7 +207,7 @@ export const SnapshotService = {
     return res.json();
   },
 
-  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string, search?: string): Promise<SnapshotItemListResponse> {
+  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string, search?: string, sort?: string): Promise<SnapshotItemListResponse> {
     // Recovery passes one of the 5 fixed tabs (mail/onedrive/contacts/
     // calendar/chats). Each maps to its own backend endpoint — no more
     // /items?itemType=X fallback, no /content-types lookup.
@@ -219,6 +231,9 @@ export const SnapshotService = {
     }
     if (search && search.trim()) {
       url += `&search=${encodeURIComponent(search.trim())}`;
+    }
+    if (sort) {
+      url += `&sort=${encodeURIComponent(sort)}`;
     }
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch snapshot items');

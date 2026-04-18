@@ -4,7 +4,7 @@ import { API } from '../config/api';
 export type DataSourceType = {
   id: string;
   name: string;
-  type: 'm365' | 'azure' | 'kubernetes';
+  type: 'm365' | 'azure';
   status: string;
 };
 
@@ -41,7 +41,7 @@ export async function getDataSources(): Promise<DataSourceType[]> {
   return fetchPromise;
 }
 
-function mapType(type: string): ('m365' | 'azure' | 'kubernetes')[] {
+function mapType(type: string): ('m365' | 'azure')[] {
   // Legacy 'BOTH' removed — a tenant is now exactly one workload type.
   switch (type?.toUpperCase()) {
     case 'AZURE': return ['azure'];

@@ -444,76 +444,6 @@ export function CalendarPreview({ item }: { item: any }) {
 // falls back to flat fields. Styles piggyback on the existing .item-preview /
 // .preview-* CSS classes plus inline for card-specific details.
 
-// Folder-tree builder for OneDrive. Takes flat paths like "/A/B" and "/A/C"
-// and produces a nested {name, fullPath, count, children[]} structure so the
-// left panel can render a real file-explorer-style tree.
-type FolderNode = { name: string; fullPath: string; count: number; children: FolderNode[] };
-
-function buildFolderTree(folders: Array<{ path: string; count: number }>): FolderNode {
-  const root: FolderNode = { name: '/', fullPath: '/', count: 0, children: [] };
-  for (const f of folders) {
-    const path = f.path || '/';
-    const parts = path.split('/').filter(Boolean);
-    let cursor = root;
-    cursor.count += f.count;
-    let acc = '';
-    for (const part of parts) {
-      acc += '/' + part;
-      let child = cursor.children.find(c => c.name === part);
-      if (!child) {
-        child = { name: part, fullPath: acc, count: 0, children: [] };
-        cursor.children.push(child);
-      }
-      child.count += f.count;
-      cursor = child;
-    }
-  }
-  // Sort children alphabetically at every level for stable display.
-  const sortRec = (n: FolderNode) => {
-    n.children.sort((a, b) => a.name.localeCompare(b.name));
-    n.children.forEach(sortRec);
-  };
-  sortRec(root);
-  return root;
-}
-
-function FolderTreeNode({
-  node, depth, selected, onSelect,
-}: { node: FolderNode; depth: number; selected: string; onSelect: (path: string) => void }) {
-  const [open, setOpen] = useState(depth < 1);  // expand the top level by default
-  const hasKids = node.children.length > 0;
-  return (
-    <div className="folder-tree-node">
-      <button
-        type="button"
-        className={`folder-item folder-tree-item ${selected === node.fullPath ? 'active' : ''}`}
-        style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => onSelect(node.fullPath)}
-      >
-        {hasKids ? (
-          <span
-            className={`folder-tree-toggle ${open ? 'open' : ''}`}
-            onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
-            aria-label={open ? 'Collapse' : 'Expand'}
-          >▸</span>
-        ) : <span className="folder-tree-spacer" />}
-        <span className="folder-tree-icon" aria-hidden>
-          {hasKids ? (open ? '📂' : '📁') : '📄'}
-        </span>
-        <span className="folder-name">{node.name}</span>
-        {node.count > 0 && <span className="folder-count">{node.count}</span>}
-      </button>
-      {open && hasKids && (
-        <div className="folder-tree-children">
-          {node.children.map(child => (
-            <FolderTreeNode key={child.fullPath} node={child} depth={depth + 1} selected={selected} onSelect={onSelect} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function PreviewLabel({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === '') return null;
   return (
@@ -1507,6 +1437,286 @@ function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }:
   );
 }
 
+// ==================== OneDrive Drive-style components ====================
+// Dedicated left panel + middle table for the OneDrive tab. Renders a
+// Google-Drive-style layout (My Drive tree on the left, file table in the
+// middle) and takes the full width — the right preview panel is hidden for
+// this tab so the table has room to breathe.
+
+function bytesToSize(bytes: number): string {
+  if (!bytes) return '—';
+  const k = 1024;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+  const v = bytes / Math.pow(k, i);
+  return `${i === 0 ? v : v.toFixed(1)} ${units[i]}`;
+}
+
+// Normalize Graph paths so the tree lines up with the items returned by
+// /onedrive: backend strips "/drives/{id}/root:" and we treat "/" as the
+// "My Drive" root. Empty path or "/" → root.
+function odNormalizePath(p: string | null | undefined): string {
+  if (!p || p === '') return '/';
+  return p.startsWith('/') ? p : '/' + p;
+}
+
+// Return the direct-child folder names for a given parent path, sorted.
+// e.g. folders=["/Documents", "/Documents/Sub", "/Attachments"],
+// parent="/" → ["Attachments", "Documents"]; parent="/Documents" → ["Sub"].
+function odDirectSubfolders(folders: Array<{ path: string; count: number }>, parent: string): Array<{ name: string; fullPath: string }> {
+  const p = parent === '/' ? '' : parent;
+  const seen = new Map<string, string>();
+  for (const f of folders) {
+    const full = odNormalizePath(f.path);
+    if (parent === '/') {
+      // direct children of root: one segment after "/"
+      const rest = full.slice(1);
+      if (!rest) continue;
+      const first = rest.split('/')[0];
+      seen.set(first, '/' + first);
+    } else {
+      if (!full.startsWith(p + '/')) continue;
+      const rest = full.slice(p.length + 1);
+      if (!rest) continue;
+      const first = rest.split('/')[0];
+      if (first) seen.set(first, p + '/' + first);
+    }
+  }
+  return Array.from(seen.entries())
+    .map(([name, fullPath]) => ({ name, fullPath }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function OneDriveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M17.92,11a6,6,0,0,0-11.16-2A4.5,4.5,0,0,0,7.5,18h10a3.49,3.49,0,0,0,.42-7Z" />
+    </svg>
+  );
+}
+
+function RecentIcon() {
+  return (
+    <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path d="M7.5 7.5H7C7 7.63261 7.05268 7.75979 7.14645 7.85355L7.5 7.5ZM7.5 14C3.91015 14 1 11.0899 1 7.5H0C0 11.6421 3.35786 15 7.5 15V14ZM14 7.5C14 11.0899 11.0899 14 7.5 14V15C11.6421 15 15 11.6421 15 7.5H14ZM7.5 1C11.0899 1 14 3.91015 14 7.5H15C15 3.35786 11.6421 0 7.5 0V1ZM7.5 0C3.35786 0 0 3.35786 0 7.5H1C1 3.91015 3.91015 1 7.5 1V0ZM7 3V7.5H8V3H7ZM7.14645 7.85355L10.1464 10.8536L10.8536 10.1464L7.85355 7.14645L7.14645 7.85355Z" />
+    </svg>
+  );
+}
+
+// Used for folder rows in the middle-panel table (My Drive mode).
+const FolderIcon = (
+  <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M0.5 12.5V2.5C0.5 1.94772 0.947715 1.5 1.5 1.5H5.5L7.5 3.5H13.5C14.0523 3.5 14.5 3.94772 14.5 4.5V12.5C14.5 13.0523 14.0523 13.5 13.5 13.5H1.5C0.947715 13.5 0.5 13.0523 0.5 12.5Z" />
+  </svg>
+);
+
+function OneDriveLeftPanel({
+  view, setView,
+}: {
+  view: 'my-drive' | 'recent';
+  setView: (v: 'my-drive' | 'recent') => void;
+}) {
+  // Only ONE handler per click — setView already writes both view+folder
+  // atomically via patchSearchParams in the caller. Calling a separate
+  // setSelectedFolder right after would just overwrite view with a stale
+  // value (that was the Recent-does-nothing bug).
+  return (
+    <div className="od-left">
+      <button
+        className={`od-left-section ${view === 'my-drive' ? 'active' : ''}`}
+        onClick={() => setView('my-drive')}
+      >
+        <span className="od-left-icon od-left-icon-svg" aria-hidden><OneDriveIcon /></span>
+        <span className="od-left-label">My Drive</span>
+      </button>
+      <button
+        className={`od-left-section ${view === 'recent' ? 'active' : ''}`}
+        onClick={() => setView('recent')}
+      >
+        <span className="od-left-icon od-left-icon-svg" aria-hidden><RecentIcon /></span>
+        <span className="od-left-label">Recent</span>
+      </button>
+    </div>
+  );
+}
+
+// File-type icons drawn as inline SVG so they scale with `currentColor`
+// and don't depend on emoji font support. All five share a 15×15 viewBox
+// so spacing is uniform in the table's Name column.
+
+const FIcon_Default = (
+  <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM12.5 14H2.5V15H12.5V14ZM2 13.5V1.5H1V13.5H2ZM2.5 1H10.5V0H2.5V1ZM13 3.5V13.5H14V3.5H13ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2.5 14C2.22386 14 2 13.7761 2 13.5H1C1 14.3284 1.67157 15 2.5 15V14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671574 1 1.5H2Z" />
+  </svg>
+);
+
+const FIcon_PNG = (
+  <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M2.5 6.5V6H2V6.5H2.5ZM10.5 10.5H10V11H10.5V10.5ZM12.5 10.5V11H13V10.5H12.5ZM13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM6.5 6.5L6.94721 6.27639L6 6.5H6.5ZM6 10.5V11H7V10.5H6ZM8.5 10.5L8.05279 10.7236C8.15649 10.931 8.38919 11.0399 8.61488 10.9866C8.84056 10.9333 9 10.7319 9 10.5H8.5ZM9 6.5V6H8V6.5H9ZM2.5 7H3.5V6H2.5V7ZM3 11V8.5H2V11H3ZM3 8.5V6.5H2V8.5H3ZM3.5 8H2.5V9H3.5V8ZM4 7.5C4 7.77614 3.77614 8 3.5 8V9C4.32843 9 5 8.32843 5 7.5H4ZM3.5 7C3.77614 7 4 7.22386 4 7.5H5C5 6.67157 4.32843 6 3.5 6V7ZM10 6V10.5H11V6H10ZM10.5 11H12.5V10H10.5V11ZM13 10.5V8.5H12V10.5H13ZM10.5 7H13V6H10.5V7ZM2 5V1.5H1V5H2ZM13 3.5V5H14V3.5H13ZM2.5 1H10.5V0H2.5V1ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671573 1 1.5H2ZM1 12V13.5H2V12H1ZM2.5 15H12.5V14H2.5V15ZM14 13.5V12H13V13.5H14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM1 13.5C1 14.3284 1.67157 15 2.5 15V14C2.22386 14 2 13.7761 2 13.5H1ZM6 6.5V10.5H7V6.5H6ZM6.05279 6.72361L8.05279 10.7236L8.94721 10.2764L6.94721 6.27639L6.05279 6.72361ZM8 6.5V10.5H9V6.5H8Z" />
+  </svg>
+);
+
+const FIcon_CSV = (
+  <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM6.5 6.5V6H6V6.5H6.5ZM6.5 8.5H6V9H6.5V8.5ZM8.5 8.5H9V8H8.5V8.5ZM8.5 10.5V11H9V10.5H8.5ZM10.5 9.5H10V9.70711L10.1464 9.85355L10.5 9.5ZM11.5 10.5L11.1464 10.8536L11.5 11.2071L11.8536 10.8536L11.5 10.5ZM12.5 9.5L12.8536 9.85355L13 9.70711V9.5H12.5ZM2.5 6.5V6H2V6.5H2.5ZM2.5 10.5H2V11H2.5V10.5ZM2 5V1.5H1V5H2ZM13 3.5V5H14V3.5H13ZM2.5 1H10.5V0H2.5V1ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671573 1 1.5H2ZM1 12V13.5H2V12H1ZM2.5 15H12.5V14H2.5V15ZM14 13.5V12H13V13.5H14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM1 13.5C1 14.3284 1.67157 15 2.5 15V14C2.22386 14 2 13.7761 2 13.5H1ZM9 6H6.5V7H9V6ZM6 6.5V8.5H7V6.5H6ZM6.5 9H8.5V8H6.5V9ZM8 8.5V10.5H9V8.5H8ZM8.5 10H6V11H8.5V10ZM10 6V9.5H11V6H10ZM10.1464 9.85355L11.1464 10.8536L11.8536 10.1464L10.8536 9.14645L10.1464 9.85355ZM11.8536 10.8536L12.8536 9.85355L12.1464 9.14645L11.1464 10.1464L11.8536 10.8536ZM13 9.5V6H12V9.5H13ZM5 6H2.5V7H5V6ZM2 6.5V10.5H3V6.5H2ZM2.5 11H5V10H2.5V11Z" />
+  </svg>
+);
+
+const FIcon_PDF = (
+  <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M2.5 6.5V6H2V6.5H2.5ZM6.5 6.5V6H6V6.5H6.5ZM6.5 10.5H6V11H6.5V10.5ZM13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM2.5 7H3.5V6H2.5V7ZM3 11V8.5H2V11H3ZM3 8.5V6.5H2V8.5H3ZM3.5 8H2.5V9H3.5V8ZM4 7.5C4 7.77614 3.77614 8 3.5 8V9C4.32843 9 5 8.32843 5 7.5H4ZM3.5 7C3.77614 7 4 7.22386 4 7.5H5C5 6.67157 4.32843 6 3.5 6V7ZM6 6.5V10.5H7V6.5H6ZM6.5 11H7.5V10H6.5V11ZM9 9.5V7.5H8V9.5H9ZM7.5 6H6.5V7H7.5V6ZM9 7.5C9 6.67157 8.32843 6 7.5 6V7C7.77614 7 8 7.22386 8 7.5H9ZM7.5 11C8.32843 11 9 10.3284 9 9.5H8C8 9.77614 7.77614 10 7.5 10V11ZM10 6V11H11V6H10ZM10.5 7H13V6H10.5V7ZM10.5 9H12V8H10.5V9ZM2 5V1.5H1V5H2ZM13 3.5V5H14V3.5H13ZM2.5 1H10.5V0H2.5V1ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671573 1 1.5H2ZM1 12V13.5H2V12H1ZM2.5 15H12.5V14H2.5V15ZM14 13.5V12H13V13.5H14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM1 13.5C1 14.3284 1.67157 15 2.5 15V14C2.22386 14 2 13.7761 2 13.5H1Z" />
+  </svg>
+);
+
+const FIcon_DOC = (
+  <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M2.5 6.5V6H2V6.5H2.5ZM2.5 10.5H2V11H2.5V10.5ZM12.5 6.5H13V6H12.5V6.5ZM12.5 10.5V11H13V10.5H12.5ZM13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM2 6.5V10.5H3V6.5H2ZM2.5 11H3.5V10H2.5V11ZM5 9.5V7.5H4V9.5H5ZM3.5 6H2.5V7H3.5V6ZM5 7.5C5 6.67157 4.32843 6 3.5 6V7C3.77614 7 4 7.22386 4 7.5H5ZM3.5 11C4.32843 11 5 10.3284 5 9.5H4C4 9.77614 3.77614 10 3.5 10V11ZM6 7.5V9.5H7V7.5H6ZM9 9.5V7.5H8V9.5H9ZM9 7.5C9 6.67157 8.32843 6 7.5 6V7C7.77614 7 8 7.22386 8 7.5H9ZM7.5 11C8.32843 11 9 10.3284 9 9.5H8C8 9.77614 7.77614 10 7.5 10V11ZM6 9.5C6 10.3284 6.67157 11 7.5 11V10C7.22386 10 7 9.77614 7 9.5H6ZM7 7.5C7 7.22386 7.22386 7 7.5 7V6C6.67157 6 6 6.67157 6 7.5H7ZM10 6V11H11V6H10ZM10.5 7H12.5V6H10.5V7ZM12 6.5V8H13V6.5H12ZM10.5 11H12.5V10H10.5V11ZM13 10.5V9H12V10.5H13ZM2 5V1.5H1V5H2ZM13 3.5V5H14V3.5H13ZM2.5 1H10.5V0H2.5V1ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671573 1 1.5H2ZM1 12V13.5H2V12H1ZM2.5 15H12.5V14H2.5V15ZM14 13.5V12H13V13.5H14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM1 13.5C1 14.3284 1.67157 15 2.5 15V14C2.22386 14 2 13.7761 2 13.5H1Z" />
+  </svg>
+);
+
+const FIcon_PPT = (
+  <svg viewBox="0 0 15 15" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <path d="M2.5 6.5V6H2V6.5H2.5ZM6.5 6.5V6H6V6.5H6.5ZM13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM2.5 7H3.5V6H2.5V7ZM3 11V8.5H2V11H3ZM3 8.5V6.5H2V8.5H3ZM3.5 8H2.5V9H3.5V8ZM4 7.5C4 7.77614 3.77614 8 3.5 8V9C4.32843 9 5 8.32843 5 7.5H4ZM3.5 7C3.77614 7 4 7.22386 4 7.5H5C5 6.67157 4.32843 6 3.5 6V7ZM6.5 7H7.5V6H6.5V7ZM7 11V8.5H6V11H7ZM7 8.5V6.5H6V8.5H7ZM7.5 8H6.5V9H7.5V8ZM8 7.5C8 7.77614 7.77614 8 7.5 8V9C8.32843 9 9 8.32843 9 7.5H8ZM7.5 7C7.77614 7 8 7.22386 8 7.5H9C9 6.67157 8.32843 6 7.5 6V7ZM11 6V11H12V6H11ZM10 7H13V6H10V7ZM2 5V1.5H1V5H2ZM13 3.5V5H14V3.5H13ZM2.5 1H10.5V0H2.5V1ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671573 1 1.5H2ZM1 12V13.5H2V12H1ZM2.5 15H12.5V14H2.5V15ZM14 13.5V12H13V13.5H14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM1 13.5C1 14.3284 1.67157 15 2.5 15V14C2.22386 14 2 13.7761 2 13.5H1Z" />
+  </svg>
+);
+
+function odFileIcon(name: string): React.ReactNode {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tif', 'tiff'].includes(ext)) return FIcon_PNG;
+  if (['csv', 'xls', 'xlsx', 'tsv'].includes(ext)) return FIcon_CSV;
+  if (ext === 'pdf') return FIcon_PDF;
+  if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) return FIcon_DOC;
+  if (['ppt', 'pptx', 'odp', 'key'].includes(ext)) return FIcon_PPT;
+  return FIcon_Default;
+}
+
+function OneDriveTable({
+  items, folders, view, selectedFolder, onOpenFolder,
+  selectedItems, onToggleItem, onSelectAll, allChecked,
+  onFolderCheck, folderBusy,
+  snapshotId,
+}: {
+  items: RecoveryItem[];
+  folders: Array<{ path: string; count: number }>;
+  view: 'my-drive' | 'recent';
+  selectedFolder: string;
+  onOpenFolder: (path: string) => void;
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (checked: boolean) => void;
+  allChecked: boolean;
+  onFolderCheck: (folderPath: string) => void;
+  folderBusy: Set<string>;
+  snapshotId: string | null;
+}) {
+  // In My Drive mode we interleave direct subfolders at the top of the list
+  // so the UX mirrors a real file explorer. In Recent mode we skip folders
+  // entirely — the whole point of Recent is a flat timeline.
+  const currentParent = selectedFolder === 'all' ? '/' : (selectedFolder || '/');
+  const subFolders = view === 'my-drive' ? odDirectSubfolders(folders, currentParent) : [];
+
+  return (
+    <div className="od-table">
+      <div className="od-table-head">
+        <div className="od-th od-th-check">
+          <input
+            type="checkbox"
+            checked={allChecked}
+            onChange={e => onSelectAll(e.target.checked)}
+          />
+        </div>
+        <div className="od-th od-th-name">Name <span className="od-th-arrow">↓</span></div>
+        <div className="od-th od-th-owner">Owner</div>
+        <div className="od-th od-th-modified">Last modified</div>
+        <div className="od-th od-th-size">File size</div>
+      </div>
+
+      <div className="od-table-body">
+        {subFolders.map(sf => {
+          const busy = folderBusy.has(sf.fullPath);
+          return (
+            <div
+              key={`folder:${sf.fullPath}`}
+              className="od-row od-row-folder"
+              onClick={() => onOpenFolder(sf.fullPath)}
+            >
+              <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                {/* Checkbox selects EVERY file under this folder (recursive).
+                    Backend returns all ids where folder_path starts with
+                    sf.fullPath; those get toggled into selectedItems. */}
+                <input
+                  type="checkbox"
+                  // visual state is driven entirely by the async fetch,
+                  // so we don't reflect a half-selected state here —
+                  // it's a fire-and-forget toggle.
+                  disabled={busy}
+                  onChange={(e) => { e.stopPropagation(); onFolderCheck(sf.fullPath); }}
+                  onClick={e => e.stopPropagation()}
+                />
+              </div>
+              <div className="od-td od-td-name">
+                <span className="od-row-icon" aria-hidden>{FolderIcon}</span>
+                <span className="od-row-name">{sf.name}</span>
+              </div>
+              <div className="od-td od-td-owner">—</div>
+              <div className="od-td od-td-modified">—</div>
+              <div className="od-td od-td-size">—</div>
+            </div>
+          );
+        })}
+
+        {items.map((item: any) => {
+          const raw = item.metadata?.raw || item;
+          const owner = raw.createdBy?.user?.displayName
+            || raw.lastModifiedBy?.user?.displayName
+            || '—';
+          const modified = raw.lastModifiedDateTime || raw.createdDateTime || item.date || item.createdAt;
+          const size = item.contentSize ?? raw.size ?? 0;
+          const hasBlob = !!item.blobPath;
+          return (
+            <div
+              key={item.id}
+              className={`od-row od-row-file ${selectedItems.has(item.id) ? 'selected' : ''}`}
+            >
+              <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={selectedItems.has(item.id)}
+                  onChange={() => onToggleItem(item.id)}
+                />
+              </div>
+              <div className="od-td od-td-name" title={item.name}>
+                {hasBlob && snapshotId ? (
+                  <a
+                    className="od-row-link"
+                    href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(snapshotId, item.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    title={`Download ${item.name}`}
+                  >
+                    <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                    <span className="od-row-name">{item.name}</span>
+                  </a>
+                ) : (
+                  <>
+                    <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                    <span className="od-row-name">{item.name}</span>
+                    {!hasBlob && <span className="od-row-tag">metadata only</span>}
+                  </>
+                )}
+              </div>
+              <div className="od-td od-td-owner">{owner}</div>
+              <div className="od-td od-td-modified">{modified ? fmtLocalDate(modified, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
+              <div className="od-td od-td-size">{size ? bytesToSize(size) : '—'}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1514,7 +1724,12 @@ export default function Recovery() {
   
   // Five fixed tabs — no runtime discovery. Default to first tab (mail).
   const contentTypes: ContentTab[] = CONTENT_TABS;
-  const [activeContentType, setActiveContentType] = useState<ContentType>('mail');
+  // Initial state reads from the URL so a deep-link (copy-paste of a URL
+  // with ?tab=onedrive&folder=/Documents) lands on the exact same view.
+  const [activeContentType, setActiveContentType] = useState<ContentType>(() => {
+    const t = searchParams.get('tab');
+    return (t && (CONTENT_TABS as string[]).includes(t)) ? (t as ContentType) : 'mail';
+  });
 
   // Resource selection
   const [resources, setResources] = useState<ResourceWithBackups[]>([]);
@@ -1536,8 +1751,68 @@ export default function Recovery() {
 
   // Folders (real from snapshot items)
   const [folders, setFolders] = useState<SnapshotFolder[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string>('all');
+  const [selectedFolder, setSelectedFolder] = useState<string>(() => {
+    const f = searchParams.get('folder');
+    if (f !== null) return f;
+    // Mirror the URL-sync effect: OneDrive + My Drive defaults to root,
+    // everything else defaults to "all folders".
+    const t = searchParams.get('tab');
+    const v = searchParams.get('view');
+    const isOneDriveMyDrive = t === 'onedrive' && (v ?? 'my-drive') === 'my-drive';
+    return isOneDriveMyDrive ? '/' : 'all';
+  });
   const [foldersLoading, setFoldersLoading] = useState(false);
+
+  // OneDrive-only: switches the tab between "My Drive" (folder tree nav)
+  // and "Recent" (flat list of files sorted by createdDateTime desc). Other
+  // tabs ignore this state entirely.
+  const [oneDriveView, setOneDriveView] = useState<'my-drive' | 'recent'>(() => {
+    const v = searchParams.get('view');
+    return v === 'recent' ? 'recent' : 'my-drive';
+  });
+
+  // OneDrive-only: folder paths whose bulk-select is currently fetching ids
+  // from the backend. Used to disable the folder-row checkbox in-flight so
+  // rapid clicks don't fire multiple overlapping requests for the same
+  // folder. Clears when the fetch resolves.
+  const [oneDriveFolderBusy, setOneDriveFolderBusy] = useState<Set<string>>(new Set());
+
+  // Merge current searchParams with a partial patch and push a new history
+  // entry so the browser back/forward buttons walk back/forward through state
+  // transitions (folder drill, tab switch, My Drive ↔ Recent) instead of
+  // leaving the Recovery page. Keys set to null are removed.
+  const patchSearchParams = useCallback((patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === '') next.delete(k);
+      else next.set(k, v);
+    }
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  // Browser back/forward updates searchParams; this effect syncs those
+  // changes into local state so the UI reflects the restored URL. The
+  // wrapped setters below push state → URL on user actions; this effect
+  // closes the loop URL → state on history navigation.
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    const currentTab = t && (CONTENT_TABS as string[]).includes(t) ? (t as ContentType) : activeContentType;
+    if (currentTab && currentTab !== activeContentType) {
+      setActiveContentType(currentTab);
+    }
+    const v = searchParams.get('view');
+    const nextView = v === 'recent' ? 'recent' : 'my-drive';
+    if (nextView !== oneDriveView) setOneDriveView(nextView);
+    const f = searchParams.get('folder');
+    // OneDrive + My Drive: a missing folder param means "root" (/). For
+    // every other combination, a missing folder means "all folders" (no
+    // filter). This keeps My Drive showing only files that live directly
+    // at the drive root instead of every file across the whole drive.
+    const isOneDriveMyDrive = currentTab === 'onedrive' && nextView === 'my-drive';
+    const nextFolder = f !== null ? f : (isOneDriveMyDrive ? '/' : 'all');
+    if (nextFolder !== selectedFolder) setSelectedFolder(nextFolder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Recovery items - server-side paginated
   const [recoveryItems, setRecoveryItems] = useState<RecoveryItem[]>([]);
@@ -1666,9 +1941,16 @@ export default function Recovery() {
     // calendar layout); the other four tabs use the standard list size.
     const pageSize = activeContentType === 'calendar' ? 500 : 50;
     const isChats = activeContentType === 'chats';
+    // OneDrive "Recent" mode: drop the folder filter and ask backend to
+    // sort by createdDateTime DESC. "My Drive" uses default name_asc so
+    // folder listings look alphabetical like a file explorer.
+    const isOneDrive = activeContentType === 'onedrive';
+    const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
+    const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
+    const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
     SnapshotService.listItems(
       selectedSnapshotId, 1, pageSize,
-      activeContentType as ContentTab, selectedFolder, debouncedSearch,
+      activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
     )
       .then((data) => {
         if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
@@ -1704,7 +1986,7 @@ export default function Recovery() {
       .finally(() => {
         if (myKey === requestKeyRef.current) setItemsLoading(false);
       });
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView]);
 
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
@@ -1722,9 +2004,13 @@ export default function Recovery() {
     const el = itemListRef.current;
     const prevScrollHeight = el ? el.scrollHeight : 0;
     const prevScrollTop = el ? el.scrollTop : 0;
+    const isOneDrive = activeContentType === 'onedrive';
+    const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
+    const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
+    const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
     SnapshotService.listItems(
       selectedSnapshotId, itemPage, pageSize,
-      activeContentType as ContentTab, selectedFolder, debouncedSearch,
+      activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
     )
       .then((data) => {
         if (myKey !== requestKeyRef.current) return;  // filter changed mid-fetch
@@ -1800,7 +2086,9 @@ export default function Recovery() {
   // overlapping resource switches).
   useEffect(() => {
     setFolders([]);
-    setSelectedFolder('all');
+    // Don't reset selectedFolder here — the URL-sync effect is the
+    // single source of truth for that value now. Resetting would
+    // clobber a restored folder when the user presses browser back.
 
     if (activeContentType === 'calendar' || !contentSnapshots) {
       return;
@@ -1845,6 +2133,10 @@ export default function Recovery() {
     setSelectedSnapshotId('');
     setSelectedItem(null);
     setSelectedItems(new Set());
+    // Resource switch: new resource means a completely different data set,
+    // so drop the per-tab navigation state (tab/folder/view) instead of
+    // merging — keeping them would try to restore a folder that may not
+    // exist in the new resource's snapshot.
     setSearchParams({ resourceId: resource.id });
   };
 
@@ -1856,6 +2148,38 @@ export default function Recovery() {
       return next;
     });
   };
+
+  // OneDrive: recursive folder-select. Fetches every file id whose
+  // folder_path starts with this folder's path, then toggles them all in
+  // selectedItems. If ANY ids under the folder are already selected we
+  // interpret the click as "unselect the folder" and remove them;
+  // otherwise we add them. Busy-state prevents overlapping fetches.
+  const handleOneDriveFolderCheck = useCallback(async (folderPath: string) => {
+    if (!selectedSnapshotId) return;
+    if (oneDriveFolderBusy.has(folderPath)) return;
+    setOneDriveFolderBusy(prev => new Set(prev).add(folderPath));
+    try {
+      const ids = await SnapshotService.getOneDriveIdsByPrefix(selectedSnapshotId, folderPath);
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        const anyAlready = ids.some(id => next.has(id));
+        if (anyAlready) {
+          for (const id of ids) next.delete(id);
+        } else {
+          for (const id of ids) next.add(id);
+        }
+        return next;
+      });
+    } catch (e) {
+      console.error('Folder-select fetch failed:', e);
+    } finally {
+      setOneDriveFolderBusy(prev => {
+        const next = new Set(prev);
+        next.delete(folderPath);
+        return next;
+      });
+    }
+  }, [selectedSnapshotId, oneDriveFolderBusy]);
 
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -2201,7 +2525,13 @@ export default function Recovery() {
                     <button
                       key={type}
                       className={`content-tab ${activeContentType === type ? 'active' : ''}${hasBackup ? '' : ' content-tab-empty'}`}
-                      onClick={() => setActiveContentType(type)}
+                      onClick={() => {
+                        // Tab switch — drop folder/view from URL so the
+                        // new tab starts clean. patchSearchParams pushes
+                        // a new history entry; the sync effect above
+                        // then updates local state.
+                        patchSearchParams({ tab: type, folder: null, view: null });
+                      }}
                       title={hasBackup ? `${count.toLocaleString()} item${count === 1 ? '' : 's'} backed up` : 'No backup yet'}
                     >
                       {CONTENT_TAB_LABELS[type]}
@@ -2253,7 +2583,7 @@ export default function Recovery() {
               </div>
 
               {/* Three Panel Layout */}
-              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}`}>
+              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}${activeContentType === 'onedrive' ? ' od-layout-mode' : ''}`}>
                 {activeContentType === 'calendar' ? (
                   /* Calendar Month View — replaces folder tree + item list */
                   <div className="panel-calendar">
@@ -2267,6 +2597,73 @@ export default function Recovery() {
                       />
                     )}
                   </div>
+                ) : activeContentType === 'onedrive' ? (
+                  /* OneDrive Drive-style view — left rail (My Drive tree /
+                      Recent) + full-width file table. No right preview panel. */
+                  <>
+                    <div className="panel-left od-panel-left">
+                      <OneDriveLeftPanel
+                        view={oneDriveView}
+                        setView={(v) => {
+                          // View toggle pushes a new history entry so
+                          // back/forward walks through My Drive ↔ Recent.
+                          // Recent drops the folder filter entirely;
+                          // My Drive resets to root.
+                          patchSearchParams(
+                            v === 'recent'
+                              ? { view: 'recent', folder: null }
+                              : { view: 'my-drive', folder: '/' }
+                          );
+                        }}
+                      />
+                    </div>
+                    <div className="panel-middle od-panel-middle">
+                      <div className="od-main-header">
+                        <span className="od-breadcrumb">
+                          {oneDriveView === 'recent'
+                            ? 'Recent'
+                            : (selectedFolder === 'all' || selectedFolder === '/' ? 'My Drive' : selectedFolder)}
+                        </span>
+                        <span className="od-count">{itemCount ? `${itemCount.toLocaleString()} items` : ''}</span>
+                      </div>
+                      {itemsLoading ? (
+                        <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
+                      ) : (
+                        <div
+                          className="item-list od-list"
+                          ref={itemListRef}
+                          onScroll={handleItemListScroll}
+                        >
+                          <OneDriveTable
+                            items={recoveryItems}
+                            folders={folders}
+                            view={oneDriveView}
+                            selectedFolder={selectedFolder}
+                            onOpenFolder={(p) => { patchSearchParams({ view: 'my-drive', folder: p }); }}
+                            selectedItems={selectedItems}
+                            onToggleItem={toggleSelectItem}
+                            onSelectAll={(checked) => {
+                              if (checked) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
+                              else setSelectedItems(new Set());
+                            }}
+                            allChecked={recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id))}
+                            onFolderCheck={handleOneDriveFolderCheck}
+                            folderBusy={oneDriveFolderBusy}
+                            snapshotId={selectedSnapshotId}
+                          />
+                          {loadingMore && (
+                            <div className="item-list-loading-more">
+                              <div className="spinner-sm" />
+                              <span>Loading more…</span>
+                            </div>
+                          )}
+                          {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                            <div className="item-list-end">End of list</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <>
                 {/* Left Panel: tab-aware groupings.
@@ -2285,7 +2682,7 @@ export default function Recovery() {
                     {activeContentType !== 'chats' && (
                       <button
                         className={`folder-item ${selectedFolder === 'all' ? 'active' : ''}`}
-                        onClick={() => setSelectedFolder('all')}
+                        onClick={() => patchSearchParams({ folder: null })}
                       >
                         <span className="folder-name">All</span>
                       </button>
@@ -2308,28 +2705,9 @@ export default function Recovery() {
                         ? folders.filter(f => f.path && f.path.toLowerCase().includes(q))
                         : folders.filter(f => f.path);
 
-                      if (activeContentType === 'onedrive') {
-                        // OneDrive uses a hierarchical tree built from
-                        // /drive/root: paths so the user can drill into
-                        // folders like a file explorer.
-                        const tree = buildFolderTree(visibleFolders);
-                        if (tree.children.length === 0 && !foldersLoading) {
-                          return <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>;
-                        }
-                        return (
-                          <div className="folder-tree">
-                            {tree.children.map(child => (
-                              <FolderTreeNode
-                                key={child.fullPath}
-                                node={child}
-                                depth={0}
-                                selected={selectedFolder}
-                                onSelect={setSelectedFolder}
-                              />
-                            ))}
-                          </div>
-                        );
-                      }
+                      // OneDrive is handled by its own dedicated branch
+                      // above (OneDriveLeftPanel), so by this point the tab
+                      // is mail / contacts / chats — a flat list works.
 
                       return (
                         <>
@@ -2337,7 +2715,7 @@ export default function Recovery() {
                             <button
                               key={folder.path}
                               className={`folder-item ${selectedFolder === folder.path ? 'active' : ''}`}
-                              onClick={() => setSelectedFolder(folder.path)}
+                              onClick={() => patchSearchParams({ folder: folder.path })}
                             >
                               <span className="folder-name">{folder.path}</span>
                               {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
@@ -2469,8 +2847,11 @@ export default function Recovery() {
                   </>
                 )}
 
-                {/* Right Panel: Item Preview — hidden for Chats and Calendar (shown inline / in month view) */}
-                {!['chats', 'calendar'].includes(activeContentType) && (
+                {/* Right Panel: Item Preview — hidden for Chats, Calendar, and
+                    OneDrive. Calendar shows events in the month view; chats
+                    render inline in the middle panel; OneDrive uses the full
+                    width for its Drive-style table. */}
+                {!['chats', 'calendar', 'onedrive'].includes(activeContentType) && (
                 <div className="panel-right">
                   {selectedItem
                     ? <ItemPreview item={selectedItem} />

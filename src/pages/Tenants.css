@@ -135,11 +135,6 @@
   color: #1e40af;
 }
 
-.service-badge.kubernetes {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
 .status-badge {
   display: inline-block;
   padding: 4px 12px;

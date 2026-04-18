@@ -147,13 +147,7 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                               <path d="M12 2L2 19h20L12 2z"/>
                             </svg>
                           </div>
-                        ) : (
-                          <div className="source-icon kubernetes">
-                            <svg viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                            </svg>
-                          </div>
-                        )}
+                        ) : null}
                         <span>{source.name}</span>
                         {source.status === 'DISCOVERING' && (
                           <span className="status-badge discovering">Discovering</span>
