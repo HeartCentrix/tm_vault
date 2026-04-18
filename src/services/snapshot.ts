@@ -220,6 +220,16 @@ export const SnapshotService = {
     return Array.isArray(data.ids) ? data.ids : [];
   },
 
+  /** Live Graph lookup for subsites of a SharePoint site resource. Used by
+   *  the Recovery page's Subsites panel. Returns whatever the tenant has
+   *  now — not a snapshot-frozen view. */
+  async listSharePointSubsites(resourceId: string): Promise<{ resourceId: string; subsites: any[]; count: number }> {
+    const url = `${API.RESOURCES.LIST}/${resourceId}/subsites`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch subsites');
+    return res.json();
+  },
+
   async getContentSnapshots(resourceId: string): Promise<ContentSnapshotsResponse> {
     const url = API.SNAPSHOTS.CONTENT_SNAPSHOTS(resourceId);
     const res = await fetch(url, { headers: getAuthHeaders() });

@@ -2254,6 +2254,27 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   font-weight: 600;
   color: #0f172a;
 }
+.od-breadcrumb-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.od-breadcrumb-link:disabled {
+  color: #0f172a;
+  cursor: default;
+  text-decoration: none;
+}
+.od-breadcrumb-link:hover:not(:disabled) {
+  color: #1d4ed8;
+}
+.od-breadcrumb-sep {
+  color: #94a3b8;
+  font-weight: 500;
+}
 .od-count {
   font-size: 12px;
   color: #64748b;
@@ -2406,5 +2427,12 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   color: #475569;
   font-size: 12px;
   text-transform: capitalize;
+}
+
+/* SharePoint Subsites table — three columns (Name / URL / Last modified),
+   no checkbox column since subsites aren't selectable for restore. */
+.od-table-head.sp-subsite-head,
+.od-row.sp-subsite-row {
+  grid-template-columns: minmax(200px, 2fr) minmax(280px, 3fr) minmax(120px, 1fr);
 }
 
