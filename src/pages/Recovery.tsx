@@ -52,13 +52,39 @@ export function EmailPreview({ item }: { item: any }) {
   const from = raw.from?.emailAddress || {};
   const toList: any[] = raw.toRecipients || [];
   const ccList: any[] = raw.ccRecipients || [];
-  const attachments: any[] = raw.attachments || [];
   const subject = raw.subject || item.subject || item.name || '(No subject)';
   const bodyContent = raw.body?.content || item.body || item.preview || '';
   const isHtml = raw.body?.contentType === 'html';
   const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
   const fromStr = [from.name, from.address ? `<${from.address}>` : ''].filter(Boolean).join(' ') || item.from || '—';
   const toStr = toList.map((r: any) => { const e = r.emailAddress || {}; return e.name ? `${e.name} <${e.address}>` : (e.address || ''); }).join('; ');
+
+  // Fetch persisted EMAIL_ATTACHMENT rows for this email — only these are
+  // actually restorable + downloadable from blob storage. The raw.attachments
+  // array from the Graph message is still useful as a fallback label list
+  // (e.g. when the backup ran before attachment capture was wired), but any
+  // items with resolved=true link to our own content endpoint.
+  const [attachments, setAttachments] = useState<Array<{
+    id: string; name: string; size: number; contentType: string | null;
+    isInline: boolean; resolved: boolean; sourceUrl: string | null;
+  }>>([]);
+  useEffect(() => {
+    if (!item.snapshotId || !item.id) return;
+    let cancelled = false;
+    SnapshotService.getItemAttachments(item.snapshotId, item.id)
+      .then(data => { if (!cancelled) setAttachments(data); })
+      .catch(() => { if (!cancelled) setAttachments([]); });
+    return () => { cancelled = true; };
+  }, [item.snapshotId, item.id]);
+
+  const fmtBytes = (n: number) => {
+    if (!n) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const hasAny = attachments.length > 0 || raw.hasAttachments;
 
   return (
     <div className="email-preview">
@@ -73,14 +99,50 @@ export function EmailPreview({ item }: { item: any }) {
             </div>
           )}
           <div className="email-ol-subject">{subject}</div>
-          {(attachments.length > 0 || raw.hasAttachments) && (
+          {hasAny && (
             <div className="email-ol-attachments">
               <svg viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" style={{width:13,height:13,flexShrink:0}}>
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
               </svg>
-              {attachments.length > 0
-                ? attachments.map((a: any, i: number) => <span key={i} className="email-ol-attach-chip">{a.name || 'Attachment'}</span>)
-                : <span className="email-ol-attach-chip">Has attachments</span>
+              {attachments.length === 0
+                ? <span className="email-ol-attach-chip">Has attachments (capturing…)</span>
+                : attachments.map((a) => {
+                    const label = a.size ? `${a.name} · ${fmtBytes(a.size)}` : a.name;
+                    if (a.resolved && item.snapshotId) {
+                      // Hits the backend content endpoint with ?download=1,
+                      // which sets Content-Disposition so the browser
+                      // downloads with the original filename.
+                      return (
+                        <a
+                          key={a.id}
+                          className="email-ol-attach-chip email-ol-attach-link"
+                          href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(item.snapshotId, a.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`Download ${a.name}`}
+                        >
+                          {label}
+                        </a>
+                      );
+                    }
+                    // Unresolved referenceAttachment — show the source URL
+                    // if we have one, else just show the name as metadata.
+                    if (a.sourceUrl) {
+                      return (
+                        <a
+                          key={a.id}
+                          className="email-ol-attach-chip email-ol-attach-link"
+                          href={a.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open original share link"
+                        >
+                          {label} ↗
+                        </a>
+                      );
+                    }
+                    return <span key={a.id} className="email-ol-attach-chip">{label}</span>;
+                  })
               }
             </div>
           )}

@@ -1053,6 +1053,19 @@
   background: #f1f5f9;
 }
 
+/* Clickable variant when the chip is backed by a real blob download or an
+   external source link. Teal underline on hover signals the action. */
+a.email-ol-attach-chip.email-ol-attach-link {
+  cursor: pointer;
+  text-decoration: none;
+  color: #0d9488;
+}
+a.email-ol-attach-chip.email-ol-attach-link:hover {
+  background: #ccfbf1;
+  border-color: #0d9488;
+  text-decoration: underline;
+}
+
 .email-body {
   overflow: hidden;
   display: flex;
