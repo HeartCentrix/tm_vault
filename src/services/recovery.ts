@@ -63,6 +63,7 @@ export interface RecoveryRequest {
   targetUserId?: string;
   exportFormat?: string;
   workloads?: string[];
+  includeAttachments?: boolean;
 }
 
 export interface RecoveryResponse {

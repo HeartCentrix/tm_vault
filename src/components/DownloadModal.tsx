@@ -37,6 +37,7 @@ export function DownloadModal({
     new Set(['Mail', 'Contacts', 'Calendar', 'Chats']),
   );
   const [exportFormat, setExportFormat] = useState<string>(DEFAULT_FORMAT[contentType]);
+  const [includeAttachments, setIncludeAttachments] = useState<boolean>(true);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,6 +90,7 @@ export function DownloadModal({
         itemIds: scope === 'selected' ? itemIds : [],
         exportFormat,
         workloads: scope === 'all' ? Array.from(workloads) : undefined,
+        includeAttachments,
       });
       const jobId = response.jobId;
 
@@ -190,6 +192,17 @@ export function DownloadModal({
                 </label>
               ))
             )}
+            <label className="checkbox-row" style={{ marginTop: 16 }}>
+              <input
+                type="checkbox"
+                checked={includeAttachments}
+                onChange={(e) => setIncludeAttachments(e.target.checked)}
+              />
+              <span>
+                Include attachments{' '}
+                <span className="info-icon" title="Uncheck for metadata-only export (smaller, faster)">ℹ</span>
+              </span>
+            </label>
           </div>
         </div>
 
