@@ -9,6 +9,7 @@ import { RecoveryService, type RecoveryItem } from '../services/recovery';
 import { RestoreModal } from '../components/RestoreModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import { API } from '../config/api';
+import { parseAsUtc, fmtLocal, fmtLocalDate, fmtLocalTime } from '../utils/datetime';
 import './Recovery.css';
 
 // Five fixed content tabs — was previously a string discovered at runtime
@@ -149,7 +150,7 @@ export function EmailPreview({ item }: { item: any }) {
         </div>
         {sentAt && (
           <div className="email-ol-date">
-            {new Date(sentAt).toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
+            {fmtLocal(sentAt, {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
           </div>
         )}
       </div>
@@ -166,7 +167,10 @@ export function ChatPreview({ item }: { item: any }) {
   const raw = item.metadata?.raw || {};
   const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || (item as any).sender || 'Unknown';
   const senderInitials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const bodyContent = raw.body?.content || (item as any).body || item.body || item.preview || '';
+  const rawBody = raw.body?.content || (item as any).body || item.body || item.preview || '';
+  // Strip <img> tags pointing at Graph's hostedContents — they require
+  // an auth'd request and otherwise fire 401s in the browser console.
+  const bodyContent = typeof rawBody === 'string' ? rawBody.replace(/<img[^>]*>/gi, '') : rawBody;
   const isHtml = (raw.body?.contentType || (item as any).bodyContentType) === 'html';
   const sentAt = raw.createdDateTime || (item as any).date || item.date;
   const attachments: any[] = raw.attachments || [];
@@ -183,7 +187,7 @@ export function ChatPreview({ item }: { item: any }) {
         <div className="chat-bubble">
           <div className="chat-bubble-header">
             <span className="chat-sender">{sender}</span>
-            {sentAt && <span className="chat-time">{new Date(sentAt).toLocaleString()}</span>}
+            {sentAt && <span className="chat-time">{fmtLocal(sentAt)}</span>}
             {item.itemType === 'TEAMS_MESSAGE_REPLY' && <span className="chat-reply-badge">Reply</span>}
           </div>
           {isDeleted
@@ -315,8 +319,8 @@ export function CalendarPreview({ item }: { item: any }) {
   const recurrence = raw.recurrence?.pattern?.type;
   const showAs = raw.showAs || '';
 
-  const startDate = start ? new Date(start) : null;
-  const endDate = end ? new Date(end) : null;
+  const startDate = parseAsUtc(start);
+  const endDate = parseAsUtc(end);
 
   const eventDay = startDate?.getDate();
   const eventMonth = startDate
@@ -523,7 +527,7 @@ function PreviewLabel({ label, value }: { label: string; value: React.ReactNode 
 function fmtDate(v?: string | null): string {
   if (!v) return '';
   try {
-    return new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+    return fmtLocal(v, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return v || ''; }
 }
 
@@ -1018,7 +1022,15 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
   //           exist at every word boundary, and cap blank-line runs at 2.
   const displayBody = isHtml
     ? (() => {
-        const withBreaks = body
+        // Strip <img> tags BEFORE feeding HTML into a detached <div> —
+        // even on a never-attached element, modern browsers still try to
+        // fetch img src on innerHTML assignment, which for Teams inline
+        // images points to /graph.microsoft.com/.../hostedContents/.../$value
+        // and 401s because the browser has no Graph token. Pre-stripping
+        // makes the 401s go away and costs nothing visually because
+        // textContent drops <img> content anyway.
+        const noImages = body.replace(/<img[^>]*>/gi, '');
+        const withBreaks = noImages
           .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
           .replace(/<\/(ul|ol|table)>/gi, '\n');
@@ -1031,6 +1043,32 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
       })()
     : body;
 
+  // Chat attachment chips — lazy-fetched only when this message actually
+  // has attachments (most don't). Messages with an `attachments` array on
+  // the raw Graph payload trigger one /attachments call per row at mount.
+  // Fine in practice because of the infinite-scroll rendering window; if
+  // it becomes a bottleneck we can batch by snapshot.
+  const rawAttachments: any[] = Array.isArray(raw.attachments) ? raw.attachments : [];
+  const [chatAttachments, setChatAttachments] = useState<Array<{
+    id: string; name: string; size: number; contentType: string | null;
+    isInline: boolean; resolved: boolean; sourceUrl: string | null;
+  }>>([]);
+  useEffect(() => {
+    if (!item.snapshotId || !item.id || rawAttachments.length === 0) return;
+    let cancelled = false;
+    SnapshotService.getItemAttachments(item.snapshotId, item.id)
+      .then(data => { if (!cancelled) setChatAttachments(data); })
+      .catch(() => { if (!cancelled) setChatAttachments([]); });
+    return () => { cancelled = true; };
+  }, [item.snapshotId, item.id, rawAttachments.length]);
+
+  const fmtBytes = (n: number) => {
+    if (!n) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
       <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
@@ -1040,18 +1078,51 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
           <span className="chat-item-sender">{sender}{senderEmail && senderEmail !== sender ? ` <${senderEmail}>` : ''}</span>
           {sentAt && (
             <span className="chat-item-time">
-              {/* Render in UTC — the canonical send time. Avoids the observer's
-                  local timezone shifting the value, which gets misleading when
-                  reviewing chat history across regions. */}
-              {new Date(sentAt).toLocaleString('en-US', {
+              {fmtLocal(sentAt, {
                 month:'short', day:'numeric', year:'numeric',
                 hour:'numeric', minute:'2-digit', hour12:true,
-                timeZone: 'UTC',
-              })} UTC
+              })}
             </span>
           )}
         </div>
         <div className="chat-item-text">{displayBody || '\u00a0'}</div>
+        {rawAttachments.length > 0 && (
+          <div className="chat-item-attachments" onClick={(e) => e.stopPropagation()}>
+            {chatAttachments.length === 0
+              ? <span className="email-ol-attach-chip">Attachment{rawAttachments.length === 1 ? '' : 's'} (capturing…)</span>
+              : chatAttachments.map((a) => {
+                  const label = a.size ? `${a.name} · ${fmtBytes(a.size)}` : a.name;
+                  // CHAT_ATTACHMENT with resolved=true → real blob-backed
+                  // download. Else fall back to the source contentUrl if
+                  // we have one, else a static label.
+                  if (a.resolved && item.snapshotId) {
+                    return (
+                      <a
+                        key={a.id}
+                        className="email-ol-attach-chip email-ol-attach-link"
+                        href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(item.snapshotId, a.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Download ${a.name}`}
+                      >📎 {label}</a>
+                    );
+                  }
+                  if (a.sourceUrl) {
+                    return (
+                      <a
+                        key={a.id}
+                        className="email-ol-attach-chip email-ol-attach-link"
+                        href={a.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open original share link"
+                      >🔗 {label} ↗</a>
+                    );
+                  }
+                  return <span key={a.id} className="email-ol-attach-chip">{label}</span>;
+                })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1068,7 +1139,7 @@ function EmailItemRow({ item, selected, checked, onSelect, onCheck }: {
   const preview = raw.bodyPreview || item.preview || '';
   const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
   const dateStr = sentAt
-    ? new Date(sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    ? fmtLocalDate(sentAt, { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
 
   return (
@@ -1156,6 +1227,10 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
   const [loading, setLoading] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date());
+  // Mouse-following tooltip state. `day` points at the cell's day number
+  // in the current month; x/y are clientX/clientY so the popover can be
+  // absolutely positioned relative to the viewport.
+  const [hovered, setHovered] = useState<{ day: number; x: number; y: number } | null>(null);
 
   // Load all events for this snapshot
   useEffect(() => {
@@ -1167,7 +1242,10 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
         // Auto-navigate to month with most events
         if (data.content.length > 0) {
           const first = data.content.find(e => e.start);
-          if (first?.start) setViewDate(new Date(first.start));
+          if (first?.start) {
+            const d = parseAsUtc(first.start);
+            if (d) setViewDate(d);
+          }
         }
       })
       .catch(console.error)
@@ -1194,11 +1272,13 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  // Group visible events by day
+  // Group visible events by day. Parse UTC-as-UTC so the bucketed day
+  // reflects the viewer's local calendar.
   const eventsByDay: Record<number, CalendarEvent[]> = {};
   visibleEvents.forEach(ev => {
     if (!ev.start) return;
-    const d = new Date(ev.start);
+    const d = parseAsUtc(ev.start);
+    if (!d) return;
     if (d.getFullYear() === year && d.getMonth() === month) {
       const day = d.getDate();
       if (!eventsByDay[day]) eventsByDay[day] = [];
@@ -1220,7 +1300,8 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
 
   const totalVisible = visibleEvents.filter(e => {
     if (!e.start) return false;
-    const d = new Date(e.start);
+    const d = parseAsUtc(e.start);
+    if (!d) return false;
     return d.getFullYear() === year && d.getMonth() === month;
   }).length;
 
@@ -1312,42 +1393,114 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
           {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
             <div key={d} className="cal-dow-header">{d}</div>
           ))}
-          {cells.map((day, i) => (
-            <div key={i} className={`cal-day-cell${!day ? ' cal-day-empty' : ''}${day && isToday(day) ? ' cal-day-today' : ''}`}>
-              {day && (
-                <>
-                  <span className="cal-day-number">{day}</span>
-                  <div className="cal-day-events">
-                    {(eventsByDay[day] || []).slice(0, 4).map(ev => {
-                      const color = EVENT_TYPE_COLORS[ev.eventType] || '#16a34a';
-                      const isChecked = selectedItems.has(ev.id);
-                      return (
-                        <div
-                          key={ev.id}
-                          className={`cal-event-chip${isChecked ? ' checked' : ''}`}
-                          style={{'--chip-color': color} as React.CSSProperties}
-                          title={ev.subject}
-                        >
-                          <input
-                            type="checkbox"
-                            className="cal-event-check"
-                            checked={isChecked}
-                            onChange={() => onItemCheck(ev.id)}
-                            onClick={e => e.stopPropagation()}
+          {cells.map((day, i) => {
+            const dayEvents = day ? (eventsByDay[day] || []) : [];
+            const hasEvents = dayEvents.length > 0;
+            return (
+              <div
+                key={i}
+                className={`cal-day-cell${!day ? ' cal-day-empty' : ''}${day && isToday(day) ? ' cal-day-today' : ''}${hasEvents ? ' cal-day-has-events' : ''}`}
+                onMouseEnter={day && hasEvents ? (e) => setHovered({ day, x: e.clientX, y: e.clientY }) : undefined}
+                onMouseMove={day && hasEvents ? (e) => setHovered({ day, x: e.clientX, y: e.clientY }) : undefined}
+                onMouseLeave={() => setHovered(null)}
+              >
+                {day && (
+                  <>
+                    <span className="cal-day-number">{day}</span>
+                    {hasEvents && (
+                      <div className="cal-day-dots" aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}>
+                        {dayEvents.slice(0, 5).map(ev => (
+                          <span
+                            key={ev.id}
+                            className="cal-day-dot"
+                            style={{ background: EVENT_TYPE_COLORS[ev.eventType] || '#16a34a' }}
                           />
-                          <span className="cal-event-name">{ev.subject}</span>
-                        </div>
-                      );
-                    })}
-                    {(eventsByDay[day]?.length ?? 0) > 4 && (
-                      <div className="cal-event-overflow">+{eventsByDay[day].length - 4} more</div>
+                        ))}
+                        {dayEvents.length > 5 && (
+                          <span className="cal-day-dot-count">+{dayEvents.length - 5}</span>
+                        )}
+                      </div>
                     )}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
+
+        {/* Mouse-following event popover. Fixed positioning means the
+            offsets are viewport-relative. We clamp to the viewport edge
+            so it never clips off-screen when the user hovers a cell
+            near the right/bottom border. Width is computed client-side;
+            falls back to a sane default to avoid a flash on first
+            hover before the ref resolves. */}
+        {hovered && (eventsByDay[hovered.day]?.length ?? 0) > 0 && (
+          <CalendarHoverTooltip
+            day={hovered.day}
+            x={hovered.x}
+            y={hovered.y}
+            events={eventsByDay[hovered.day] || []}
+            selectedItems={selectedItems}
+            onItemCheck={onItemCheck}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }: {
+  day: number;
+  x: number;
+  y: number;
+  events: CalendarEvent[];
+  selectedItems: Set<string>;
+  onItemCheck: (id: string) => void;
+}) {
+  // Offset the popover off the cursor so it doesn't flicker when the
+  // mouse moves onto it. Clamp to viewport so late-month / bottom-row
+  // cells don't push it off-screen.
+  const GAP = 14;
+  const PAD = 8;
+  const maxW = 320;
+  const estimatedH = Math.min(360, 56 + events.length * 22);
+  let left = x + GAP;
+  let top = y + GAP;
+  if (typeof window !== 'undefined') {
+    if (left + maxW > window.innerWidth - PAD) left = Math.max(PAD, x - GAP - maxW);
+    if (top + estimatedH > window.innerHeight - PAD) top = Math.max(PAD, y - GAP - estimatedH);
+  }
+  return (
+    <div
+      className="cal-hover-tooltip"
+      style={{ left, top, maxWidth: maxW }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="cal-hover-header">
+        Day {day} · {events.length} event{events.length === 1 ? '' : 's'}
+      </div>
+      <div className="cal-hover-list">
+        {events.map(ev => {
+          const color = EVENT_TYPE_COLORS[ev.eventType] || '#16a34a';
+          const isChecked = selectedItems.has(ev.id);
+          const when = ev.start
+            ? fmtLocalTime(ev.start, { hour: 'numeric', minute: '2-digit' })
+            : '';
+          return (
+            <div key={ev.id} className={`cal-hover-row${isChecked ? ' checked' : ''}`}>
+              <input
+                type="checkbox"
+                className="cal-hover-check"
+                checked={isChecked}
+                onChange={() => onItemCheck(ev.id)}
+                onClick={e => e.stopPropagation()}
+              />
+              <span className="cal-hover-dot" style={{ background: color }} />
+              <span className="cal-hover-subject" title={ev.subject}>{ev.subject || '(no subject)'}</span>
+              {when && <span className="cal-hover-time">{when}</span>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1399,6 +1552,12 @@ export default function Recovery() {
   // items request has already advanced to a new snapshot, and vice versa.
   const foldersKeyRef = useRef(0);
   const itemListRef = useRef<HTMLDivElement | null>(null);
+  // Flips to the "<snapshotId>|<tab>" of the current chats view after the
+  // initial auto-scroll-to-bottom has run. The top-edge pagination trigger
+  // stays disarmed until this matches — otherwise a scroll event firing
+  // during React's initial render (scrollTop=0 before rAF) would
+  // incorrectly fetch a second page the user never asked for.
+  const chatsAutoScrolledRef = useRef<string>('');
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemCount, setItemCount] = useState(0);
   const [itemPage, setItemPage] = useState(1);
@@ -1505,16 +1664,36 @@ export default function Recovery() {
     // Calendar dumps benefit from a larger page (no pagination control on the
     // calendar layout); the other four tabs use the standard list size.
     const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    const isChats = activeContentType === 'chats';
     SnapshotService.listItems(
       selectedSnapshotId, 1, pageSize,
       activeContentType as ContentTab, selectedFolder, debouncedSearch,
     )
       .then((data) => {
         if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
-        setRecoveryItems(data.content);
+        // Chats: backend orders newest-first. We reverse each page so the
+        // displayed list reads oldest-top → newest-bottom, matching
+        // Teams/WhatsApp. Initial page is visually "the most recent
+        // window of the conversation".
+        const content = isChats ? [...data.content].reverse() : data.content;
+        setRecoveryItems(content);
         setItemCount(data.totalElements);
         setItemTotalPages(data.totalPages || 1);
         setHasMore(1 < (data.totalPages || 1));
+        // For chats, auto-scroll to the bottom after render so the user
+        // lands on the newest message. requestAnimationFrame waits for
+        // the new children to be laid out. We mark the ref with the
+        // current (snapshot|tab) identity so the top-edge paginator
+        // knows the auto-scroll already ran — and won't mistake the
+        // pre-autoscroll `scrollTop=0` for "user scrolled to top".
+        if (isChats) {
+          chatsAutoScrolledRef.current = '';  // disarm while re-loading
+          requestAnimationFrame(() => {
+            const el = itemListRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+            chatsAutoScrolledRef.current = `${selectedSnapshotId}|${activeContentType}`;
+          });
+        }
       })
       .catch((error) => {
         if (myKey !== requestKeyRef.current) return;
@@ -1528,19 +1707,38 @@ export default function Recovery() {
 
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
-  // scroll-triggered page bump.
+  // scroll-triggered page bump. For the chats tab we PREPEND instead (older
+  // messages go above), and preserve the user's scroll position so the
+  // view doesn't yank when new rows appear at the top.
   useEffect(() => {
     if (itemPage <= 1 || !selectedSnapshotId || !activeContentType) return;
     const myKey = requestKeyRef.current;
+    const isChats = activeContentType === 'chats';
     setLoadingMore(true);
     const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    // Snapshot the scroll height BEFORE the next page lands so we can
+    // anchor the viewport to the same content after prepending.
+    const el = itemListRef.current;
+    const prevScrollHeight = el ? el.scrollHeight : 0;
+    const prevScrollTop = el ? el.scrollTop : 0;
     SnapshotService.listItems(
       selectedSnapshotId, itemPage, pageSize,
       activeContentType as ContentTab, selectedFolder, debouncedSearch,
     )
       .then((data) => {
         if (myKey !== requestKeyRef.current) return;  // filter changed mid-fetch
-        setRecoveryItems(prev => [...prev, ...data.content]);
+        if (isChats) {
+          // Older page = reverse within the page, then PREPEND so older
+          // content shows up above what the user is already reading.
+          const olderReversed = [...data.content].reverse();
+          setRecoveryItems(prev => [...olderReversed, ...prev]);
+          requestAnimationFrame(() => {
+            const el2 = itemListRef.current;
+            if (el2) el2.scrollTop = prevScrollTop + (el2.scrollHeight - prevScrollHeight);
+          });
+        } else {
+          setRecoveryItems(prev => [...prev, ...data.content]);
+        }
         setHasMore(itemPage < (data.totalPages || 1));
       })
       .catch(console.error)
@@ -1549,17 +1747,32 @@ export default function Recovery() {
       });
   }, [itemPage]);
 
-  // Bump itemPage when the items pane is scrolled past 60% — triggers the
-  // append effect above. Guarded by hasMore + loadingMore so we don't re-fire
-  // while a page is in-flight.
+  // Infinite-scroll trigger. For non-chat tabs it fires near the BOTTOM of
+  // the list (within 200px) so pagination feels truly end-of-page. For
+  // chats it fires near the TOP, because older messages live above the
+  // fold in the reverse-chronological layout.
+  //
+  // Chats extra safety:
+  //   1. Only fire after the initial auto-scroll-to-bottom has marked the
+  //      ref — before that `scrollTop=0` is the RENDER default, not a user
+  //      intent.
+  //   2. Require the list to actually overflow (scrollHeight > clientHeight
+  //      + 200) — otherwise a small page keeps `scrollTop=0` forever and
+  //      we'd fire in a loop.
   const handleItemListScroll = useCallback(() => {
     const el = itemListRef.current;
     if (!el || loadingMore || !hasMore) return;
-    const fraction = (el.scrollTop + el.clientHeight) / Math.max(1, el.scrollHeight);
-    if (fraction >= 0.6) {
-      setItemPage(p => p + 1);
+    const isChats = activeContentType === 'chats';
+    if (isChats) {
+      const marker = `${selectedSnapshotId}|${activeContentType}`;
+      if (chatsAutoScrolledRef.current !== marker) return; // initial autoscroll hasn't run
+      if (el.scrollHeight <= el.clientHeight + 200) return; // not scrollable yet
+      if (el.scrollTop <= 200) setItemPage(p => p + 1);
+    } else {
+      const remaining = el.scrollHeight - (el.scrollTop + el.clientHeight);
+      if (remaining <= 200) setItemPage(p => p + 1);
     }
-  }, [loadingMore, hasMore]);
+  }, [loadingMore, hasMore, activeContentType, selectedSnapshotId]);
 
   // Clear preview + drop any checked items when the snapshot or tab changes.
   // Without clearing selectedItems, ids from one tab leak into another
@@ -1944,7 +2157,7 @@ export default function Recovery() {
                     <div className="last-backup-info">
                       <span className="label">Last backup:</span>
                       <span className="value">
-                        {new Date(selectedResource.last_backup_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, {new Date(selectedResource.last_backup_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        {fmtLocalDate(selectedResource.last_backup_at, { month: 'short', day: 'numeric', year: 'numeric' })}, {fmtLocalTime(selectedResource.last_backup_at, { hour: 'numeric', minute: '2-digit', hour12: true })}
                       </span>
                     </div>
                   )}
@@ -2081,14 +2294,26 @@ export default function Recovery() {
                         <div className="spinner-sm" />
                       </div>
                     )}
-                    {activeContentType === 'onedrive' ? (
-                      // OneDrive uses a hierarchical tree built from
-                      // /drive/root: paths so the user can drill into folders
-                      // like a file explorer.
-                      (() => {
-                        const tree = buildFolderTree(folders.filter(f => f.path));
+                    {(() => {
+                      // Apply the toolbar search to the left-panel folder
+                      // list too — chat name typed in the search box
+                      // narrows the chat list alongside filtering the
+                      // messages view, and mail/onedrive/contacts folders
+                      // filter the same way. Match case-insensitively on
+                      // the full folder_path (so "vinay" matches
+                      // "chats/Vinay Chauhan" and "/Inbox/Subfolder").
+                      const q = debouncedSearch.toLowerCase();
+                      const visibleFolders = q
+                        ? folders.filter(f => f.path && f.path.toLowerCase().includes(q))
+                        : folders.filter(f => f.path);
+
+                      if (activeContentType === 'onedrive') {
+                        // OneDrive uses a hierarchical tree built from
+                        // /drive/root: paths so the user can drill into
+                        // folders like a file explorer.
+                        const tree = buildFolderTree(visibleFolders);
                         if (tree.children.length === 0 && !foldersLoading) {
-                          return <div className="folder-empty"><p>No folders found</p></div>;
+                          return <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>;
                         }
                         return (
                           <div className="folder-tree">
@@ -2103,24 +2328,26 @@ export default function Recovery() {
                             ))}
                           </div>
                         );
-                      })()
-                    ) : (
-                      <>
-                        {folders.filter(f => f.path).map(folder => (
-                          <button
-                            key={folder.path}
-                            className={`folder-item ${selectedFolder === folder.path ? 'active' : ''}`}
-                            onClick={() => setSelectedFolder(folder.path)}
-                          >
-                            <span className="folder-name">{folder.path}</span>
-                            {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
-                          </button>
-                        ))}
-                        {!foldersLoading && folders.filter(f => f.path).length === 0 && (
-                          <div className="folder-empty"><p>No folders found</p></div>
-                        )}
-                      </>
-                    )}
+                      }
+
+                      return (
+                        <>
+                          {visibleFolders.map(folder => (
+                            <button
+                              key={folder.path}
+                              className={`folder-item ${selectedFolder === folder.path ? 'active' : ''}`}
+                              onClick={() => setSelectedFolder(folder.path)}
+                            >
+                              <span className="folder-name">{folder.path}</span>
+                              {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
+                            </button>
+                          ))}
+                          {!foldersLoading && visibleFolders.length === 0 && (
+                            <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -2213,7 +2440,7 @@ export default function Recovery() {
                             <div className="item-preview">{item.preview || ''}</div>
                           </div>
                           <div className="item-date">
-                            {item.date ? new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                            {item.date ? fmtLocalDate(item.date, { month: 'short', day: 'numeric' }) : ''}
                           </div>
                         </div>
                         );

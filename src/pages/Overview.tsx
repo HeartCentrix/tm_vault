@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { fmtLocal } from '../utils/datetime';
 import {
   Bar,
   BarChart,
@@ -87,13 +88,11 @@ function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: nu
 }
 
 function formatDateShort(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return fmtLocal(dateStr, { month: 'short', day: 'numeric' });
 }
 
 function formatDateLong(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return fmtLocal(dateStr, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatGB(bytes: number): string {
@@ -305,7 +304,7 @@ export default function Overview() {
 
   const formatActivityDate = (dateString: string) => {
     if (!dateString) return '—';
-    return new Date(dateString).toLocaleString('en-US', {
+    return fmtLocal(dateString, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

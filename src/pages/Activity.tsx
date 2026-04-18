@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getActivities, downloadActivityCSV, cancelJob, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
 import { usePersistentTab } from '../hooks/usePersistentTab';
+import { fmtLocal } from '../utils/datetime';
 import './Activity.css';
 
 type ViewType = 'tasks' | 'audit' | 'risk';
@@ -205,8 +206,7 @@ export default function Activity() {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '—';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
+    return fmtLocal(dateString, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

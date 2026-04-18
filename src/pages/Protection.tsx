@@ -4,6 +4,7 @@ import { getResources, type ResourceItem, type ResourceListResponse, assignPolic
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
+import { fmtLocalDate, fmtLocalTime, parseAsUtc } from '../utils/datetime';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
@@ -280,7 +281,9 @@ export default function Protection() {
           for (const r of items) {
             const triggered = next[r.id];
             if (!triggered) continue;
-            const advanced = r.last_backup && new Date(r.last_backup).getTime() >= new Date(triggered).getTime();
+            const lastBackup = parseAsUtc(r.last_backup);
+            const trig = parseAsUtc(triggered);
+            const advanced = !!(lastBackup && trig && lastBackup.getTime() >= trig.getTime());
             const settled = r.last_backup_status && TERMINAL.has(r.last_backup_status);
             if (advanced || settled) {
               delete next[r.id];
@@ -794,8 +797,8 @@ export default function Protection() {
                     if (sizeBytes > 0 && resource.last_backup) {
                       return (
                         <>
-                          <div className="backup-date">{new Date(resource.last_backup).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                          <div className="backup-time">{new Date(resource.last_backup).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
+                          <div className="backup-date">{fmtLocalDate(resource.last_backup, { month: 'short', day: 'numeric' })}</div>
+                          <div className="backup-time">{fmtLocalTime(resource.last_backup, { hour: 'numeric', minute: '2-digit', hour12: true })}</div>
                         </>
                       );
                     }
@@ -873,7 +876,7 @@ export default function Protection() {
                         <td>{snap.label || '-'}</td>
                         <td>{snap.itemCount}</td>
                         <td>{formatSize(snap.size)}</td>
-                        <td>{new Date(snap.createdAt).toLocaleString()}</td>
+                        <td>{fmtLocal(snap.createdAt)}</td>
                         <td>
                           <span className={`status-badge ${snap.status.toLowerCase()}`}>{snap.status}</span>
                         </td>

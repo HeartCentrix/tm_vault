@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './Alerts.css';
 import { AlertService, type AlertItem } from '../services/alerts';
+import { parseAsUtc } from '../utils/datetime';
 
 const severityColors: Record<string, string> = {
   CRITICAL: '#e53e3e',
@@ -10,7 +11,8 @@ const severityColors: Record<string, string> = {
 };
 
 function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = parseAsUtc(dateStr);
+  if (!d) return '';
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMins = Math.floor(diffMs / 60000);
