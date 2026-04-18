@@ -149,9 +149,14 @@ const getAuthHeaders = (): Record<string, string> => {
 };
 
 export const SnapshotService = {
-  async listByResource(resourceId: string, page = 1, size = 20): Promise<SnapshotListResponse> {
+  async listByResource(resourceId: string, page = 1, size = 20, includeChildren = false): Promise<SnapshotListResponse> {
     const url = API.SNAPSHOTS.LIST(resourceId);
-    const res = await fetch(`${url}?page=${page}&size=${size}`, {
+    // `includeChildren` rolls in snapshots from Tier 2 child resources
+    // (USER_MAIL/USER_ONEDRIVE/... under an ENTRA_USER parent). Needed
+    // so the Recovery sparkline charts actual content bytes instead of
+    // just the parent's metadata row.
+    const suffix = includeChildren ? '&include_children=true' : '';
+    const res = await fetch(`${url}?page=${page}&size=${size}${suffix}`, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to fetch snapshots');

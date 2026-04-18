@@ -1891,8 +1891,13 @@ export default function Recovery() {
 
     setSnapshotsLoading(true);
     Promise.all([
-      // Sparkline still needs the historical snapshot list (date + size).
-      SnapshotService.listByResource(selectedResource.id, 1, 50).catch(() => ({ content: [] })),
+      // Sparkline needs the historical snapshot list (date + size). For
+      // ENTRA_USER parents the real content bytes live on Tier 2 children
+      // (USER_MAIL / USER_ONEDRIVE / …), not on the parent itself — so
+      // we ask the backend to include child snapshots. Other resource
+      // kinds (Tier 1 MAILBOX, etc.) have no children and the flag is a
+      // no-op for them.
+      SnapshotService.listByResource(selectedResource.id, 1, 200, true).catch(() => ({ content: [] })),
       SnapshotService.getContentSnapshots(selectedResource.id),
     ])
       .then(([list, content]) => {
@@ -2498,9 +2503,27 @@ export default function Recovery() {
                   {/* afi-style size panel: total + 1w/1m/1y deltas + 7-day sparkline
                       centered on today. All derived client-side from the `snapshots`
                       array already loaded for this resource. */}
+                  {/* Total bytes: parent's own storage_bytes is often tiny
+                      for ENTRA_USER rows (just metadata). The real content
+                      bytes are split across Tier 2 children; contentSnapshots
+                      has the per-tab latest-snapshot bytesTotal. Sum those
+                      plus the parent row itself so the headline "Backup
+                      size" reflects what the user actually has. */}
                   <BackupSizeSummary
                     snapshots={snapshots}
-                    totalBytes={selectedResource.storage_bytes}
+                    totalBytes={(() => {
+                      const parentBytes = selectedResource.storage_bytes || 0;
+                      const childBytes = contentSnapshots
+                        ? Object.values(contentSnapshots.byContent).reduce(
+                            (sum, entry) => sum + (entry?.bytesTotal || 0),
+                            0,
+                          )
+                        : 0;
+                      // If child bytes are non-zero they're the source of
+                      // truth (contentSnapshots already rolls up per tab);
+                      // otherwise fall back to the parent's own size.
+                      return childBytes > 0 ? childBytes : parentBytes;
+                    })()}
                   />
 
                   {/* Snapshot picker is gone — the user no longer chooses a
