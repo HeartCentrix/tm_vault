@@ -6,6 +6,7 @@ import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import SlaWizard from '../components/SlaWizard';
 import ResourceGroupManager from '../components/ResourceGroupManager';
+import { fmtLocalDate } from '../utils/datetime';
 import './Settings.css';
 
 type SettingsTab = 'sla' | 'info' | 'admin-consent' | 'resource-groups';
@@ -195,8 +196,7 @@ export default function Settings() {
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
+    return fmtLocalDate(dateStr, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

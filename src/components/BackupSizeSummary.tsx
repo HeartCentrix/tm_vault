@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { SnapshotItem } from '../services/snapshot';
+import { parseAsUtc } from '../utils/datetime';
 import './BackupSizeSummary.css';
 
 interface Props {
@@ -66,7 +67,11 @@ export default function BackupSizeSummary({ snapshots, totalBytes }: Props) {
     // (gap in the chart) so we don't draw a bogus zero-bar ahead of time.
     const parsed = snapshots
       .filter((s) => !!s.createdAt)
-      .map((s) => ({ ts: new Date(s.createdAt).getTime(), size: s.size || 0 }))
+      .map((s) => {
+        const d = parseAsUtc(s.createdAt);
+        return { ts: d ? d.getTime() : NaN, size: s.size || 0 };
+      })
+      .filter((x) => !isNaN(x.ts))
       .sort((a, b) => a.ts - b.ts);
 
     const series = days.map((d) => {

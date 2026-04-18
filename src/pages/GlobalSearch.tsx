@@ -5,6 +5,7 @@ import { SearchService, type SearchResult } from '../services/search';
 import { RestoreModal } from '../components/RestoreModal';
 import { getResources } from '../services/resource';
 import type { ResourceItem } from '../services/resource';
+import { fmtLocalDate } from '../utils/datetime';
 
 type WorkloadType = 'emails' | 'files' | 'chats' | 'channel' | 'copilot' | 'calendar' | 'contacts' | 'exchange' | 'planner';
 
@@ -71,8 +72,7 @@ const workloads: WorkloadOption[] = [
 ];
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return fmtLocalDate(dateStr, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatFileSize(bytes: number): string {

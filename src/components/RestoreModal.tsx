@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import './RestoreModal.css';
 import { RestoreService, type RestoreType } from '../services/restore';
 import { getResourcesByType, type ResourceItem } from '../services/resource';
+import { fmtLocalDate } from '../utils/datetime';
 
 interface RestoreModalProps {
   isOpen: boolean;
@@ -182,7 +183,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   };
 
   const dateLabel = snapshotDate
-    ? new Date(snapshotDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    ? fmtLocalDate(snapshotDate, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
     : '';
 
   if (success) {

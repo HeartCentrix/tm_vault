@@ -1477,6 +1477,16 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   box-sizing: border-box;
 }
 
+/* Attachment chips under a chat message — reuses .email-ol-attach-chip
+   styling. Wraps so a long filename doesn't blow out the row. */
+.chat-item-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  max-width: 100%;
+}
+
 
 /* ==================== Email Item Row (Outlook-style message list) ==================== */
 .email-item-row {
@@ -1818,6 +1828,11 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   height: 100%;
   background: #fff;
   overflow: hidden;
+  /* Consume every pixel of horizontal space to the right of the filter
+     sidebar. Cells inside use fixed heights, so more width = wider
+     cells, not taller. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Nav bar */
@@ -1893,15 +1908,19 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   color: #fff;
 }
 
-/* Month grid */
+/* Month grid: 7 equal-width columns that stretch to fill the container.
+   Rows are a fixed compact height so cells WIDEN when the window grows
+   but don't also grow taller — keeps the calendar to a predictable
+   vertical footprint regardless of viewport width. */
 .cal-month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: 1fr;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: 110px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   border-top: 1px solid #e2e8f0;
+  width: 100%;
 }
 
 .cal-dow-header {
@@ -1921,12 +1940,26 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .cal-day-cell {
   border-right: 1px solid #f1f5f9;
   border-bottom: 1px solid #f1f5f9;
-  padding: 4px 6px;
-  min-height: 90px;
-  vertical-align: top;
+  padding: 6px 8px;
   position: relative;
   background: #fff;
   transition: background 0.1s;
+  /* Row height is driven by grid-auto-rows on the parent. Removing
+     aspect-ratio lets cells widen freely as the right panel grows,
+     without dragging their height along for the ride. */
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: default;
+}
+
+.cal-day-has-events {
+  cursor: pointer;
+}
+.cal-day-has-events:hover {
+  background: #f8fafc;
 }
 .cal-day-cell:last-child { border-right: none; }
 .cal-day-cell:nth-child(7n) { border-right: none; }
@@ -1960,6 +1993,108 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* Dot-indicator row — shown in place of the old in-cell event chips so
+   every cell stays the same size. Each dot is colored by event type.
+   Hovering the cell shows the full list via the floating tooltip. */
+.cal-day-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  min-height: 0;
+}
+.cal-day-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cal-day-dot-count {
+  font-size: 9px;
+  color: #64748b;
+  margin-left: 2px;
+}
+
+/* Floating popover that tracks the cursor. position: fixed so the
+   inline top/left coordinates we compute from clientX/clientY land
+   exactly where the mouse is, regardless of scroll position or the
+   calendar's own scroll container. pointer-events: none prevents the
+   popover from intercepting mousemove (which would otherwise flicker
+   hover state), but we re-enable pointer-events on interactive rows
+   inside so checkboxes remain clickable. */
+.cal-hover-tooltip {
+  position: fixed;
+  z-index: 1000;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  padding: 8px 0;
+  font-size: 12px;
+  color: #0f172a;
+  min-width: 200px;
+  pointer-events: auto;
+}
+
+.cal-hover-header {
+  padding: 0 12px 6px;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cal-hover-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.cal-hover-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  min-width: 0;
+}
+.cal-hover-row:hover {
+  background: #f8fafc;
+}
+.cal-hover-row.checked {
+  background: #ccfbf1;
+}
+
+.cal-hover-check {
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #0d9488;
+}
+
+.cal-hover-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cal-hover-subject {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-hover-time {
+  font-size: 11px;
+  color: #64748b;
+  flex-shrink: 0;
 }
 
 /* Event chip — colored pill, color driven by --chip-color CSS variable */
