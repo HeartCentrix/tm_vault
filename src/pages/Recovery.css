@@ -1242,10 +1242,15 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 10px 16px 10px 14px;
   border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
   transition: background 0.12s;
+  /* Prevent any child from forcing the row wider than the items panel —
+     critical for letting word-wrap inside chat-item-text actually take effect. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .chat-item-row:hover { background: #f8fafc; }
@@ -1271,17 +1276,14 @@
   flex-shrink: 0;
 }
 
-.chat-item-body {
-  flex: 1;
-  min-width: 0;
-}
-
 .chat-item-header {
+  /* Stack sender + time vertically so a long sender name never pushes the
+     timestamp off-screen. Time gets its own line under the sender. */
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 3px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  margin-bottom: 4px;
 }
 
 .chat-item-sender {
@@ -1297,7 +1299,7 @@
 
 .chat-item-time {
   font-size: 11px;
-  color: #94a3b8;
+  color: #64748b;          /* darker than before (#94a3b8) so it's easier to spot */
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1305,9 +1307,27 @@
 .chat-item-text {
   font-size: 13px;
   color: #475569;
-  white-space: nowrap;
+  /* Wrap long messages dynamically — honor newlines from the HTML→text pass,
+     break long URLs/words when they exceed the container width. No horizontal
+     scroll, no clipping. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+  /* Defensive: even if a child somehow tries to overflow, clip + wrap at
+     the container edge. */
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* Make sure the row's middle column never grows past its parent — without this,
+   intrinsic content sizing can push the flex item wider than the panel. */
+.chat-item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 

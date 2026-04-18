@@ -136,7 +136,7 @@ export const SnapshotService = {
     return res.json();
   },
 
-  async listItems(snapshotId: string, page = 1, size = 50, itemType?: string): Promise<SnapshotItemListResponse> {
+  async listItems(snapshotId: string, page = 1, size = 50, itemType?: string, folderPath?: string): Promise<SnapshotItemListResponse> {
     // Route to content-specific endpoint for richer fields
     const contentEndpoint: Record<string, string> = {
       EMAIL: API.SNAPSHOTS.EMAILS(snapshotId),
@@ -147,7 +147,10 @@ export const SnapshotService = {
     };
     const isContentSpecific = !!(itemType && contentEndpoint[itemType]);
     const base = isContentSpecific ? contentEndpoint[itemType!] : API.SNAPSHOTS.ITEMS(snapshotId);
-    const url = `${base}?page=${page}&size=${size}${itemType && !isContentSpecific ? `&itemType=${itemType}` : ''}`;
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (itemType && !isContentSpecific) params.set('itemType', itemType);
+    if (folderPath && folderPath !== 'all') params.set('folderPath', folderPath);
+    const url = `${base}?${params.toString()}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch snapshot items');
     const data = await res.json();

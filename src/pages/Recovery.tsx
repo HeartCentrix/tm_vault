@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SnapshotService, type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent } from '../services/snapshot';
 import { RecoveryService, type RecoveryItem } from '../services/recovery';
@@ -813,7 +813,33 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
   const body = raw.body?.content || item.preview || item.body || '';
   const isHtml = raw.body?.contentType === 'html';
   const sentAt = raw.createdDateTime || item.date;
-  const displayBody = isHtml ? body.replace(/<[^>]+>/g, ' ').trim() : body;
+  // Strip HTML tags AND decode entities (&nbsp;, &amp;, &lt;, etc.) safely.
+  //
+  // Step 1: Pre-rewrite block-level closings as newlines so paragraph and line
+  // breaks from the source HTML survive the text extraction. Without this,
+  // textContent concatenates everything into one unbreakable line, which then
+  // refuses to wrap in any panel width.
+  //
+  // Step 2: Use a detached <div> so the browser's HTML parser handles entity
+  // decoding (&amp; → &, &lt; → <, etc.). textContent is XSS-safe because we
+  // never insert the parsed nodes into the live DOM — we only read text out.
+  //
+  // Step 3: Normalize \u00a0 (decoded &nbsp;) to regular space so wrap points
+  // exist at every word boundary.
+  const displayBody = isHtml
+    ? (() => {
+        const withBreaks = body
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
+          .replace(/<\/(ul|ol|table)>/gi, '\n');
+        const d = document.createElement('div');
+        d.innerHTML = withBreaks;
+        return (d.textContent || '')
+          .replace(/\u00a0/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')   // collapse runs of blank lines
+          .trim();
+      })()
+    : body;
 
   return (
     <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
@@ -824,7 +850,17 @@ function ChatItemRow({ item, selected, onSelect, onCheck }: {
           <span className="chat-item-sender">{sender}{senderEmail && senderEmail !== sender ? ` <${senderEmail}>` : ''}</span>
           {sentAt && (
             <span className="chat-item-time">
-              {new Date(sentAt).toLocaleString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
+              {/* Render in UTC — the canonical time the sender hit send.
+                  Avoids the observer's browser timezone shifting the value
+                  (which is misleading when reviewing chat history across
+                  different reviewers / regions). Sender's actual local time
+                  would require their per-user mailboxSettings.timeZone, which
+                  Microsoft Graph doesn't include in chat-message payloads. */}
+              {new Date(sentAt).toLocaleString('en-US', {
+                month:'short', day:'numeric', year:'numeric',
+                hour:'numeric', minute:'2-digit', hour12:true,
+                timeZone: 'UTC'
+              })} UTC
             </span>
           )}
         </div>
@@ -1168,6 +1204,13 @@ export default function Recovery() {
   const [itemCount, setItemCount] = useState(0);
   const [itemPage, setItemPage] = useState(1);
   const [itemTotalPages, setItemTotalPages] = useState(1);
+  // Infinite-scroll state: load page 1 fresh, append subsequent pages as the
+  // user scrolls past 60% of the loaded items (Slack/Teams/WhatsApp pattern).
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const itemListRef = useRef<HTMLDivElement>(null);
+  // Invalidates in-flight fetches when the user changes folder/snapshot mid-load.
+  const requestKeyRef = useRef(0);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
@@ -1209,9 +1252,13 @@ export default function Recovery() {
         setSnapshots(data.content);
         if (data.content.length > 0) {
           const snapshotParam = searchParams.get('snapshotId');
+          // Prefer the newest non-empty snapshot. Empty incrementals (chat
+          // delta with no new messages, etc.) otherwise hide the populated
+          // backup behind a "0 items" view.
+          const newestPopulated = data.content.find(s => (s.itemCount ?? 0) > 0);
           const initial = snapshotParam && data.content.find(s => s.id === snapshotParam)
             ? snapshotParam
-            : data.content[0].id;
+            : (newestPopulated?.id ?? data.content[0].id);
           setSelectedSnapshotId(initial);
         } else {
           setSelectedSnapshotId('');
@@ -1241,32 +1288,71 @@ export default function Recovery() {
       .finally(() => setContentTypesLoading(false));
   }, [selectedSnapshotId]);
 
-  // Load recovery items with server-side pagination
+  // Fresh load (page 1) when snapshot, resource, content type, or folder changes.
+  // Replaces the items array; resets pagination state.
   useEffect(() => {
     if (!selectedSnapshotId || !selectedResource || !activeContentType) {
       setRecoveryItems([]);
       setItemCount(0);
       setItemTotalPages(1);
+      setHasMore(false);
+      setItemPage(1);
       return;
     }
 
-    const pageSize = activeContentType === 'CALENDAR_EVENT' ? 500 : 50;
+    const myKey = ++requestKeyRef.current;
+    setItemPage(1);
+    setSelectedItem(null);
     setItemsLoading(true);
-    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType)
+    if (itemListRef.current) itemListRef.current.scrollTop = 0;
+    const pageSize = activeContentType === 'CALENDAR_EVENT' ? 500 : 50;
+    SnapshotService.listItems(selectedSnapshotId, 1, pageSize, activeContentType, selectedFolder)
       .then((data) => {
+        if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
         setRecoveryItems(data.content);
         setItemCount(data.totalElements);
         setItemTotalPages(data.totalPages || 1);
+        setHasMore(1 < (data.totalPages || 1));
       })
       .catch((error) => {
+        if (myKey !== requestKeyRef.current) return;
         console.error('Failed to load items:', error);
         setRecoveryItems([]);
       })
-      .finally(() => setItemsLoading(false));
-  }, [selectedSnapshotId, selectedResource, activeContentType, itemPage]);
+      .finally(() => {
+        if (myKey === requestKeyRef.current) setItemsLoading(false);
+      });
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder]);
 
-  // Reset item page when content type or snapshot changes
-  useEffect(() => { setItemPage(1); setSelectedItem(null); }, [selectedSnapshotId, activeContentType]);
+  // Append next page when itemPage advances (driven by infinite scroll handler).
+  useEffect(() => {
+    if (itemPage <= 1 || !selectedSnapshotId || !activeContentType) return;
+    const myKey = requestKeyRef.current;
+    setLoadingMore(true);
+    const pageSize = activeContentType === 'CALENDAR_EVENT' ? 500 : 50;
+    SnapshotService.listItems(selectedSnapshotId, itemPage, pageSize, activeContentType, selectedFolder)
+      .then((data) => {
+        if (myKey !== requestKeyRef.current) return;  // filter changed mid-fetch
+        setRecoveryItems(prev => [...prev, ...data.content]);
+        setHasMore(itemPage < (data.totalPages || 1));
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (myKey === requestKeyRef.current) setLoadingMore(false);
+      });
+  }, [itemPage]);
+
+  // Bump itemPage when the items pane is scrolled past 60% — triggers the
+  // append effect above. Guarded by hasMore + loadingMore so we don't re-fire
+  // while a page is in-flight.
+  const handleItemListScroll = useCallback(() => {
+    const el = itemListRef.current;
+    if (!el || loadingMore || !hasMore) return;
+    const fraction = (el.scrollTop + el.clientHeight) / Math.max(1, el.scrollHeight);
+    if (fraction >= 0.6) {
+      setItemPage(p => p + 1);
+    }
+  }, [loadingMore, hasMore]);
 
   // Load folders for selected snapshot (all folders, not filtered by content type)
   useEffect(() => {
@@ -1773,20 +1859,13 @@ export default function Recovery() {
                       />
                     </label>
                     <span className="item-count">
-                      {selectedItems.size > 0 ? `${selectedItems.size} / ${itemCount} selected` : `Items: ${itemCount}`}
+                      {selectedItems.size > 0
+                        ? `${selectedItems.size} / ${itemCount} selected`
+                        : `Showing ${recoveryItems.length} of ${itemCount}`}
                     </span>
-                    <div className="item-pagination">
-                      <button className="pagination-btn" disabled={itemPage <= 1} onClick={() => setItemPage(p => p - 1)}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polyline points="15 18 9 12 15 6" /></svg>
-                      </button>
-                      <span className="pagination-page">{itemPage} / {itemTotalPages}</span>
-                      <button className="pagination-btn" disabled={itemPage >= itemTotalPages} onClick={() => setItemPage(p => p + 1)}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><polyline points="9 18 15 12 9 6" /></svg>
-                      </button>
-                    </div>
                   </div>
 
-                  <div className="item-list">
+                  <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
                     {itemsLoading ? (
                       <div className="loading-container">
                         <div className="spinner" />
@@ -1843,6 +1922,16 @@ export default function Recovery() {
                         );
                         });
                       })()
+                    )}
+                    {loadingMore && (
+                      <div className="loading-more" style={{ padding: '12px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+                        Loading more…
+                      </div>
+                    )}
+                    {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                      <div style={{ padding: '8px', textAlign: 'center', color: '#999', fontSize: '12px' }}>
+                        End of list
+                      </div>
                     )}
                   </div>
                 </div>
