@@ -165,6 +165,22 @@ export const SnapshotService = {
     return res.json();
   },
 
+  async getItemAttachments(snapshotId: string, itemId: string): Promise<Array<{
+    id: string;
+    name: string;
+    size: number;
+    kind: string | null;
+    contentType: string | null;
+    isInline: boolean;
+    resolved: boolean;
+    sourceUrl: string | null;
+  }>> {
+    const url = API.SNAPSHOTS.ITEM_ATTACHMENTS(snapshotId, itemId);
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch attachments: ${res.statusText}`);
+    return res.json();
+  },
+
   async getContentSnapshots(resourceId: string): Promise<ContentSnapshotsResponse> {
     const url = API.SNAPSHOTS.CONTENT_SNAPSHOTS(resourceId);
     const res = await fetch(url, { headers: getAuthHeaders() });

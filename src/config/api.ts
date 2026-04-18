@@ -86,6 +86,8 @@ export const API = {
     DETAIL: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}`,
     ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
+    ITEM_ATTACHMENTS: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/attachments`,
+    ITEM_CONTENT_DOWNLOAD: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/content?download=1`,
     FOLDERS: `${API_URL}/resources/snapshots/folders`,
     // Five fixed per-content-type endpoints — replace the dynamic
     // /content-types lookup. Recovery hardcodes its tabs and queries these.
