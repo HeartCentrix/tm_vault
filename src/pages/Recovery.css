@@ -1908,30 +1908,40 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   color: #fff;
 }
 
-/* Month grid: 7 equal-width columns that stretch to fill the container.
-   Rows are a fixed compact height so cells WIDEN when the window grows
-   but don't also grow taller — keeps the calendar to a predictable
-   vertical footprint regardless of viewport width. */
+/* Day-of-week header row. Auto-height (compact) so the grid below gets
+   the rest of the vertical space. Separate grid so it doesn't participate
+   in the 1fr row distribution of the week grid. */
+.cal-month-dow-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  flex-shrink: 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  width: 100%;
+}
+
+/* Month grid: 7 equal-width columns and rows that share the remaining
+   vertical space equally. overflow: hidden so cells never push the grid
+   off-screen — per-cell overflow-hidden clips any overflowing event
+   names. */
 .cal-month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-auto-rows: 110px;
-  flex: 1;
+  grid-auto-rows: minmax(0, 1fr);
+  flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  border-top: 1px solid #e2e8f0;
+  overflow: hidden;
   width: 100%;
 }
 
 .cal-dow-header {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: #64748b;
   text-align: left;
-  padding: 6px 8px 5px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 4px 6px;
   border-right: 1px solid #f1f5f9;
-  background: #f8fafc;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -1940,18 +1950,20 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .cal-day-cell {
   border-right: 1px solid #f1f5f9;
   border-bottom: 1px solid #f1f5f9;
-  padding: 6px 8px;
+  padding: 3px 5px;
   position: relative;
   background: #fff;
   transition: background 0.1s;
-  /* Row height is driven by grid-auto-rows on the parent. Removing
-     aspect-ratio lets cells widen freely as the right panel grows,
-     without dragging their height along for the ride. */
+  /* Row height is driven by grid-auto-rows: 1fr on the parent, so cells
+     share the available vertical space equally. min-height: 0 lets rows
+     actually shrink below their content size, and overflow: hidden clips
+     events that don't fit instead of forcing the grid to scroll. */
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   cursor: default;
 }
 
@@ -1972,49 +1984,47 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   background: #0d9488;
   color: #fff;
   border-radius: 50%;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .cal-day-number {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: #334155;
   display: inline-block;
-  min-width: 22px;
+  min-width: 18px;
   text-align: center;
-  margin-bottom: 3px;
-}
-
-.cal-day-events {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* Dot-indicator row — shown in place of the old in-cell event chips so
-   every cell stays the same size. Each dot is colored by event type.
-   Hovering the cell shows the full list via the floating tooltip. */
-.cal-day-dots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  align-items: center;
-  min-height: 0;
-}
-.cal-day-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
   flex-shrink: 0;
 }
-.cal-day-dot-count {
-  font-size: 9px;
-  color: #64748b;
-  margin-left: 2px;
+
+/* Event-name list inside a cell. Flex column so each label stacks, and
+   overflow: hidden lets extra labels disappear off the bottom when the
+   row is short on the smaller viewports the user wants to support. */
+.cal-day-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.cal-day-event-label {
+  font-size: 10px;
+  line-height: 1.25;
+  color: #1e293b;
+  padding: 1px 4px 1px 5px;
+  border-left: 3px solid #16a34a;
+  background: #f1f5f9;
+  border-radius: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 /* Floating popover that tracks the cursor. position: fixed so the

@@ -1382,17 +1382,18 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
                 Clear filters ({activeFilters.size})
               </button>
             )}
-            <div className="cal-view-toggle">
-              <button className="cal-view-btn active">Month</button>
-            </div>
           </div>
         </div>
 
-        {/* Grid */}
-        <div className="cal-month-grid">
+        {/* DOW row — separate from the cell grid so the 6 week rows can
+            share the remaining vertical space equally without a scrollbar. */}
+        <div className="cal-month-dow-row">
           {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
             <div key={d} className="cal-dow-header">{d}</div>
           ))}
+        </div>
+
+        <div className="cal-month-grid">
           {cells.map((day, i) => {
             const dayEvents = day ? (eventsByDay[day] || []) : [];
             const hasEvents = dayEvents.length > 0;
@@ -1408,17 +1409,17 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
                   <>
                     <span className="cal-day-number">{day}</span>
                     {hasEvents && (
-                      <div className="cal-day-dots" aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}>
-                        {dayEvents.slice(0, 5).map(ev => (
-                          <span
+                      <div className="cal-day-events-list" aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}>
+                        {dayEvents.map(ev => (
+                          <div
                             key={ev.id}
-                            className="cal-day-dot"
-                            style={{ background: EVENT_TYPE_COLORS[ev.eventType] || '#16a34a' }}
-                          />
+                            className="cal-day-event-label"
+                            style={{ borderLeftColor: EVENT_TYPE_COLORS[ev.eventType] || '#16a34a' }}
+                            title={ev.subject || '(no subject)'}
+                          >
+                            {ev.subject || '(no subject)'}
+                          </div>
                         ))}
-                        {dayEvents.length > 5 && (
-                          <span className="cal-day-dot-count">+{dayEvents.length - 5}</span>
-                        )}
                       </div>
                     )}
                   </>
