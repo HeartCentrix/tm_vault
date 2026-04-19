@@ -51,8 +51,11 @@ const M365_TAB_TYPE_MAP: Record<string, string[]> = {
   sharepoint: ['SHAREPOINT_SITE'],
   // Groups & Teams: group containers + channel containers (chats moved to Tier 2).
   groups: ['ENTRA_GROUP', 'M365_GROUP', 'TEAMS_CHANNEL'],
-  // Entra ID: user accounts + group identities.
-  entra: ['ENTRA_USER', 'ENTRA_GROUP', 'M365_GROUP'],
+  // Entra ID: a single per-tenant "Azure Active Directory" row — mirrors
+  // AFI's office_directory model. All Entra-wide content (users, groups,
+  // roles, applications, audit, etc.) lives under this one resource as
+  // snapshot items, exposed via 8 content-tabs on the Recovery page.
+  entra: ['ENTRA_DIRECTORY'],
   // Power Platform — DLP/Copilot/Planner aren't in Tier 1.
   power: ['POWER_BI', 'POWER_APPS', 'POWER_AUTOMATE'],
   // Auto-protection bucket: Entra groups + dynamic groups.
@@ -79,6 +82,7 @@ const M365_ALL_TYPES = [
   'ENTRA_GROUP',
   'M365_GROUP',
   'TEAMS_CHANNEL',
+  'ENTRA_DIRECTORY',
   'POWER_BI',
   'POWER_APPS',
   'POWER_AUTOMATE',

@@ -6,6 +6,7 @@ import {
   type ContentSnapshotsResponse,
 } from '../services/snapshot';
 import { type RecoveryItem } from '../services/recovery';
+import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
@@ -39,6 +40,7 @@ function getKindLabel(kind: string): string {
     sharepoint_site: 'SharePoint',
     teams_channel: 'Teams channel',
     teams_chat: 'Teams chat',
+    entra_directory: 'Azure Active Directory',
     power_bi: 'Power BI workspace',
     azure_vm: 'Azure VM',
     azure_sql: 'Azure SQL',
@@ -2615,6 +2617,946 @@ function GroupTeamsView({
   void allChecked;
 }
 
+/**
+ * Azure Active Directory content view — 8 tabs matching AFI's office
+ * directory model. Each tab filters snapshot items by their item_type.
+ */
+type EntraTab = 'users' | 'groups' | 'roles' | 'security' | 'audit' | 'applications' | 'intune' | 'adminunits';
+const ENTRA_TAB_LABELS: Record<EntraTab, string> = {
+  users: 'Users',
+  groups: 'Groups',
+  roles: 'Roles',
+  security: 'Security',
+  audit: 'Audit',
+  applications: 'Applications',
+  intune: 'Intune',
+  adminunits: 'Administrative Units',
+};
+const ENTRA_TAB_TYPES: Record<EntraTab, string> = {
+  users: 'ENTRA_DIR_USER',
+  groups: 'ENTRA_DIR_GROUP',
+  roles: 'ENTRA_DIR_ROLE',
+  security: 'ENTRA_DIR_SECURITY',
+  audit: 'ENTRA_DIR_AUDIT',
+  applications: 'ENTRA_DIR_APPLICATION',
+  intune: 'ENTRA_DIR_INTUNE',
+  adminunits: 'ENTRA_DIR_ADMIN_UNIT',
+};
+
+type UserCategory = 'user' | 'shared' | 'room' | 'equipment';
+const USER_CATEGORY_LABELS: Record<UserCategory, string> = {
+  user: 'User mailboxes',
+  shared: 'Shared mailboxes',
+  room: 'Rooms',
+  equipment: 'Equipment',
+};
+
+// ────────────────────────────────────────────────────────────────
+// Shared pieces for Entra Directory tabs — AFI parity.
+// Every tab except Audit uses the same three-panel shape, so we
+// centralise the middle-row card + right-pane detail card here.
+// ────────────────────────────────────────────────────────────────
+
+function EntraTwoLineRow({
+  name, sub, selected, checked, onSelect, onToggleCheck, badge,
+}: {
+  name: string;
+  sub?: string;
+  selected: boolean;
+  checked: boolean;
+  onSelect: () => void;
+  onToggleCheck: (e: React.MouseEvent) => void;
+  badge?: string | null;
+}) {
+  return (
+    <div className={`entra-user-row ${selected ? 'selected' : ''}`} onClick={onSelect}>
+      <input
+        className="entra-user-check"
+        type="checkbox"
+        checked={checked}
+        onChange={() => {}}
+        onClick={onToggleCheck}
+      />
+      <div className="entra-user-text">
+        <div className="entra-user-name">{name}</div>
+        {sub && <div className="entra-user-upn">{sub}</div>}
+      </div>
+      {badge && <span className="entra-user-badge">{badge}</span>}
+    </div>
+  );
+}
+
+function EntraListHeader({ count }: { count: number }) {
+  return (
+    <div className="entra-user-list-header">
+      <span className="entra-user-count">Items: {count}</span>
+      <span className="entra-user-sort">Sort by: Display Name</span>
+    </div>
+  );
+}
+
+function EntraDetailCard({
+  title, fields, copyableField,
+}: {
+  title: string;
+  fields: Array<{ label: string; value: React.ReactNode; hidden?: boolean }>;
+  copyableField?: string;
+}) {
+  const initials = (title || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('');
+  return (
+    <div className="entra-user-detail">
+      <div className="entra-user-detail-header">
+        <div className="entra-user-avatar" aria-hidden>{initials}</div>
+        <div className="entra-user-detail-title">{title}</div>
+      </div>
+      <div className="entra-user-detail-body">
+        {fields.filter(f => !f.hidden && f.value !== undefined && f.value !== null && f.value !== '').map((f, i) => (
+          <div key={i} className="entra-user-field">
+            <span className="entra-user-field-label">{f.label}:</span>
+            <span className="entra-user-field-val">
+              {f.value}
+              {copyableField === f.label && typeof f.value === 'string' && (
+                <button
+                  className="entra-user-copy"
+                  title="Copy"
+                  onClick={() => navigator.clipboard?.writeText(f.value as string)}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 13, height: 13 }}>
+                    <rect x="4" y="4" width="9" height="9" rx="1.2" />
+                    <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2h7" />
+                  </svg>
+                </button>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Generic left-buckets → middle-rows → right-detail panel for an
+ * Entra tab. Caller supplies the per-tab bucketing, row shape,
+ * and detail-card field list. Keeps the 7 AFI-parity tabs DRY.
+ */
+function EntraBucketView<T extends { id: string; name?: string | null; metadata?: any }>({
+  buckets,
+  rows,
+  bucketClassifier,
+  rowSub,
+  rowBadge,
+  detailFields,
+  detailTitle,
+  copyableField,
+  emptyListText,
+  emptyRightText,
+  selectedItems,
+  onToggleItem,
+  onSelectAll,
+}: {
+  buckets: string[];
+  rows: T[];
+  bucketClassifier: (row: T) => string;
+  rowSub: (row: T) => string | undefined;
+  rowBadge?: (row: T) => string | null | undefined;
+  detailFields: (row: T) => Array<{ label: string; value: React.ReactNode }>;
+  detailTitle: (row: T) => string;
+  copyableField?: string;
+  emptyListText: string;
+  emptyRightText: string;
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [bucket, setBucket] = useState<string>(buckets[0] || '');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => { setSelectedId(null); }, [bucket]);
+
+  const bucketed = useMemo(() => {
+    const out: Record<string, T[]> = Object.fromEntries(buckets.map(b => [b, []]));
+    for (const r of rows) {
+      const b = bucketClassifier(r);
+      if (out[b]) out[b].push(r);
+    }
+    for (const b of buckets) out[b].sort((a, b2) => String(a.name || '').localeCompare(String(b2.name || '')));
+    return out;
+  }, [rows, buckets, bucketClassifier]);
+
+  const visible = bucketed[bucket] || [];
+  const selected = visible.find(r => r.id === selectedId) || null;
+  const allChecked = visible.length > 0 && visible.every(r => selectedItems.has(r.id));
+
+  return (
+    <div className="three-panel-layout">
+      <div className="panel-left">
+        <div className="folder-list">
+          {buckets.map(b => {
+            const count = (bucketed[b] || []).length;
+            return (
+              <button
+                key={b}
+                className={`folder-item ${bucket === b ? 'active' : ''}`}
+                onClick={() => setBucket(b)}
+              >
+                <span className="folder-name">{b}</span>
+                {count > 0 && <span className="folder-count">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="panel-middle">
+        <div className="entra-user-list-header">
+          <label className="select-all-wrap" title="Select all">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={e => onSelectAll(visible.map(r => r.id), e.target.checked)}
+            />
+          </label>
+          <span className="entra-user-count">Items: {visible.length}</span>
+          <span className="entra-user-sort">Sort by: Display Name</span>
+        </div>
+        <div className="item-list">
+          {visible.length === 0 ? (
+            <div className="empty-state"><p>{emptyListText}</p></div>
+          ) : (
+            visible.map((r: T) => (
+              <EntraTwoLineRow
+                key={r.id}
+                name={r.name || '(unnamed)'}
+                sub={rowSub(r)}
+                selected={selectedId === r.id}
+                checked={selectedItems.has(r.id)}
+                onSelect={() => setSelectedId(r.id)}
+                onToggleCheck={(e) => { e.stopPropagation(); onToggleItem(r.id); }}
+                badge={rowBadge?.(r)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+      <div className="panel-right">
+        {selected ? (
+          <EntraDetailCard
+            title={detailTitle(selected)}
+            fields={detailFields(selected)}
+            copyableField={copyableField}
+          />
+        ) : (
+          <div className="empty-preview"><p>{emptyRightText}</p></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EntraDirectoryView({
+  resourceId, tenantId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  tenantId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<EntraTab>('users');
+
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!latestSnapshot) { setItems([]); return; }
+    setLoading(true); setError(null);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
+      .then(data => setItems(data.content || []))
+      .catch(err => { setError(err.message || 'Failed to load'); setItems([]); })
+      .finally(() => setLoading(false));
+  }, [latestSnapshot?.id]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<EntraTab, number> = {
+      users: 0, groups: 0, roles: 0, security: 0,
+      audit: 0, applications: 0, intune: 0, adminunits: 0,
+    };
+    for (const it of items) {
+      for (const tab of Object.keys(ENTRA_TAB_TYPES) as EntraTab[]) {
+        if (it.itemType === ENTRA_TAB_TYPES[tab]) counts[tab]++;
+      }
+    }
+    return counts;
+  }, [items]);
+
+  const visibleItems = useMemo(
+    () => items.filter(i => i.itemType === ENTRA_TAB_TYPES[activeTab]),
+    [items, activeTab],
+  );
+
+  const allChecked = visibleItems.length > 0 && visibleItems.every(i => selectedItems.has(i.id));
+
+  // ── Users tab: classify ENTRA_DIR_USER rows into mailbox buckets by
+  //    cross-referencing live MAILBOX / SHARED_MAILBOX / ROOM_MAILBOX
+  //    resources (matched on email / userPrincipalName). Users without a
+  //    mailbox resource fall into "User mailboxes" by default.
+  const [userCategory, setUserCategory] = useState<UserCategory>('user');
+  const [mailboxTypeByEmail, setMailboxTypeByEmail] = useState<Record<string, UserCategory>>({});
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'users') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [shared, rooms] = await Promise.all([
+          getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 2000).catch(() => ({ items: [] })),
+          getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 2000).catch(() => ({ items: [] })),
+        ]);
+        if (cancelled) return;
+        const map: Record<string, UserCategory> = {};
+        for (const r of (shared.items || [])) {
+          const e = (r.email || r.name || '').toLowerCase();
+          if (e) map[e] = 'shared';
+        }
+        for (const r of (rooms.items || [])) {
+          const e = (r.email || r.name || '').toLowerCase();
+          if (e) map[e] = 'room';
+        }
+        setMailboxTypeByEmail(map);
+      } catch {
+        setMailboxTypeByEmail({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, tenantId]);
+
+  const usersByCategory = useMemo(() => {
+    const out: Record<UserCategory, any[]> = { user: [], shared: [], room: [], equipment: [] };
+    const userRows = items.filter(i => i.itemType === 'ENTRA_DIR_USER');
+    for (const u of userRows) {
+      const raw = u.metadata?.raw || {};
+      const email = String(raw.mail || raw.userPrincipalName || '').toLowerCase();
+      const cat = mailboxTypeByEmail[email] || 'user';
+      out[cat].push(u);
+    }
+    for (const c of Object.keys(out) as UserCategory[]) {
+      out[c].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    }
+    return out;
+  }, [items, mailboxTypeByEmail]);
+
+  const usersInCategory = usersByCategory[userCategory];
+
+  // Reset the selected user when switching categories so the right pane
+  // doesn't keep showing a user no longer in the list.
+  useEffect(() => { setSelectedUserId(null); }, [userCategory]);
+
+  const selectedUser = useMemo(
+    () => usersInCategory.find(u => u.id === selectedUserId) || null,
+    [usersInCategory, selectedUserId],
+  );
+
+  return (
+    <>
+      <div className="content-type-tabs">
+        {(Object.keys(ENTRA_TAB_LABELS) as EntraTab[]).map(tab => {
+          const count = tabCounts[tab];
+          return (
+            <button
+              key={tab}
+              className={`content-tab ${activeTab === tab ? 'active' : ''}${count ? '' : ' content-tab-empty'}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {ENTRA_TAB_LABELS[tab]}
+              {count > 0 && <span className="content-tab-count">{count.toLocaleString()}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {activeTab === 'users' ? (
+        /* Users tab — matches AFI's 3-panel layout:
+             Left  = mailbox buckets (User / Shared / Rooms / Equipment)
+             Mid   = accounts in the selected bucket (2-line rows)
+             Right = avatar + name header + Account: label-value card
+        */
+        <div className="three-panel-layout">
+          <div className="panel-left">
+            <div className="folder-list">
+              {(Object.keys(USER_CATEGORY_LABELS) as UserCategory[]).map(c => {
+                const count = usersByCategory[c].length;
+                return (
+                  <button
+                    key={c}
+                    className={`folder-item ${userCategory === c ? 'active' : ''}`}
+                    onClick={() => setUserCategory(c)}
+                  >
+                    <span className="folder-name">{USER_CATEGORY_LABELS[c]}</span>
+                    {count > 0 && <span className="folder-count">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="panel-middle">
+            <div className="entra-user-list-header">
+              <label className="select-all-wrap" title="Select all">
+                <input
+                  type="checkbox"
+                  checked={usersInCategory.length > 0 && usersInCategory.every(u => selectedItems.has(u.id))}
+                  onChange={e => onSelectAll(usersInCategory.map(u => u.id), e.target.checked)}
+                />
+              </label>
+              <span className="entra-user-count">Items: {usersInCategory.length}</span>
+              <span className="entra-user-sort">Sort by: Display Name</span>
+            </div>
+            <div className="item-list">
+              {!latestSnapshot ? (
+                <div className="empty-state"><p>No completed backup for this directory yet.</p></div>
+              ) : loading ? (
+                <div className="loading-container"><div className="spinner" /><p>Loading accounts…</p></div>
+              ) : usersInCategory.length === 0 ? (
+                <div className="empty-state"><p>No accounts in this category.</p></div>
+              ) : (
+                usersInCategory.map((u: any) => {
+                  const raw = u.metadata?.raw || {};
+                  const sub = raw.userPrincipalName || raw.mail || '';
+                  return (
+                    <div
+                      key={u.id}
+                      className={`entra-user-row ${selectedUserId === u.id ? 'selected' : ''}`}
+                      onClick={() => setSelectedUserId(u.id)}
+                    >
+                      <input
+                        className="entra-user-check"
+                        type="checkbox"
+                        checked={selectedItems.has(u.id)}
+                        onChange={() => {}}
+                        onClick={(e) => { e.stopPropagation(); onToggleItem(u.id); }}
+                      />
+                      <div className="entra-user-text">
+                        <div className="entra-user-name">{raw.displayName || u.name}</div>
+                        <div className="entra-user-upn">{sub}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="panel-right">
+            {selectedUser ? (() => {
+              const raw = selectedUser.metadata?.raw || {};
+              const displayName = raw.displayName || selectedUser.name;
+              const upn = raw.userPrincipalName || '';
+              const email = raw.mail || '';
+              const objectId = raw.id || selectedUser.externalId || '';
+              const userType = raw.userType || '';
+              const isExternal = String(upn).includes('#EXT#') || userType === 'Guest';
+              // Normalize proxyAddresses -> "address (type)" rows, stripping
+              // the "SMTP:"/"smtp:" prefix and inferring the type.
+              const proxies: Array<{ addr: string; label: string; kind: string }> = [];
+              for (const p of (raw.proxyAddresses || [])) {
+                const s = String(p);
+                const upper = s.startsWith('SMTP:');
+                const lower = s.startsWith('smtp:');
+                const addr = (upper || lower) ? s.slice(5) : s;
+                proxies.push({
+                  addr,
+                  label: addr,
+                  kind: upper ? 'work' : (lower ? 'proxy' : 'other'),
+                });
+              }
+              for (const om of (raw.otherMails || [])) {
+                proxies.push({ addr: String(om), label: String(om), kind: 'other' });
+              }
+              return (
+                <div className="entra-user-detail">
+                  <div className="entra-user-detail-header">
+                    <div className="entra-user-avatar" aria-hidden>
+                      {(displayName || '?').trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]?.toUpperCase() || '').join('')}
+                    </div>
+                    <div className="entra-user-detail-title">{displayName}</div>
+                  </div>
+                  <div className="entra-user-detail-body">
+                    <div className="entra-user-section-header">Account:</div>
+                    <div className="entra-user-field">
+                      <span className="entra-user-field-label">Username:</span>
+                      <span className="entra-user-field-val">{upn || '—'}</span>
+                    </div>
+                    <div className="entra-user-field">
+                      <span className="entra-user-field-label">Email:</span>
+                      <span className="entra-user-field-val">{email || '—'}</span>
+                    </div>
+                    {objectId && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Object ID:</span>
+                        <span className="entra-user-field-val">
+                          {objectId}
+                          <button
+                            className="entra-user-copy"
+                            title="Copy Object ID"
+                            onClick={() => navigator.clipboard?.writeText(objectId)}
+                          >
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 13, height: 13 }}>
+                              <rect x="4" y="4" width="9" height="9" rx="1.2" />
+                              <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2h7" />
+                            </svg>
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                    {proxies.length > 0 && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Other emails:</span>
+                        <span className="entra-user-field-val">
+                          {proxies.map((p, i) => (
+                            <div key={i} className="entra-user-proxy-row">
+                              {p.label} <span className="entra-user-proxy-kind">({p.kind})</span>
+                            </div>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                    {userType && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Type:</span>
+                        <span className="entra-user-field-val">{userType}</span>
+                      </div>
+                    )}
+                    <div className="entra-user-field">
+                      <span className="entra-user-field-label">External:</span>
+                      <span className="entra-user-field-val">{isExternal ? 'Yes' : 'No'}</span>
+                    </div>
+                    {raw.jobTitle && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Job title:</span>
+                        <span className="entra-user-field-val">{raw.jobTitle}</span>
+                      </div>
+                    )}
+                    {raw.department && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Department:</span>
+                        <span className="entra-user-field-val">{raw.department}</span>
+                      </div>
+                    )}
+                    {raw.accountEnabled === false && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Account enabled:</span>
+                        <span className="entra-user-field-val">No</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="empty-preview"><p>Select an account to preview</p></div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'groups' ? (
+        /* Groups — 4 buckets by groupTypes / mailEnabled / securityEnabled.
+           Right panel: Email / Object ID (copy) / Description / Created /
+           Owners / Membership type / Members with "Download all members". */
+        <EntraBucketView
+          buckets={['Microsoft 365', 'Distribution', 'Mail-Enabled Security', 'Security']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const gt = (raw.groupTypes || []).map((t: string) => t.toLowerCase());
+            if (gt.includes('unified')) return 'Microsoft 365';
+            if (raw.mailEnabled && !raw.securityEnabled) return 'Distribution';
+            if (raw.mailEnabled && raw.securityEnabled) return 'Mail-Enabled Security';
+            return 'Security';
+          }}
+          rowSub={(r: any) => r.metadata?.raw?.mail || ''}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const owners = (raw._owners || []).map((o: any) =>
+              `${o.displayName}${o.userPrincipalName ? ` (${o.userPrincipalName})` : ''}`,
+            ).join(', ');
+            const members = (raw._members || []).map((m: any) =>
+              `${m.displayName}${m.userPrincipalName ? ` (${m.userPrincipalName})` : ''}`,
+            ).join(', ');
+            const membership = raw.groupTypes?.includes('DynamicMembership') ? 'Dynamic' : 'Assigned';
+            return [
+              { label: 'Email', value: raw.mail || '' },
+              { label: 'Object ID', value: raw.id || r.externalId || '' },
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Created', value: raw.createdDateTime ? fmtLocal(raw.createdDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+              { label: 'Owners', value: owners || '' },
+              { label: 'Membership type', value: membership },
+              { label: 'Members', value: raw._memberCount > 0 ? `${members}${raw._memberCount >= 50 ? ` (+ more, ${raw._memberCount} shown)` : ''}` : '' },
+            ];
+          }}
+          copyableField="Object ID"
+          emptyListText="No groups in this category."
+          emptyRightText="Select a group to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'roles' ? (
+        /* Roles — single bucket. Right panel: Description + Privileges. */
+        <EntraBucketView
+          buckets={['Roles']}
+          rows={visibleItems}
+          bucketClassifier={() => 'Roles'}
+          rowSub={(r: any) => {
+            const d = r.metadata?.raw?.description || '';
+            return d.length > 80 ? d.slice(0, 80) + '…' : d;
+          }}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const privList = (raw.rolePermissions || []).flatMap((rp: any) =>
+              (rp.allowedResourceActions || []),
+            );
+            return [
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Privileges', value: privList.length > 0 ? (
+                <div>
+                  {privList.map((p: string, i: number) => <div key={i}>{p}</div>)}
+                </div>
+              ) : '' },
+            ];
+          }}
+          emptyListText="No roles captured."
+          emptyRightText="Select a role to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'security' ? (
+        /* Security — 5 buckets, driven by _sec_bucket tag set at backup. */
+        <EntraBucketView
+          buckets={['Conditional Access', 'Authentication Contexts', 'Authentication Strengths', 'Named Locations', 'Policies']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => r.metadata?.raw?._sec_bucket || 'Policies'}
+          rowSub={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            return `Details: ${raw.state || raw.isBuiltIn ? 'Built-In' : (raw.policyType || 'Custom')}`;
+          }}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            return [
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Created', value: raw.createdDateTime ? fmtLocal(raw.createdDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+              { label: 'Details', value: raw.isBuiltIn ? 'Built-In' : (raw.state || '') },
+            ];
+          }}
+          emptyListText="No security items"
+          emptyRightText="No security items selected"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'audit' ? (
+        /* Audit — full-width table (no right panel). Two buckets in the
+           left rail: Audit Logs / Sign-In Logs. */
+        <EntraAuditView
+          rows={visibleItems}
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'applications' ? (
+        /* Applications — App Registrations vs Enterprise Applications. */
+        <EntraBucketView
+          buckets={['App Registrations', 'Enterprise Applications']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => r.metadata?.raw?._app_bucket || 'App Registrations'}
+          rowSub={(r: any) => r.metadata?.raw?.appId || ''}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            // Flatten requiredResourceAccess into repeating Permission blocks.
+            const perms: React.ReactNode[] = [];
+            for (const rra of (raw.requiredResourceAccess || [])) {
+              const apiName = rra.resourceAppId === '00000003-0000-0000-c000-000000000000' ? 'Microsoft Graph' : rra.resourceAppId;
+              for (const access of (rra.resourceAccess || [])) {
+                perms.push(
+                  <div key={perms.length} className="entra-user-perm-block">
+                    <div className="entra-user-perm-row"><span className="entra-user-perm-label">API Name:</span><span>{apiName}</span></div>
+                    <div className="entra-user-perm-row"><span className="entra-user-perm-label">Claim value:</span><span>{access.id}</span></div>
+                    <div className="entra-user-perm-row"><span className="entra-user-perm-label">Type:</span><span>{access.type === 'Scope' ? 'Delegated' : 'Application'}</span></div>
+                  </div>
+                );
+              }
+            }
+            for (const r2 of (raw.appRoles || [])) {
+              perms.push(
+                <div key={perms.length} className="entra-user-perm-block">
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">API Name:</span><span>{raw.displayName}</span></div>
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">Claim value:</span><span>{r2.value}</span></div>
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">Permission:</span><span>{r2.displayName}</span></div>
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">Type:</span><span>Application</span></div>
+                </div>
+              );
+            }
+            return [
+              { label: 'App ID', value: raw.appId || '' },
+              { label: 'Created', value: raw.createdDateTime ? fmtLocal(raw.createdDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+              { label: 'Permissions', value: perms.length > 0 ? <div>{perms}</div> : '' },
+            ];
+          }}
+          copyableField="App ID"
+          emptyListText="No applications in this category."
+          emptyRightText="Select an application to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'intune' ? (
+        /* Intune — Devices / Compliance Policies / Configuration Profiles. */
+        <EntraBucketView
+          buckets={['Devices', 'Compliance Policies', 'Configuration Profiles']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => r.metadata?.raw?._intune_bucket || 'Devices'}
+          rowSub={(r: any) => {
+            const o = r.metadata?.raw?._owner_display;
+            return o ? `Owner: ${o}` : '';
+          }}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const joinType = raw.trustType === 'AzureAd' ? 'Microsoft Entra joined'
+                           : raw.trustType === 'Workplace' ? 'Microsoft Entra registered'
+                           : raw.trustType || '';
+            return [
+              { label: 'Object ID', value: raw.id || r.externalId || '' },
+              { label: 'Enabled', value: raw.accountEnabled === undefined ? '' : (raw.accountEnabled ? 'Yes' : 'No') },
+              { label: 'OS', value: raw.operatingSystem || '' },
+              { label: 'Version', value: raw.operatingSystemVersion || '' },
+              { label: 'Join type', value: joinType },
+              { label: 'Owner', value: raw._owner_display || '' },
+              { label: 'MDM', value: raw.isManaged === undefined ? '' : (raw.isManaged ? 'Yes' : 'No') },
+              { label: 'Compliant', value: raw.isCompliant === undefined ? '' : (raw.isCompliant ? 'Yes' : 'No') },
+              { label: 'Registered', value: raw.registrationDateTime ? fmtLocal(raw.registrationDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+            ];
+          }}
+          copyableField="Object ID"
+          emptyListText="No items in this category."
+          emptyRightText="Select an item to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : (
+        /* Administrative Units — single bucket. */
+        <EntraBucketView
+          buckets={['Administrative Units']}
+          rows={visibleItems}
+          bucketClassifier={() => 'Administrative Units'}
+          rowSub={(r: any) => r.metadata?.raw?.description || ''}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            return [
+              { label: 'Object ID', value: raw.id || r.externalId || '' },
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Visibility', value: raw.visibility || '' },
+            ];
+          }}
+          copyableField="Object ID"
+          emptyListText="No administrative units"
+          emptyRightText="No administrative unit selected"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Audit tab — full-width table (Name · Time · Initiated By · Category
+ * · Operation Type). Left rail still splits Audit Logs / Sign-In Logs.
+ */
+function EntraAuditView({
+  rows, selectedItems, onToggleItem, onSelectAll,
+}: {
+  rows: any[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [bucket, setBucket] = useState<'Audit Logs' | 'Sign-In Logs'>('Audit Logs');
+  // AFI opens a modal when a row is clicked showing full audit details.
+  const [modalRow, setModalRow] = useState<any | null>(null);
+  const bucketed = useMemo(() => {
+    const out: Record<string, any[]> = { 'Audit Logs': [], 'Sign-In Logs': [] };
+    for (const r of rows) {
+      const b = r.metadata?.raw?._audit_bucket || 'Audit Logs';
+      if (out[b]) out[b].push(r);
+    }
+    return out;
+  }, [rows]);
+  const visible = bucketed[bucket];
+  const allChecked = visible.length > 0 && visible.every(r => selectedItems.has(r.id));
+  return (
+    <div className="three-panel-layout">
+      <div className="panel-left">
+        <div className="folder-list">
+          {(['Audit Logs', 'Sign-In Logs'] as const).map(b => (
+            <button
+              key={b}
+              className={`folder-item ${bucket === b ? 'active' : ''}`}
+              onClick={() => setBucket(b)}
+            >
+              <span className="folder-name">{b}</span>
+              {bucketed[b].length > 0 && <span className="folder-count">{bucketed[b].length}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="panel-middle" style={{ flex: 1 }}>
+        <div className="od-table">
+          <div className="od-table-head entra-audit-head">
+            <div className="od-th od-th-check">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={e => onSelectAll(visible.map(r => r.id), e.target.checked)}
+              />
+            </div>
+            <div className="od-th">Name</div>
+            <div className="od-th">Time</div>
+            <div className="od-th">Initiated By</div>
+            <div className="od-th">Category</div>
+            <div className="od-th">Operation Type</div>
+          </div>
+          <div className="od-table-body">
+            {visible.length === 0 ? (
+              <div className="empty-state" style={{ padding: 32 }}><p>No {bucket.toLowerCase()} captured.</p></div>
+            ) : visible.map((r: any) => {
+              const raw = r.metadata?.raw || {};
+              const name = raw.activityDisplayName || raw.operationName || r.name || '';
+              const time = raw.activityDateTime || raw.createdDateTime || r.createdAt;
+              const who = raw.initiatedBy?.user?.displayName
+                       || raw.initiatedBy?.user?.userPrincipalName
+                       || raw.initiatedBy?.app?.displayName
+                       || raw.userDisplayName
+                       || '—';
+              const cat = raw.category || raw.loggedByService || '—';
+              const op = raw.operationType || raw.status?.errorCode === 0 ? 'Success' : (raw.result || '—');
+              return (
+                <div
+                  key={r.id}
+                  className={`od-row entra-audit-row ${selectedItems.has(r.id) ? 'selected' : ''}`}
+                  onClick={() => setModalRow(r)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.has(r.id)}
+                      onChange={() => onToggleItem(r.id)}
+                    />
+                  </div>
+                  <div className="od-td">{name}</div>
+                  <div className="od-td">{time ? fmtLocal(time, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—'}</div>
+                  <div className="od-td">{who}</div>
+                  <div className="od-td">{cat}</div>
+                  <div className="od-td">{op}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      {modalRow && <EntraAuditModal row={modalRow} onClose={() => setModalRow(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Audit modal — opens when a row is clicked. Mirrors AFI's layout:
+ * Name / Time / Initiated By (with type tag) / Category / Operation Type
+ * / Result / Targets (list) / Details (list of property/value pairs).
+ */
+function EntraAuditModal({ row, onClose }: { row: any; onClose: () => void }) {
+  const raw = row.metadata?.raw || {};
+  const name = raw.activityDisplayName || raw.operationName || row.name || '';
+  const time = raw.activityDateTime || raw.createdDateTime || row.createdAt;
+  const init = raw.initiatedBy || {};
+  const initName = init.user?.displayName || init.user?.userPrincipalName || init.app?.displayName || '—';
+  const initType = init.user ? 'User' : (init.app ? 'Service principal' : '');
+  const cat = raw.category || raw.loggedByService || '';
+  const op = raw.operationType || '';
+  const result = raw.result || (raw.status?.errorCode === 0 ? 'Success' : raw.status?.failureReason) || '';
+  const targets = raw.targetResources || [];
+  const details = raw.additionalDetails || [];
+
+  // Close on ESC.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return (
+    <div className="entra-audit-modal-backdrop" onClick={onClose}>
+      <div className="entra-audit-modal" onClick={e => e.stopPropagation()}>
+        <button className="entra-audit-modal-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="entra-audit-modal-title">Audit Log Entry</div>
+        <div className="entra-audit-modal-body">
+          <div className="entra-audit-field"><span className="entra-audit-label">Name:</span><span>{name}</span></div>
+          <div className="entra-audit-field"><span className="entra-audit-label">Time:</span><span>{time ? fmtLocal(time, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—'}</span></div>
+          <div className="entra-audit-field">
+            <span className="entra-audit-label">Initiated By:</span>
+            <span>{initName}{initType && <span className="entra-audit-initkind"> ({initType})</span>}</span>
+          </div>
+          {cat && <div className="entra-audit-field"><span className="entra-audit-label">Category:</span><span>{cat}</span></div>}
+          {op && <div className="entra-audit-field"><span className="entra-audit-label">Operation Type:</span><span>{op}</span></div>}
+          {result && <div className="entra-audit-field"><span className="entra-audit-label">Result:</span><span>{result}</span></div>}
+          {targets.length > 0 && (
+            <div className="entra-audit-field entra-audit-multi">
+              <span className="entra-audit-label">Targets:</span>
+              <div className="entra-audit-sublist">
+                {targets.map((t: any, i: number) => (
+                  <div key={i} className="entra-audit-subrow">
+                    <span className="entra-audit-sublabel">Type:</span><span>{t.type || 'Unknown type'}</span>
+                    <span className="entra-audit-sublabel">Name:</span><span>{t.displayName || 'Unknown target'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {details.length > 0 && (
+            <div className="entra-audit-field entra-audit-multi">
+              <span className="entra-audit-label">Details:</span>
+              <div className="entra-audit-sublist">
+                {details.map((d: any, i: number) => (
+                  <div key={i} className="entra-audit-subrow">
+                    <span className="entra-audit-sublabel">Property:</span><span>{d.key || ''}</span>
+                    <span className="entra-audit-sublabel">Value:</span><span style={{ wordBreak: 'break-all' }}>{String(d.value || '')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -3449,6 +4391,22 @@ export default function Recovery() {
                    from the generic /snapshots/{id}/files endpoint. */
                 <PowerBiFilesView
                   resourceId={selectedResource.id}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                />
+              ) : selectedResource.kind === 'entra_directory' ? (
+                /* Azure Active Directory singleton: 8-tab header (Users
+                   / Groups / Roles / Security / Audit / Applications /
+                   Intune / Administrative Units). Items filtered from
+                   the latest snapshot by item_type. */
+                <EntraDirectoryView
+                  resourceId={selectedResource.id}
+                  tenantId={tenantId || ''}
                   snapshots={snapshots}
                   selectedItems={selectedItems}
                   onToggleItem={toggleSelectItem}
