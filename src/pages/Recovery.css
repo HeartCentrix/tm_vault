@@ -2671,3 +2671,23 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 .entra-audit-sublabel { color: #475569; }
 
+/* T20: single-select thread checkbox on chats folder list. The base
+   .folder-item above is a button; the has-check variant is a div that
+   wraps a checkbox + an inner folder-name-btn (button-in-button is
+   invalid HTML, hence the split). */
+.folder-check { flex-shrink: 0; margin: 0; accent-color: #2563eb; }
+.folder-item.has-check .folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.folder-name-btn {
+  background: none;
+  border: 0;
+  text-align: left;
+  flex: 1;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
