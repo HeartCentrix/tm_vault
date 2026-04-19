@@ -23,3 +23,8 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.modal-size-chip { margin-top: 8px; color: #4b5563; font-size: 12px; }
+.modal-size-chip .warn { color: #b45309; }
+.modal-progress-bar { height: 6px; background: #e5e7eb; border-radius: 999px; margin-top: 8px; overflow: hidden; }
+.modal-progress-bar > div { height: 100%; background: #2563eb; transition: width 300ms linear; }

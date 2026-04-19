@@ -4547,6 +4547,28 @@ export default function Recovery() {
   const [, setItemTotalPages] = useState(1);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  // T20: single-select thread checkbox on the chats tab's folder list.
+  // `threadPath` is the folder_path of the one ticked thread (null when
+  // none). Paired with selectedItems: when a thread is picked the
+  // per-message selection is narrowed to that thread so the two stay
+  // coherent as download scope.
+  const [threadPath, setThreadPath] = useState<string | null>(null);
+
+  // When a thread is picked, clear any per-message selection belonging
+  // to other threads. Re-runs when recoveryItems changes too so a fresh
+  // page load doesn't leak cross-thread selections.
+  useEffect(() => {
+    if (!threadPath) return;
+    setSelectedItems(prev => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        const it = recoveryItems.find(r => r.id === id);
+        if (it && it.folderPath === threadPath) next.add(id);
+      }
+      return next;
+    });
+  }, [threadPath, recoveryItems]);
+
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
   // Toolbar
@@ -5595,14 +5617,29 @@ export default function Recovery() {
                       return (
                         <>
                           {visibleFolders.map(folder => (
-                            <button
+                            <div
                               key={folder.path}
-                              className={`folder-item ${selectedFolder === folder.path ? 'active' : ''}`}
-                              onClick={() => patchSearchParams({ folder: folder.path })}
+                              className={`folder-item has-check ${selectedFolder === folder.path ? 'active' : ''}`}
                             >
-                              <span className="folder-name">{folder.path}</span>
-                              {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
-                            </button>
+                              {activeContentType === 'chats' && (
+                                <input
+                                  type="checkbox"
+                                  className="folder-check"
+                                  checked={threadPath === folder.path}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => setThreadPath(e.target.checked ? folder.path : null)}
+                                  title="Select this thread for export"
+                                />
+                              )}
+                              <button
+                                className="folder-name-btn"
+                                onClick={() => patchSearchParams({ folder: folder.path })}
+                                title={folder.path}
+                              >
+                                <span className="folder-name">{folder.path}</span>
+                                {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
+                              </button>
+                            </div>
                           ))}
                           {!foldersLoading && visibleFolders.length === 0 && (
                             <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>
@@ -5782,6 +5819,10 @@ export default function Recovery() {
           || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
           || undefined
         }
+        // resourceId + threadPath are forwarded so the modal can scope
+        // the per-thread chat export hitting /exports/chat.
+        resourceId={selectedResource?.id}
+        threadPath={threadPath}
       />
     </>
   );
