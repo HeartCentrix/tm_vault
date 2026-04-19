@@ -3846,6 +3846,7 @@ export default function Recovery() {
         snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
         selectedCount={selectedItems.size}
         contentType={activeContentType as ContentTab}
+        preserveTree={oneDriveFolderSelected.size > 0}
         snapshotDate={
           // Tab-selected snapshot's date lives on contentSnapshots.byContent — the
           // top-level `snapshots` list is just the first 50 from listByResource

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './RestoreModal.css';
 import './DownloadModal.css';
 import { RecoveryService } from '../services/recovery';
@@ -19,6 +19,10 @@ interface DownloadModalProps {
   selectedCount: number;
   contentType: ContentTab;
   snapshotDate?: string;
+  // When true, the current selection came from a folder checkbox (not
+  // individual file rows). Forces the backend to zip even a 1-item
+  // expansion so the folder path is preserved.
+  preserveTree?: boolean;
 }
 
 type Scope = 'selected' | 'all';
@@ -31,6 +35,7 @@ export function DownloadModal({
   selectedCount,
   contentType,
   snapshotDate,
+  preserveTree = false,
 }: DownloadModalProps) {
   const [scope, setScope] = useState<Scope>('selected');
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
@@ -40,6 +45,21 @@ export function DownloadModal({
   const [includeAttachments, setIncludeAttachments] = useState<boolean>(true);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Elapsed-time tick during the async poll loop so the user sees
+  // progress instead of a frozen "Preparing..." button. Updates every
+  // second while downloading=true.
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  // Tick the elapsed counter while a download is in flight so users
+  // see movement and don't assume the modal is stuck.
+  useEffect(() => {
+    if (!downloading) {
+      setElapsedSec(0);
+      return;
+    }
+    const t = setInterval(() => setElapsedSec(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [downloading]);
 
   if (!isOpen) return null;
 
@@ -91,6 +111,7 @@ export function DownloadModal({
         exportFormat,
         workloads: scope === 'all' ? Array.from(workloads) : undefined,
         includeAttachments,
+        preserveTree: scope === 'all' || preserveTree,
       });
       const jobId = response.jobId;
 
@@ -220,6 +241,45 @@ export function DownloadModal({
         </div>
 
         {error && <div className="modal-error">{error}</div>}
+
+        {downloading && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 0',
+              fontSize: 13,
+              color: '#4b5563',
+            }}
+          >
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                border: '2px solid #d1d5db',
+                borderTopColor: '#2563eb',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+                flexShrink: 0,
+              }}
+            />
+            <div>
+              <div>
+                Assembling export…{' '}
+                <strong>
+                  {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')}
+                </strong>{' '}
+                elapsed
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                Large drives or full-backup downloads can take several minutes —
+                please keep this tab open.
+              </div>
+            </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
 
         <div className="modal-footer">
           <button className="btn-download" onClick={handleDownload} disabled={downloading || formats.length === 0}>
