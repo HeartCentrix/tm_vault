@@ -10,6 +10,7 @@ import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
+import RecoveryToolbar from '../components/RecoveryToolbar';
 import { API } from '../config/api';
 import { parseAsUtc, fmtLocal, fmtLocalDate, fmtLocalTime } from '../utils/datetime';
 import './Recovery.css';
@@ -2283,7 +2284,7 @@ function AzureDbConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshotI
  * Availability / Backups / Networking / Connections / Authentication /
  * Security). Server-type branching happens in AzureDbView.
  */
-function AzureSqlConfiguration({ raw }: { raw: any }) {
+function AzureSqlConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshotId: string; itemId: string | null }) {
   const copy = (v: string) => navigator.clipboard?.writeText(v);
   const Row = ({ label, value, copyable }: { label: string; value: React.ReactNode; copyable?: string }) => (
     <div className="az-db-field">
@@ -2320,6 +2321,24 @@ function AzureSqlConfiguration({ raw }: { raw: any }) {
   const uaidCount = identity.user_assigned_count ?? 0;
 
   return (
+    <div className="az-db-config">
+      <div className="az-db-config-actions">
+        {snapshotId && itemId && (
+          <a
+            className="az-db-action-btn"
+            href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(snapshotId, itemId)}
+            target="_blank" rel="noopener noreferrer"
+            title="Download raw config JSON"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </a>
+        )}
+      </div>
+
     <div className="az-db-config-card az-db-config-2col">
       <section className="az-db-config-col az-db-config-col-full">
         <h4 className="az-db-section-title">Essential</h4>
@@ -2400,6 +2419,7 @@ function AzureSqlConfiguration({ raw }: { raw: any }) {
         </section>
       </div>
     </div>
+    </div>
   );
 }
 
@@ -2457,13 +2477,36 @@ function AzureDbDataTab({
   const [searchVal, setSearchVal] = useState('');
   const [appliedFilter, setAppliedFilter] = useState<{ op: string; val: string } | null>(null);
 
+  // Column-visibility state powering the table Settings modal. Lets the
+  // user hide columns from the rendered table and bring them back via
+  // the "Add new column" input. Reset whenever the user switches table
+  // so a fresh set of columns is shown.
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   // Reset page/search whenever the selected table changes.
   useEffect(() => {
     setPage(1);
     setSearchOp('=');
     setSearchVal('');
     setAppliedFilter(null);
+    setVisibleColumns([]);
   }, [selectedTableId]);
+
+  // First load of data columns → seed visibleColumns with the full set.
+  // Keep the user's current selection on subsequent pagination reloads.
+  useEffect(() => {
+    if (data.columns.length && visibleColumns.length === 0) {
+      setVisibleColumns(data.columns);
+    }
+  }, [data.columns, visibleColumns.length]);
+
+  // Columns that are hidden right now = present in data but not visible.
+  // Used by the Settings modal's "Add new column" input to validate.
+  const hiddenColumns = useMemo(
+    () => data.columns.filter(c => !visibleColumns.includes(c)),
+    [data.columns, visibleColumns],
+  );
 
   // Load data whenever page or applied filter changes.
   useEffect(() => {
@@ -2662,6 +2705,18 @@ function AzureDbDataTab({
                   <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next">›</button>
                   <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} aria-label="Last">⏭</button>
                 </div>
+                <button
+                  className="az-db-settings-btn"
+                  onClick={() => setSettingsOpen(true)}
+                  title="Choose columns to show"
+                  aria-label="Table settings"
+                  type="button"
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -2713,29 +2768,37 @@ function AzureDbDataTab({
                 <table className="az-db-data-table">
                   <thead>
                     <tr>
-                      {data.columns.map((c, idx) => (
-                        <th key={c}>
-                          {c}
-                          {idx === 0 && (
-                            <span className="az-db-col-pk" aria-hidden title="Primary column (searchable)">
-                              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
-                                <path d="M11.852,5.78189 C13.6093,4.02453 16.4586,4.02453 18.2159,5.78189 C19.9733,7.53925 19.9733,10.3885 18.2159,12.1459 C16.8717,13.49 14.8868,13.8075 13.2397,13.0923 C12.9957,12.9863 12.7116,12.9136 12.4028,12.9136 L11.0413,12.9136 C10.3509,12.9136 9.79129,13.4733 9.7913,14.1636 L9.7913,15.742 L8.21287,15.742 C7.52251,15.742 6.96287,16.3017 6.96287,16.992 L6.96287,18.5705 L4.72023,18.5705 L4.72023,17.1563 L10.0756,11.8009 C10.62,11.2565 10.7551,10.5046 10.6254,9.8695 C10.3325,8.43555 10.7426,6.89123 11.852,5.78189 Z M19.6301,4.36768 C17.0917,1.82927 12.9761,1.82927 10.4377,4.36768 C8.83366,5.97176 8.24428,8.20575 8.66584,10.2697 C8.67902,10.3343 8.66399,10.3813 8.66021,10.3878 L3.15957,15.8885 C2.87827,16.1698 2.72023,16.5513 2.72023,16.9492 L2.72023,19.5605 C2.72023,20.1182 3.17239,20.5705 3.7301,20.5705 L7.71287,20.5705 C8.40322,20.5705 8.96287,20.0108 8.96287,19.3205 L8.96287,17.742 L10.5413,17.742 C11.2317,17.742 11.7913,17.1824 11.7913,16.492 L11.7913,14.9136 L12.4015,14.9136 C12.4035,14.9138 12.4173,14.9156 12.4431,14.9268 C14.8181,15.958 17.6858,15.5044 19.6301,13.5601 C22.1685,11.0217 22.1685,6.90609 19.6301,4.36768 Z M14.6804,9.31743 C15.2662,9.90321 16.2159,9.90321 16.8017,9.31743 C17.3875,8.73164 17.3875,7.78189 16.8017,7.19611 C16.2159,6.61032 15.2662,6.61032 14.6804,7.19611 C14.0946,7.78189 14.0946,8.73164 14.6804,9.31743 Z" />
-                              </svg>
-                            </span>
-                          )}
-                        </th>
-                      ))}
+                      {visibleColumns.map(c => {
+                        // `firstCol` is the PK/primary column the backend
+                        // returned; keep the key badge on it even when
+                        // the user hides earlier columns via Settings.
+                        const isPk = c === firstCol;
+                        return (
+                          <th key={c}>
+                            {c}
+                            {isPk && (
+                              <span className="az-db-col-pk" aria-hidden title="Primary column (searchable)">
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
+                                  <path d="M11.852,5.78189 C13.6093,4.02453 16.4586,4.02453 18.2159,5.78189 C19.9733,7.53925 19.9733,10.3885 18.2159,12.1459 C16.8717,13.49 14.8868,13.8075 13.2397,13.0923 C12.9957,12.9863 12.7116,12.9136 12.4028,12.9136 L11.0413,12.9136 C10.3509,12.9136 9.79129,13.4733 9.7913,14.1636 L9.7913,15.742 L8.21287,15.742 C7.52251,15.742 6.96287,16.3017 6.96287,16.992 L6.96287,18.5705 L4.72023,18.5705 L4.72023,17.1563 L10.0756,11.8009 C10.62,11.2565 10.7551,10.5046 10.6254,9.8695 C10.3325,8.43555 10.7426,6.89123 11.852,5.78189 Z M19.6301,4.36768 C17.0917,1.82927 12.9761,1.82927 10.4377,4.36768 C8.83366,5.97176 8.24428,8.20575 8.66584,10.2697 C8.67902,10.3343 8.66399,10.3813 8.66021,10.3878 L3.15957,15.8885 C2.87827,16.1698 2.72023,16.5513 2.72023,16.9492 L2.72023,19.5605 C2.72023,20.1182 3.17239,20.5705 3.7301,20.5705 L7.71287,20.5705 C8.40322,20.5705 8.96287,20.0108 8.96287,19.3205 L8.96287,17.742 L10.5413,17.742 C11.2317,17.742 11.7913,17.1824 11.7913,16.492 L11.7913,14.9136 L12.4015,14.9136 C12.4035,14.9138 12.4173,14.9156 12.4431,14.9268 C14.8181,15.958 17.6858,15.5044 19.6301,13.5601 C22.1685,11.0217 22.1685,6.90609 19.6301,4.36768 Z M14.6804,9.31743 C15.2662,9.90321 16.2159,9.90321 16.8017,9.31743 C17.3875,8.73164 17.3875,7.78189 16.8017,7.19611 C16.2159,6.61032 15.2662,6.61032 14.6804,7.19611 C14.0946,7.78189 14.0946,8.73164 14.6804,9.31743 Z" />
+                                </svg>
+                              </span>
+                            )}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
                     {visibleRows.map((r, i) => (
                       <tr key={i}>
-                        {data.columns.map((c, ci) => {
+                        {visibleColumns.map(c => {
                           // Backend returns rows as arrays aligned with
                           // data.columns (`rows: [[1, "Ada", ...], ...]`).
-                          // Fall back to an object lookup for any legacy
-                          // snapshots that stored rows as keyed dicts.
-                          const v = Array.isArray(r) ? r[ci] : (r as any)?.[c];
+                          // Use the original column index so hiding a
+                          // column doesn't shift other cells. Fall back
+                          // to an object lookup for legacy dict rows.
+                          const origIdx = data.columns.indexOf(c);
+                          const v = Array.isArray(r) ? r[origIdx] : (r as any)?.[c];
                           return <td key={c} title={String(v ?? '')}>{v === null || v === undefined ? '' : String(v)}</td>;
                         })}
                       </tr>
@@ -2747,30 +2810,203 @@ function AzureDbDataTab({
           </>
         )}
       </div>
+
+      <ColumnSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        allColumns={data.columns}
+        visibleColumns={visibleColumns}
+        hiddenColumns={hiddenColumns}
+        primaryColumn={firstCol}
+        onSave={next => setVisibleColumns(next)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Modal for choosing which columns are rendered on the Database tab's
+ * data table. Follows the design in azure/table_setting.png:
+ *   • title, × close
+ *   • one row per currently-visible column with a trash icon (lid opens
+ *     on hover); the PK column renders the key badge next to its name
+ *   • "Add new column" input at the bottom — type a previously-removed
+ *     column name + Enter (or the + button) to bring it back
+ *   • Cancel / Save buttons. Clicking outside also closes (as cancel).
+ *   • Clicking a trash icon does NOT close the modal.
+ */
+function ColumnSettingsModal({
+  open, onClose, allColumns, visibleColumns, hiddenColumns, primaryColumn, onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  allColumns: string[];
+  visibleColumns: string[];
+  hiddenColumns: string[];
+  primaryColumn: string;
+  onSave: (next: string[]) => void;
+}) {
+  const [pending, setPending] = useState<string[]>(visibleColumns);
+  const [addText, setAddText] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  // Reset pending state whenever the modal (re-)opens or the source
+  // columns change underneath us.
+  useEffect(() => {
+    if (open) {
+      setPending(visibleColumns);
+      setAddText('');
+      setAddError(null);
+    }
+  }, [open, visibleColumns]);
+
+  if (!open) return null;
+
+  const handleDelete = (c: string) => {
+    // Don't let the user remove the primary column — the backend search
+    // is anchored to it, and the key icon badge still points there.
+    if (c === primaryColumn) return;
+    setPending(prev => prev.filter(x => x !== c));
+  };
+
+  const handleAdd = () => {
+    const target = addText.trim();
+    if (!target) return;
+    if (pending.includes(target)) {
+      setAddError(`${target} is already shown`);
+      return;
+    }
+    if (!allColumns.includes(target)) {
+      setAddError(`${target} isn't a column in this table`);
+      return;
+    }
+    // Restore in the table's original column order so the restored
+    // cell lines up with the right data position.
+    const next = allColumns.filter(c => pending.includes(c) || c === target);
+    setPending(next);
+    setAddText('');
+    setAddError(null);
+  };
+
+  const handleSave = () => {
+    onSave(pending);
+    onClose();
+  };
+
+  return (
+    <div className="col-settings-overlay" onClick={onClose} role="presentation">
+      <div className="col-settings-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="col-settings-header">
+          <h3>Choose columns to show in the table</h3>
+          <button className="col-settings-x" onClick={onClose} aria-label="Close">×</button>
+        </div>
+
+        <div className="col-settings-body">
+          {pending.map(c => {
+            const isPk = c === primaryColumn;
+            return (
+              <div key={c} className="col-settings-row">
+                <span className="col-settings-name">
+                  {c}
+                  {isPk && (
+                    <span className="col-settings-key" aria-hidden title="Primary column">
+                      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                        <path d="M11.852,5.78189 C13.6093,4.02453 16.4586,4.02453 18.2159,5.78189 C19.9733,7.53925 19.9733,10.3885 18.2159,12.1459 C16.8717,13.49 14.8868,13.8075 13.2397,13.0923 C12.9957,12.9863 12.7116,12.9136 12.4028,12.9136 L11.0413,12.9136 C10.3509,12.9136 9.79129,13.4733 9.7913,14.1636 L9.7913,15.742 L8.21287,15.742 C7.52251,15.742 6.96287,16.3017 6.96287,16.992 L6.96287,18.5705 L4.72023,18.5705 L4.72023,17.1563 L10.0756,11.8009 C10.62,11.2565 10.7551,10.5046 10.6254,9.8695 C10.3325,8.43555 10.7426,6.89123 11.852,5.78189 Z M19.6301,4.36768 C17.0917,1.82927 12.9761,1.82927 10.4377,4.36768 C8.83366,5.97176 8.24428,8.20575 8.66584,10.2697 C8.67902,10.3343 8.66399,10.3813 8.66021,10.3878 L3.15957,15.8885 C2.87827,16.1698 2.72023,16.5513 2.72023,16.9492 L2.72023,19.5605 C2.72023,20.1182 3.17239,20.5705 3.7301,20.5705 L7.71287,20.5705 C8.40322,20.5705 8.96287,20.0108 8.96287,19.3205 L8.96287,17.742 L10.5413,17.742 C11.2317,17.742 11.7913,17.1824 11.7913,16.492 L11.7913,14.9136 L12.4015,14.9136 C12.4035,14.9138 12.4173,14.9156 12.4431,14.9268 C14.8181,15.958 17.6858,15.5044 19.6301,13.5601 C22.1685,11.0217 22.1685,6.90609 19.6301,4.36768 Z M14.6804,9.31743 C15.2662,9.90321 16.2159,9.90321 16.8017,9.31743 C17.3875,8.73164 17.3875,7.78189 16.8017,7.19611 C16.2159,6.61032 15.2662,6.61032 14.6804,7.19611 C14.0946,7.78189 14.0946,8.73164 14.6804,9.31743 Z" />
+                      </svg>
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="col-settings-del"
+                  onClick={() => handleDelete(c)}
+                  title={isPk ? 'Primary column cannot be hidden' : `Hide ${c}`}
+                  disabled={isPk}
+                  aria-label={`Hide ${c}`}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {/* lid + handle grouped so CSS can tilt them on :hover */}
+                    <g className="col-settings-del-lid">
+                      <path d="M4 7H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7H9V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                    <path d="M10 12V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14 12V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M6 10V18C6 19.6569 7.34315 21 9 21H15C16.6569 21 18 19.6569 18 18V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+
+          <div className="col-settings-add-wrap">
+            <input
+              type="text"
+              className="col-settings-add"
+              placeholder="Add new column"
+              value={addText}
+              onChange={e => { setAddText(e.target.value); setAddError(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+              list="col-settings-hidden"
+            />
+            <datalist id="col-settings-hidden">
+              {hiddenColumns.map(c => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+          {addError && <div className="col-settings-add-error">{addError}</div>}
+        </div>
+
+        <div className="col-settings-footer">
+          <button type="button" className="col-settings-cancel" onClick={onClose}>Cancel</button>
+          <button type="button" className="col-settings-save" onClick={handleSave}>Save</button>
+        </div>
+      </div>
     </div>
   );
 }
 
 function AzureDbView({
-  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll, overrideSnapshotId,
 }: {
   resourceId: string;
   snapshots: SnapshotItem[];
   selectedItems: Set<string>;
   onToggleItem: (id: string) => void;
   onSelectAll: (ids: string[], checked: boolean) => void;
+  overrideSnapshotId?: string;
 }) {
-  const [activeTab, setActiveTab] = useState<AzureDbTab>('configuration');
+  // Sync the active tab to the URL (?tab=configuration|database|schema)
+  // so the main Recovery page can decide — per-tab — whether to show
+  // the global search input. Also makes the URL shareable / refresh-
+  // stable, matching M365's behavior.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = (searchParams.get('tab') || '') as AzureDbTab;
+  const activeTab: AzureDbTab =
+    urlTab === 'database' || urlTab === 'schema' || urlTab === 'configuration'
+      ? urlTab
+      : 'configuration';
+  const setActiveTab = (tab: AzureDbTab) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+  };
 
+  // If the parent-provided version picker has a value we honour it;
+  // otherwise fall back to the newest COMPLETED snapshot for this resource.
   const latestSnapshot = useMemo(() => {
-    return snapshots
+    const completed = snapshots
       .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
       .sort((a, b) => {
         const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
         const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
         return tb - ta;
-      })[0] || null;
-  }, [snapshots, resourceId]);
+      });
+    if (overrideSnapshotId) {
+      const picked = completed.find(s => s.id === overrideSnapshotId);
+      if (picked) return picked;
+    }
+    return completed[0] || null;
+  }, [snapshots, resourceId, overrideSnapshotId]);
 
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -2973,6 +3209,8 @@ function AzureDbView({
         ) : (configItem.metadata?.server_type === 'AZURE_SQL' || configItem.metadata?.raw?.server_type === 'AZURE_SQL') ? (
           <AzureSqlConfiguration
             raw={configItem.metadata?.raw || configItem.metadata || {}}
+            snapshotId={latestSnapshot.id}
+            itemId={configItem.id}
           />
         ) : (
           <AzureDbConfiguration
@@ -5469,6 +5707,69 @@ export default function Recovery() {
                 </div>
               </div>
 
+              {/* Global Recovery toolbar — sits between the content
+                  header (above) and the content-type tabs (below) so
+                  every resource + content-type gets the same Version /
+                  Download / Recover affordances. Search is shown only
+                  for content types that actually search a list (mail,
+                  onedrive, contacts, calendar, chats, site, team
+                  channels, the 8 Entra Directory tabs, and Azure DB
+                  configuration files). Other kinds — Power BI, Azure
+                  VM, plain users/groups listings — don't have a list
+                  to filter, so we hide the search instead of showing
+                  a no-op input. */}
+              {(() => {
+                const kind = selectedResource.kind;
+                // M365 user content types — tied to activeContentType.
+                // Gate by resource kind too, because activeContentType
+                // can linger as 'mail' / 'onedrive' etc. after the user
+                // switches to a non-M365 resource. Without this, the
+                // search would wrongly stay on for Azure DB's Database
+                // and Schema tabs.
+                const M365_SEARCH_TABS = new Set([
+                  'mail', 'onedrive', 'contacts', 'calendar', 'chats',
+                ]);
+                const isM365UserKind = [
+                  'user', 'entra_user', 'mailbox', 'shared_mailbox', 'room_mailbox',
+                ].includes(kind);
+                const showForM365 = isM365UserKind
+                  && M365_SEARCH_TABS.has(activeContentType as string);
+                // Resource kinds whose entire UI supports search across
+                // every inner tab (Site / Mail / Team Channels / the
+                // 8 Entra Directory tabs).
+                const KINDS_WITH_SEARCH = new Set([
+                  'sharepoint_site',
+                  'm365_group', 'entra_group', 'teams_channel',
+                  'entra_directory',
+                ]);
+                const showForKind = KINDS_WITH_SEARCH.has(kind);
+                // Azure SQL + Postgres — only the Configuration tab
+                // surfaces a searchable list (configuration files in
+                // the left panel). Database and Schema don't, so hide
+                // the search input there. AzureDbView syncs its tab to
+                // ?tab=configuration|database|schema in the URL.
+                const isAzureDb = kind === 'azure_sql' || kind === 'azure_postgresql';
+                const rawTab = searchParams.get('tab') || '';
+                const azureDbTab = (rawTab === 'database' || rawTab === 'schema') ? rawTab : 'configuration';
+                const showForAzureDb = isAzureDb && azureDbTab === 'configuration';
+                const showSearch = showForM365 || showForKind || showForAzureDb;
+                return (
+                  <RecoveryToolbar
+                    snapshots={snapshots}
+                    selectedSnapshotId={selectedSnapshotId}
+                    onSelectSnapshot={setSelectedSnapshotId}
+                    onDownload={handleDownload}
+                    onRecover={handleRecover}
+                    selectedCount={selectedItems.size}
+                    downloadError={downloadError}
+                    searchValue={showSearch ? searchQuery : undefined}
+                    onSearchChange={showSearch ? setSearchQuery : undefined}
+                    onSearchSubmit={showSearch ? () => { /* debounced via searchQuery */ } : undefined}
+                    searchPlaceholder="Search"
+                  />
+                );
+              })()}
+
               {selectedResource.kind === 'sharepoint_site' ? (
                 /* SharePoint sites: a single "Site" content-type tab at the
                    top (parity with the Mail/OneDrive/... tab bar on other
@@ -5536,6 +5837,7 @@ export default function Recovery() {
                     if (checked) setSelectedItems(new Set(ids));
                     else setSelectedItems(new Set());
                   }}
+                  overrideSnapshotId={selectedSnapshotId}
                 />
               ) : (selectedResource.kind === 'm365_group' || selectedResource.kind === 'teams_channel' || selectedResource.kind === 'entra_group') ? (
                 /* Microsoft 365 Groups + Teams + Entra groups: three content
@@ -5584,45 +5886,10 @@ export default function Recovery() {
                 })}
               </div>
 
-              {/* Toolbar */}
-              <div className="recovery-toolbar">
-                <div className="toolbar-left">
-                  <div className="search-wrapper">
-                    <input
-                      type="text"
-                      placeholder="Search items..."
-                      className="search-input"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <button className="search-btn" type="button" aria-label="Search">
-                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                        <path d="M15.7955 15.8111L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="toolbar-right">
-                  {downloadError && <span style={{color:'#dc2626',fontSize:12}}>{downloadError}</span>}
-                  <button
-                    className="action-button download"
-                    onClick={handleDownload}
-                    // Modal handles scope: allow click even with 0 selected so user
-                    // can pick "Download all". Still guard against tabs with no backup.
-                    disabled={!selectedSnapshotId}
-                  >
-                    {`Download${selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}`}
-                  </button>
-                  <button
-                    className="action-button recover"
-                    onClick={handleRecover}
-                    disabled={selectedItems.size === 0 || !selectedSnapshotId}
-                  >
-                    Recover{selectedItems.size > 0 ? ` (${selectedItems.size})` : ''}
-                  </button>
-                </div>
-              </div>
+              {/* Search / Download / Recover all live in the global
+                  <RecoveryToolbar /> above — the old inline toolbar here
+                  is gone so the affordances are shown exactly once per
+                  resource view. */}
 
               {/* Three Panel Layout */}
               <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}${activeContentType === 'onedrive' ? ' od-layout-mode' : ''}`}>

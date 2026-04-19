@@ -683,7 +683,22 @@
 .toolbar-right {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
+.toolbar-error { color: #dc2626; font-size: 12px; }
+/* Azure DB version dropdown — shares the search-wrapper shell with the
+   M365 toolbar so the border/radius/focus state stay consistent. */
+.search-wrapper .version-select {
+  border: 0;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #0f172a;
+  min-width: 200px;
+  outline: none;
+  cursor: pointer;
+}
+.search-wrapper .version-select:disabled { color: #94a3b8; cursor: not-allowed; }
 
 .action-button {
   padding: 8px 20px;
@@ -2856,6 +2871,129 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   border-color: #94a3b8;
 }
 .az-db-pager-range { color: #0f172a; font-weight: 500; }
+/* Settings cog in the Database tab header — opens the column chooser. */
+.az-db-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 6px;
+  color: #475569;
+  cursor: pointer;
+}
+.az-db-settings-btn:hover { color: #0f172a; background: #f8fafc; border-color: #cbd5e1; }
+
+/* Column Settings modal. Matches table_setting.png: soft overlay, card
+   with header / scrollable body of column rows / Cancel + Save footer. */
+.col-settings-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.col-settings-modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: 80vh;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.col-settings-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 8px;
+}
+.col-settings-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.col-settings-x {
+  background: none; border: 0; font-size: 20px; color: #64748b;
+  cursor: pointer; line-height: 1; padding: 4px 8px;
+}
+.col-settings-x:hover { color: #0f172a; }
+
+.col-settings-body {
+  padding: 4px 20px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+.col-settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 4px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.col-settings-name {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 14px; color: #0f172a;
+}
+.col-settings-key {
+  display: inline-flex; align-items: center;
+  color: #09244b;
+}
+.col-settings-key svg { width: 14px; height: 14px; }
+.col-settings-del {
+  background: none; border: 0; cursor: pointer; padding: 4px;
+  color: #0f172a;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.col-settings-del:disabled { cursor: not-allowed; opacity: 0.3; }
+.col-settings-del svg { display: block; }
+/* Lid tilts up on hover — mirrors the classic "bin opens" animation. */
+.col-settings-del .col-settings-del-lid {
+  transform-origin: 4px 7px;
+  transition: transform 0.18s ease;
+}
+.col-settings-del:hover:not(:disabled) .col-settings-del-lid {
+  transform: rotate(-18deg) translate(-1px, -1px);
+}
+
+.col-settings-add-wrap {
+  padding-top: 8px;
+}
+.col-settings-add {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 4px;
+  font-size: 14px;
+  color: #0f172a;
+  outline: none;
+  background: transparent;
+}
+.col-settings-add::placeholder { color: #94a3b8; }
+.col-settings-add:focus { border-bottom-color: #0f172a; }
+.col-settings-add-error {
+  color: #dc2626; font-size: 12px; padding: 4px 4px 0;
+}
+
+.col-settings-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 20px 16px;
+}
+.col-settings-cancel,
+.col-settings-save {
+  padding: 6px 18px;
+  border-radius: 16px;
+  font-size: 13px;
+  cursor: pointer;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+.col-settings-cancel:hover { background: #f8fafc; }
+.col-settings-save { border-color: #0f172a; }
+.col-settings-save:hover { background: #f1f5f9; }
+
 .az-db-pager-nav { display: flex; gap: 0; }
 .az-db-pager-nav button {
   width: 26px; height: 26px;

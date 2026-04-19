@@ -1,0 +1,215 @@
+/* Global Recovery toolbar — right-aligned column with Version on top
+   and Download / Recover on the bottom row. Shown above the content
+   header on every Recovery tab so action affordances stay in the same
+   spot regardless of resource or content type. */
+
+/* Two-part layout:
+   LEFT (search, 50%) │ RIGHT (version on top / actions on bottom, 50%)
+   Internal borders mark the left↔right split and the top↔bottom split
+   on the right. The strip stretches to the full parent width. */
+.recovery-toolbar {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  margin: 12px 0 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  /* No overflow:hidden — the rounded-corner version dropdown menu has
+     to escape the toolbar's rectangle. Corners are rounded via the
+     border-radius on the internal search/stack instead. */
+  position: relative;
+  z-index: 20;
+}
+
+/* When the search input isn't rendered (content types that don't have
+   a searchable list), push the remaining sections to the right edge so
+   the toolbar doesn't get a ghost left half. */
+.recovery-toolbar-no-search .recovery-toolbar-version-section {
+  margin-left: auto;
+}
+
+/* Left section — search box. Locked at 50% of the toolbar width so the
+   field is always prominent; middle + right share the other half. */
+.recovery-toolbar-search {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  flex: 0 0 50%;
+  min-width: 0;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
+}
+/* Bordered pill that wraps the input + search button so they read as
+   a single field. The input itself carries no border — the wrapper
+   does, per the design ask. */
+.recovery-toolbar-search-field {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.recovery-toolbar-search-field:focus-within {
+  border-color: #94a3b8;
+}
+.recovery-toolbar-search-input {
+  border: 0;
+  outline: none;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 24px;
+  font-size: 13px;
+  color: #0f172a;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+  border-radius: 6px 0 0 6px;
+}
+.recovery-toolbar-search-input::placeholder { color: #94a3b8; }
+.recovery-toolbar-search-btn {
+  border: 0;
+  background: transparent;
+  padding: 0 8px;
+  height: 24px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 6px 6px 0;
+}
+.recovery-toolbar-search-btn:hover { color: #0f172a; }
+
+/* Middle section — Version dropdown. Own column, own padding, vertical
+   divider on the right separating it from the actions section. */
+.recovery-toolbar-version-section {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-right: 1px solid #e2e8f0;
+  flex: 0 0 auto;
+}
+
+.recovery-toolbar-version {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Right section — Download + Recover. */
+.recovery-toolbar-actions-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  flex: 0 0 auto;
+}
+.recovery-toolbar-version-label {
+  font-size: 12px;
+  color: #64748b;
+}
+.recovery-toolbar-version-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+/* Custom dropdown trigger — looks like a borderless select because the
+   outer toolbar pill already supplies the border. */
+.recovery-toolbar-version-wrap { position: relative; display: inline-flex; align-items: center; }
+.recovery-toolbar-version-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 8px;
+  font-size: 13px;
+  color: #0f172a;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  outline: none;
+}
+.recovery-toolbar-version-select:hover:not(:disabled) { color: #000; }
+.recovery-toolbar-version-select:disabled { color: #94a3b8; cursor: not-allowed; }
+.recovery-toolbar-version-current { white-space: nowrap; }
+.recovery-toolbar-version-caret {
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Popup menu — absolutely positioned with rounded corners, shadow, and
+   a thin border so it reads as a distinct surface. */
+.recovery-toolbar-version-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  /* Float above every sibling (panels, tabs, page headers). */
+  z-index: 9999;
+}
+.recovery-toolbar-version-opt {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.recovery-toolbar-version-opt:hover { background: #f1f5f9; }
+.recovery-toolbar-version-opt.active { background: #e2e8f0; font-weight: 500; }
+
+.recovery-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recovery-toolbar-error {
+  color: #dc2626;
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.recovery-toolbar-btn {
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.recovery-toolbar-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.recovery-toolbar-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.recovery-toolbar-btn-recover {
+  background: #0f172a;
+  color: #fff;
+  border-color: #0f172a;
+}
+.recovery-toolbar-btn-recover:hover:not(:disabled) {
+  background: #111827;
+  border-color: #111827;
+  color: #fff;
+}
