@@ -97,6 +97,7 @@ export const API = {
     CALENDAR: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/calendar`,
     CHATS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats`,
     CHAT_GROUPS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats/groups`,
+    AZURE_DB_TABLE: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/azure-db/table`,
   },
 
   // Recovery

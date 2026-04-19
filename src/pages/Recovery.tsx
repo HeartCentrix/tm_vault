@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
@@ -2123,6 +2123,785 @@ function SharePointView({
 // Recovery page collapses all that into a single "Files" panel for
 // power_bi resources: one flat list pulled from the generic
 // /snapshots/{id}/files endpoint.
+
+/**
+ * Azure SQL / PostgreSQL Recovery view — 3 tabs matching AFI's layout:
+ *   Configuration → structured detail card (Essential / Compute /
+ *                   Backup / Networking / HA / Replication).
+ *   Schema        → 2-panel. Left: list of databases. Right: schema
+ *                   files / folders for the selected database.
+ *   Data          → 3-panel. Left: databases tree. Middle: tables.
+ *                   Right: row detail (empty state until backups
+ *                   capture table-row snapshots).
+ *
+ * Expected snapshot_item shapes (backup handlers land later; frontend
+ * renders empty states cleanly until then):
+ *   - AZURE_DB_CONFIG        — one per resource. extra_data.raw holds
+ *                              the full server JSON (subscriptionId,
+ *                              resourceGroup, serverName, location,
+ *                              endpoint, adminLogin, sku, version,
+ *                              availabilityZone, timeCreated, pricingTier,
+ *                              computeSize, storageGB, backupRetentionDays,
+ *                              maintenance, connectivityMethod, firewallRules,
+ *                              haEnabled, replicationRole, …).
+ *   - AZURE_DB_DATABASE      — one per database. name = db name,
+ *                              folder_path empty.
+ *   - AZURE_DB_SCHEMA_FILE   — dump / sql files for a database.
+ *                              folder_path = db_name.
+ *   - AZURE_DB_TABLE         — each table. folder_path = db_name/schema.
+ *   - AZURE_DB_ROW           — future: per-row snapshots for the Data tab.
+ */
+type AzureDbTab = 'configuration' | 'database' | 'schema';
+const AZURE_DB_TAB_LABELS: Record<AzureDbTab, string> = {
+  configuration: 'Configuration',
+  database: 'Database',
+  schema: 'Schema',
+};
+
+// ── Configuration tab helpers — format fields from the captured JSON.
+function AzureDbConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshotId: string; itemId: string | null }) {
+  const copy = (v: string) => navigator.clipboard?.writeText(v);
+  const Row = ({ label, value, copyable, link }: { label: string; value: React.ReactNode; copyable?: string; link?: boolean }) => (
+    <div className="az-db-field">
+      <span className="az-db-field-label">{label}</span>
+      <span className={`az-db-field-val${link ? ' az-db-link' : ''}`}>
+        {value}
+        {copyable && (
+          <button className="az-db-copy" onClick={() => copy(copyable)} title="Copy">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 12, height: 12 }}>
+              <rect x="4" y="4" width="9" height="9" rx="1.2" />
+              <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2h7" />
+            </svg>
+          </button>
+        )}
+      </span>
+    </div>
+  );
+
+  const fmtTime = (v?: string) => v ? fmtLocal(v, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  // Firewall rules — prefer the new scalar count emitted by the handler;
+  // fall back to the array-length of any legacy firewallRules list.
+  let fwLabel = '';
+  const fwCount = raw.firewallRuleCount ?? raw.firewall_rule_count;
+  if (typeof fwCount === 'number') {
+    fwLabel = `${fwCount} firewall rules`;
+  } else {
+    const fw = raw.firewallRules || raw.firewall_rules;
+    if (Array.isArray(fw)) fwLabel = `${fw.length} firewall rules`;
+    else if (fw) fwLabel = String(fw);
+  }
+
+  return (
+    <div className="az-db-config">
+      <div className="az-db-config-actions">
+        {snapshotId && itemId && (
+          <a
+            className="az-db-action-btn"
+            href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(snapshotId, itemId)}
+            target="_blank" rel="noopener noreferrer"
+            title="Download raw config JSON"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </a>
+        )}
+      </div>
+
+      {/* Normalise both key shapes — new backups emit snake_case
+          (administrator_login, fully_qualified_domain_name, …) and
+          older captures may have flat sku/tier strings instead of an
+          object. Each field tries camelCase → snake_case → legacy key. */}
+      {(() => { return null; })()}
+      <section className="az-db-section">
+        <h4 className="az-db-section-title">Essential</h4>
+        <div className="az-db-grid">
+          <Row label="Subscription ID" value={raw.subscriptionId || raw.subscription_id || ''} copyable={raw.subscriptionId || raw.subscription_id} />
+          <Row label="Resource Group" value={raw.resourceGroup || raw.resource_group || ''} copyable={raw.resourceGroup || raw.resource_group} link />
+          <Row label="Server Name" value={raw.serverName || raw.server_name || raw.name || ''} copyable={raw.serverName || raw.server_name || raw.name} link />
+          <Row label="Location" value={raw.location || ''} />
+          <Row label="Endpoint" value={raw.fullyQualifiedDomainName || raw.fully_qualified_domain_name || raw.endpoint || ''} copyable={raw.fullyQualifiedDomainName || raw.fully_qualified_domain_name || raw.endpoint} link />
+          <Row label="Administrator Login" value={raw.administratorLogin || raw.administrator_login || raw.admin_login || ''} />
+          <Row label="Configuration" value={(() => {
+            const name = (typeof raw.sku === 'object' ? raw.sku?.name : raw.sku) || '';
+            const tier = (typeof raw.sku === 'object' ? raw.sku?.tier : raw.tier) || '';
+            if (!name && !tier) return raw.configuration || '';
+            return tier ? `${name} (${tier})` : name;
+          })()} />
+          <Row label={raw.server_type === 'FLEXIBLE' || raw.server_type === 'SINGLE (DEPRECATED)' || raw.engine === 'postgres' ? 'PostgreSQL Version' : 'Version'} value={raw.version || ''} />
+          <Row label="Availability Zone" value={raw.availabilityZone || raw.availability_zone || ''} />
+          <Row label="Time created" value={fmtTime(raw.timeCreated || raw.time_created || raw.createdAt)} />
+        </div>
+      </section>
+
+      <div className="az-db-split">
+        <section className="az-db-section">
+          <h4 className="az-db-section-title">Compute + storage</h4>
+          <div className="az-db-grid">
+            <Row label="Pricing Tier" value={raw.sku?.tier || raw.pricing_tier || ''} />
+            <Row label="Compute size" value={raw.sku?.name || raw.compute_size || ''} />
+            <Row label="Storage" value={raw.storage?.storageSizeGB ? `${raw.storage.storageSizeGB} GB` : (raw.storage_gb ? `${raw.storage_gb} GB` : '')} />
+            <Row label="Storage autogrow" value={raw.storage?.autoGrow || raw.storage_autogrow || ''} />
+          </div>
+          <h4 className="az-db-section-title" style={{ marginTop: 16 }}>Backup</h4>
+          <div className="az-db-grid">
+            <Row label="Retention period" value={String(raw.backup?.backupRetentionDays ?? raw.backup_retention_days ?? '')} />
+            <Row label="Maintenance" value={raw.maintenance?.customWindow || raw.maintenance || 'System-managed schedule'} />
+          </div>
+        </section>
+
+        <section className="az-db-section">
+          <h4 className="az-db-section-title">Networking</h4>
+          <div className="az-db-grid">
+            <Row label="Connectivity method" value={raw.network?.publicNetworkAccess === 'Enabled' ? 'Public access (allowed)' : (raw.connectivity_method || raw.network?.publicNetworkAccess || '')} />
+            <Row label="Firewall rules" value={fwLabel} />
+          </div>
+          <h4 className="az-db-section-title" style={{ marginTop: 16 }}>High availability</h4>
+          <div className="az-db-grid">
+            <Row label="High availability" value={raw.highAvailability?.mode || raw.ha_enabled || 'Disabled'} />
+          </div>
+          <h4 className="az-db-section-title" style={{ marginTop: 16 }}>Replication</h4>
+          <div className="az-db-grid">
+            <Row label="Replication role" value={raw.replicationRole || raw.replication_role || 'None'} />
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Database tab body — tree db → schema → tables on the left, paginated
+ * row-view with search (op + value on the first column) on the right.
+ */
+function AzureDbDataTab({
+  snapshotId, databases, tableItems,
+}: {
+  snapshotId: string;
+  databases: string[];
+  tableItems: any[];
+}) {
+  // Tree state — set of expanded db names and schema keys.
+  const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
+  const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+
+  // All dbs start collapsed — user expands what they need. Keeps the
+  // left rail compact on load, matching the AFI behavior.
+
+  // Build db → schema → tables map from folder_path.
+  const tree = useMemo(() => {
+    const t: Record<string, Record<string, any[]>> = {};
+    for (const it of tableItems) {
+      const [db, schema = 'public'] = (it.folderPath || '').split('/');
+      if (!db) continue;
+      if (!t[db]) t[db] = {};
+      if (!t[db][schema]) t[db][schema] = [];
+      t[db][schema].push(it);
+    }
+    // Ensure every discovered db at least shows up even if it has no tables.
+    for (const db of databases) if (!t[db]) t[db] = {};
+    return t;
+  }, [tableItems, databases]);
+
+  // ── Selected table + its row data ──
+  const selectedTable = useMemo(
+    () => tableItems.find(t => t.id === selectedTableId) || null,
+    [tableItems, selectedTableId],
+  );
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [data, setData] = useState<{ columns: string[]; rows: any[]; total: number; hasMore: boolean; firstColumn: string | null }>({
+    columns: [], rows: [], total: 0, hasMore: false, firstColumn: null,
+  });
+  const [loading, setLoading] = useState(false);
+
+  // Search input state — default op to "=" so the first option shown
+  // in the dropdown matches the state, otherwise `submitSearch` bails
+  // out early thinking no operator was chosen.
+  const [searchOp, setSearchOp] = useState<'=' | '>' | '<' | '>=' | '<=' | '[]'>('=');
+  const [searchVal, setSearchVal] = useState('');
+  const [appliedFilter, setAppliedFilter] = useState<{ op: string; val: string } | null>(null);
+
+  // Reset page/search whenever the selected table changes.
+  useEffect(() => {
+    setPage(1);
+    setSearchOp('=');
+    setSearchVal('');
+    setAppliedFilter(null);
+  }, [selectedTableId]);
+
+  // Load data whenever page or applied filter changes.
+  useEffect(() => {
+    if (!selectedTableId || !snapshotId) {
+      setData({ columns: [], rows: [], total: 0, hasMore: false, firstColumn: null });
+      return;
+    }
+    setLoading(true);
+    SnapshotService.getAzureDbTable(snapshotId, selectedTableId, {
+      page, size: pageSize,
+      op: appliedFilter?.op,
+      val: appliedFilter?.val,
+    })
+      .then(setData)
+      .catch(() => setData({ columns: [], rows: [], total: 0, hasMore: false, firstColumn: null }))
+      .finally(() => setLoading(false));
+  }, [snapshotId, selectedTableId, page, appliedFilter]);
+
+  const firstCol = data.firstColumn || selectedTable?.metadata?.columns?.[0] || '';
+  const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  const breadcrumb = selectedTable
+    ? `${selectedTable.metadata?.database_name || ''} > ${selectedTable.metadata?.schema || 'public'} > ${selectedTable.name}`
+    : '';
+  const rangeStart = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(data.total, page * pageSize);
+
+  // Client-side "look in current page first" — quick visual filter of
+  // the already-loaded rows matching the typed value, without a fetch.
+  // "[]" now means "any of these values" — tokens split on commas and
+  // whitespace.
+  const clientMatches = useMemo(() => {
+    if (!searchVal || !firstCol || !searchOp) return null;
+    const coerce = (x: any) => { const n = Number(x); return Number.isNaN(n) ? String(x) : n; };
+    const target = coerce(searchVal);
+    let targetSet: any[] = [];
+    if (searchOp === '[]') {
+      targetSet = searchVal.split(/[\s,]+/).filter(Boolean).map(coerce);
+    }
+    const filtered = data.rows.filter(r => {
+      const v = coerce(r?.[firstCol]);
+      try {
+        if (searchOp === '=') return v === target;
+        if (searchOp === '>') return v > target;
+        if (searchOp === '<') return v < target;
+        if (searchOp === '>=') return v >= target;
+        if (searchOp === '<=') return v <= target;
+        if (searchOp === '[]') {
+          return targetSet.includes(v) || targetSet.map(String).includes(String(v));
+        }
+      } catch { return false; }
+      return false;
+    });
+    return filtered;
+  }, [data.rows, searchVal, searchOp, firstCol]);
+
+  const submitSearch = () => {
+    if (!searchOp || !searchVal) { setAppliedFilter(null); return; }
+    // If the current page already has matches, keep them local; otherwise
+    // apply the filter server-side (separate call).
+    if (clientMatches && clientMatches.length > 0) {
+      setAppliedFilter(null);
+      return;
+    }
+    setPage(1);
+    setAppliedFilter({ op: searchOp, val: searchVal });
+  };
+
+  const clearSearch = () => {
+    setSearchOp('=');
+    setSearchVal('');
+    setAppliedFilter(null);
+  };
+
+  const visibleRows = (clientMatches && clientMatches.length > 0 && !appliedFilter)
+    ? clientMatches : data.rows;
+
+  // Inline SVG carets supplied by the user — "open" (down-pointing V)
+  // appears when the node is expanded; "closed" (right-pointing chevron)
+  // appears when collapsed. Matches the AFI icon set exactly.
+  const CaretOpen = (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: 14, height: 14 }} aria-hidden>
+      <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+  const CaretClosed = (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: 14, height: 14 }} aria-hidden>
+      <path d="M10 7L15 12L10 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+
+  const toggleDb = (db: string) => setExpandedDbs(prev => {
+    const n = new Set(prev); if (n.has(db)) n.delete(db); else n.add(db); return n;
+  });
+  const toggleSchema = (key: string) => setExpandedSchemas(prev => {
+    const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n;
+  });
+
+  return (
+    <div className="three-panel-layout az-db-data-layout">
+      <div className="panel-left">
+        <div className="az-db-tree">
+          {databases.length === 0 ? (
+            <div className="folder-empty"><p>No databases</p></div>
+          ) : databases.map(db => {
+            const dbOpen = expandedDbs.has(db);
+            const schemas = Object.keys(tree[db] || {}).sort();
+            return (
+              <div key={db} className="az-db-tree-db">
+                {/* Entire db row is clickable — click anywhere to toggle.
+                    Checkbox click is stopped so it doesn't bubble. */}
+                <div
+                  className="az-db-tree-row az-db-tree-dbrow"
+                  onClick={() => toggleDb(db)}
+                  role="button"
+                  aria-expanded={dbOpen}
+                >
+                  <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                  <span className="az-db-tree-caret">{dbOpen ? CaretOpen : CaretClosed}</span>
+                  <span className="az-db-icon az-db-icon-db" aria-hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" style={{ width: 14, height: 14 }}>
+                      <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6a9 3 0 0 0 18 0V5" /><path d="M3 11v6a9 3 0 0 0 18 0v-6" />
+                    </svg>
+                  </span>
+                  <span className="az-db-tree-label">{db}</span>
+                </div>
+                {dbOpen && schemas.length === 0 && (
+                  <div className="az-db-noschemas">No schemas</div>
+                )}
+                {dbOpen && schemas.map(schema => {
+                  const key = `${db}/${schema}`;
+                  const schemaOpen = expandedSchemas.has(key);
+                  const tablesHere = tree[db][schema] || [];
+                  return (
+                    <div key={key} className="az-db-tree-schema">
+                      <div
+                        className="az-db-tree-row az-db-tree-schemarow"
+                        onClick={() => toggleSchema(key)}
+                        role="button"
+                        aria-expanded={schemaOpen}
+                      >
+                        <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                        <span className="az-db-tree-caret">{schemaOpen ? CaretOpen : CaretClosed}</span>
+                        <span className="az-db-icon az-db-icon-folder" aria-hidden>
+                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 13, height: 13 }}>
+                            <path d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          </svg>
+                        </span>
+                        <span className="az-db-tree-label">{schema}</span>
+                      </div>
+                      {schemaOpen && tablesHere.length === 0 && (
+                        <div className="az-db-noschemas az-db-noschemas-deep">No tables</div>
+                      )}
+                      {schemaOpen && tablesHere.map(tbl => (
+                        <div
+                          key={tbl.id}
+                          className={`az-db-tree-row az-db-tree-tablerow ${selectedTableId === tbl.id ? 'active' : ''}`}
+                          onClick={() => setSelectedTableId(tbl.id)}
+                        >
+                          <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                          <span className="az-db-tree-label">{tbl.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel-middle az-db-data-main">
+        {!selectedTable ? (
+          <div className="empty-preview"><p>Select a table to view rows.</p></div>
+        ) : (
+          <>
+            <div className="az-db-header-row">
+              <div className="az-db-breadcrumb-new">{breadcrumb}</div>
+              <div className="az-db-pager-top">
+                <span className="az-db-pager-label">Rows per page:</span>
+                <select
+                  className="az-db-pager-size"
+                  value={pageSize}
+                  onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="az-db-pager-range">
+                  {rangeStart} – {rangeEnd} of {data.total.toLocaleString()} rows
+                </span>
+                <div className="az-db-pager-nav">
+                  <button disabled={page <= 1} onClick={() => setPage(1)} aria-label="First">⏮</button>
+                  <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} aria-label="Prev">‹</button>
+                  <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next">›</button>
+                  <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} aria-label="Last">⏭</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="az-db-search-bar">
+              <span className="az-db-search-label">Search</span>
+              <input
+                className="az-db-search-col"
+                value={firstCol || '(column)'}
+                disabled
+                title="Search is applied to the first column"
+              />
+              <select
+                className="az-db-search-op"
+                value={searchOp}
+                onChange={e => setSearchOp(e.target.value as any)}
+              >
+                <option value="=">=</option>
+                <option value=">">&gt;</option>
+                <option value="<">&lt;</option>
+                <option value=">=">&gt;=</option>
+                <option value="<=">&lt;=</option>
+                <option value="[]">[ ]</option>
+              </select>
+              <div className="az-db-search-field">
+                <input
+                  className="az-db-search-val"
+                  placeholder={searchOp === '[]' ? 'Values (e.g. 2 4 6 or 2,4,6)' : 'Type to search'}
+                  value={searchVal}
+                  onChange={e => setSearchVal(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') submitSearch(); }}
+                />
+                <button className="az-db-search-btn" onClick={submitSearch} aria-label="Search" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                    <path d="M15.7955 15.8111L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              {(appliedFilter || (clientMatches && clientMatches.length > 0)) && (
+                <button className="az-db-search-clear" onClick={clearSearch}>Clear</button>
+              )}
+            </div>
+
+            <div className="az-db-table-wrap">
+              {loading ? (
+                <div className="loading-container"><div className="spinner" /><p>Loading rows…</p></div>
+              ) : visibleRows.length === 0 ? (
+                <div className="empty-state"><p>No rows.</p></div>
+              ) : (
+                <table className="az-db-data-table">
+                  <thead>
+                    <tr>
+                      {data.columns.map((c, idx) => (
+                        <th key={c}>
+                          {c}
+                          {idx === 0 && (
+                            <span className="az-db-col-pk" aria-hidden title="Primary column (searchable)">
+                              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
+                                <path d="M11.852,5.78189 C13.6093,4.02453 16.4586,4.02453 18.2159,5.78189 C19.9733,7.53925 19.9733,10.3885 18.2159,12.1459 C16.8717,13.49 14.8868,13.8075 13.2397,13.0923 C12.9957,12.9863 12.7116,12.9136 12.4028,12.9136 L11.0413,12.9136 C10.3509,12.9136 9.79129,13.4733 9.7913,14.1636 L9.7913,15.742 L8.21287,15.742 C7.52251,15.742 6.96287,16.3017 6.96287,16.992 L6.96287,18.5705 L4.72023,18.5705 L4.72023,17.1563 L10.0756,11.8009 C10.62,11.2565 10.7551,10.5046 10.6254,9.8695 C10.3325,8.43555 10.7426,6.89123 11.852,5.78189 Z M19.6301,4.36768 C17.0917,1.82927 12.9761,1.82927 10.4377,4.36768 C8.83366,5.97176 8.24428,8.20575 8.66584,10.2697 C8.67902,10.3343 8.66399,10.3813 8.66021,10.3878 L3.15957,15.8885 C2.87827,16.1698 2.72023,16.5513 2.72023,16.9492 L2.72023,19.5605 C2.72023,20.1182 3.17239,20.5705 3.7301,20.5705 L7.71287,20.5705 C8.40322,20.5705 8.96287,20.0108 8.96287,19.3205 L8.96287,17.742 L10.5413,17.742 C11.2317,17.742 11.7913,17.1824 11.7913,16.492 L11.7913,14.9136 L12.4015,14.9136 C12.4035,14.9138 12.4173,14.9156 12.4431,14.9268 C14.8181,15.958 17.6858,15.5044 19.6301,13.5601 C22.1685,11.0217 22.1685,6.90609 19.6301,4.36768 Z M14.6804,9.31743 C15.2662,9.90321 16.2159,9.90321 16.8017,9.31743 C17.3875,8.73164 17.3875,7.78189 16.8017,7.19611 C16.2159,6.61032 15.2662,6.61032 14.6804,7.19611 C14.0946,7.78189 14.0946,8.73164 14.6804,9.31743 Z" />
+                              </svg>
+                            </span>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map((r, i) => (
+                      <tr key={i}>
+                        {data.columns.map(c => {
+                          const v = r?.[c];
+                          return <td key={c} title={String(v ?? '')}>{v === null || v === undefined ? '' : String(v)}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AzureDbView({
+  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<AzureDbTab>('configuration');
+
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!latestSnapshot) { setItems([]); return; }
+    setLoading(true);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
+      .then(data => setItems(data.content || []))
+      .catch(() => { setItems([]); })
+      .finally(() => setLoading(false));
+  }, [latestSnapshot?.id]);
+
+  // ── Bucket items by item_type for fast access across tabs.
+  const configItem = useMemo(
+    () => items.find(i => {
+      const t = (i.itemType || '').toUpperCase();
+      return t === 'AZURE_DB_CONFIG' || t.endsWith('_CONFIG') || t.endsWith('_CONFIGURATION');
+    }) || null,
+    [items],
+  );
+  const dbItems = useMemo(
+    () => items.filter(i => (i.itemType || '').toUpperCase() === 'AZURE_DB_DATABASE'),
+    [items],
+  );
+  const schemaFiles = useMemo(
+    () => items.filter(i => {
+      const t = (i.itemType || '').toUpperCase();
+      return t === 'AZURE_DB_SCHEMA_FILE' || t.endsWith('_SCHEMA') || t.endsWith('_DUMP') || t.endsWith('_DDL');
+    }),
+    [items],
+  );
+  const tableItems = useMemo(
+    () => items.filter(i => (i.itemType || '').toUpperCase() === 'AZURE_DB_TABLE'),
+    [items],
+  );
+
+  // Derive the database list used by Schema + Data left rails. Prefer
+  // AZURE_DB_DATABASE rows; fall back to unique folder_path prefixes.
+  const databases: string[] = useMemo(() => {
+    if (dbItems.length > 0) return dbItems.map(d => d.name || '').filter(Boolean).sort();
+    const names = new Set<string>();
+    for (const it of [...schemaFiles, ...tableItems]) {
+      const fp = (it.folderPath || '').split('/')[0];
+      if (fp) names.add(fp);
+    }
+    return Array.from(names).sort();
+  }, [dbItems, schemaFiles, tableItems]);
+
+  // Schema tab state
+  const [schemaSelectedDb, setSchemaSelectedDb] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'schema') return;
+    if (!schemaSelectedDb && databases.length) setSchemaSelectedDb(databases[0]);
+  }, [activeTab, databases, schemaSelectedDb]);
+
+  // Build an N-level deep tree for the selected db. folder_path values
+  // like "testdb/sql/public/Tables" yield nested nodes under sql →
+  // public → Tables with the file (`customers`, `orders`, …) at the
+  // leaf. Matches AFI's schema layout where tables, sequences, views
+  // and role grants each live in their own nested folder.
+  type SchemaNode = { name: string; children: Record<string, SchemaNode>; files: any[] };
+  const schemaTree: SchemaNode = useMemo(() => {
+    const root: SchemaNode = { name: '', children: {}, files: [] };
+    if (!schemaSelectedDb) return root;
+    for (const f of schemaFiles) {
+      const parts = (f.folderPath || '').split('/').filter(Boolean);
+      if (parts[0] !== schemaSelectedDb) continue;
+      let cur = root;
+      for (const seg of parts.slice(1)) {
+        if (!cur.children[seg]) cur.children[seg] = { name: seg, children: {}, files: [] };
+        cur = cur.children[seg];
+      }
+      cur.files.push(f);
+    }
+    return root;
+  }, [schemaFiles, schemaSelectedDb]);
+
+  const [expandedSchemaFolders, setExpandedSchemaFolders] = useState<Set<string>>(new Set());
+  // Reset folder expansion when the selected db changes so each db
+  // starts collapsed (matches the AFI screenshots).
+  useEffect(() => { setExpandedSchemaFolders(new Set()); }, [schemaSelectedDb]);
+
+  const renderSchemaNode = (node: SchemaNode, path: string, depth: number): any[] => {
+    const out: any[] = [];
+    const folderKeys = Object.keys(node.children).sort();
+    for (const key of folderKeys) {
+      const child = node.children[key];
+      const fullPath = path ? `${path}/${key}` : key;
+      const expanded = expandedSchemaFolders.has(fullPath);
+      const descendantFiles: any[] = [];
+      const collect = (n: SchemaNode) => {
+        descendantFiles.push(...n.files);
+        Object.values(n.children).forEach(collect);
+      };
+      collect(child);
+      out.push(
+        <div
+          key={`folder-${fullPath}`}
+          className="od-row od-row-folder az-db-schema-row az-db-schema-folder"
+          style={{ paddingLeft: 8 + depth * 20 }}
+          onClick={() => setExpandedSchemaFolders(prev => {
+            const next = new Set(prev);
+            if (next.has(fullPath)) next.delete(fullPath); else next.add(fullPath);
+            return next;
+          })}
+        >
+          <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={descendantFiles.length > 0 && descendantFiles.every(c => selectedItems.has(c.id))}
+              onChange={() => {
+                const allOn = descendantFiles.every(c => selectedItems.has(c.id));
+                descendantFiles.forEach(c => {
+                  if (allOn === selectedItems.has(c.id)) onToggleItem(c.id);
+                });
+              }}
+            />
+          </div>
+          <div className="od-td">
+            <span className="od-row-icon az-db-folder-caret" aria-hidden>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2"
+                   style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .12s' }}>
+                <polyline points="9 6 15 12 9 18" />
+              </svg>
+            </span>
+            <span className="od-row-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+              </svg>
+            </span>
+            <span className="od-row-name">{key}</span>
+          </div>
+        </div>
+      );
+      if (expanded) {
+        out.push(...renderSchemaNode(child, fullPath, depth + 1));
+      }
+    }
+    for (const f of node.files) {
+      const hasBlob = !!f.blobPath;
+      out.push(
+        <div key={f.id} className="od-row od-row-file az-db-schema-row"
+             style={{ paddingLeft: 8 + depth * 20 }}>
+          <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+            <input type="checkbox" checked={selectedItems.has(f.id)} onChange={() => onToggleItem(f.id)} />
+          </div>
+          <div className="od-td">
+            {hasBlob && latestSnapshot ? (
+              <a
+                className="od-row-link"
+                href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, f.id)}
+                download={f.name || undefined}
+                target="_blank" rel="noopener noreferrer"
+              >
+                <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
+                <span className="od-row-name">{f.name}</span>
+              </a>
+            ) : (
+              <>
+                <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
+                <span className="od-row-name">{f.name}</span>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return out;
+  };
+
+  // Data tab state — database selection drives AzureDbDataTab below.
+  const [dataSelectedDb, setDataSelectedDb] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'database') return;
+    if (!dataSelectedDb && databases.length) setDataSelectedDb(databases[0]);
+  }, [activeTab, databases, dataSelectedDb]);
+
+  return (
+    <>
+      <div className="content-type-tabs">
+        {(['configuration', 'database', 'schema'] as AzureDbTab[]).map(tab => (
+          <button
+            key={tab}
+            className={`content-tab ${activeTab === tab ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {AZURE_DB_TAB_LABELS[tab]}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'configuration' ? (
+        !latestSnapshot ? (
+          <div className="pbi-empty"><p>No completed backup for this database yet.</p></div>
+        ) : loading ? (
+          <div className="loading-container"><div className="spinner" /><p>Loading configuration…</p></div>
+        ) : !configItem ? (
+          <div className="pbi-empty"><p>No configuration captured in this snapshot.</p></div>
+        ) : (
+          <AzureDbConfiguration
+            raw={configItem.metadata?.raw || configItem.metadata || {}}
+            snapshotId={latestSnapshot.id}
+            itemId={configItem.id}
+          />
+        )
+      ) : activeTab === 'schema' ? (
+        <div className="three-panel-layout">
+          <div className="panel-left">
+            <div className="folder-list">
+              {databases.length === 0 ? (
+                <div className="folder-empty"><p>No databases</p></div>
+              ) : (
+                databases.map(db => (
+                  <button
+                    key={db}
+                    className={`folder-item az-db-row ${schemaSelectedDb === db ? 'active' : ''}`}
+                    onClick={() => setSchemaSelectedDb(db)}
+                  >
+                    <input type="checkbox" className="az-db-check" checked={false} onChange={() => {}} onClick={e => e.stopPropagation()} />
+                    <span className="az-db-icon" aria-hidden>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: 16, height: 16 }}>
+                        <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6a9 3 0 0 0 18 0V5" /><path d="M3 11v6a9 3 0 0 0 18 0v-6" />
+                      </svg>
+                    </span>
+                    <span className="folder-name">{db}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="panel-middle" style={{ flex: 1 }}>
+            {!schemaSelectedDb ? (
+              <div className="empty-preview"><p>Select a database</p></div>
+            ) : (
+              <>
+                <div className="az-db-breadcrumb">{schemaSelectedDb}</div>
+                <div className="od-table">
+                  <div className="od-table-head"><div className="od-th az-db-th-check" /><div className="od-th">Name</div></div>
+                  <div className="od-table-body">
+                    {(Object.keys(schemaTree.children).length === 0 && schemaTree.files.length === 0) ? (
+                      <div className="empty-state"><p>No schema files captured for this database.</p></div>
+                    ) : (
+                      renderSchemaNode(schemaTree, '', 0)
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Database tab — tree left rail (db → schema → tables) +
+           full-width middle data pane with search + pagination. */
+        <AzureDbDataTab
+          snapshotId={latestSnapshot?.id || ''}
+          databases={databases}
+          tableItems={tableItems}
+        />
+      )}
+      {/* Suppress unused lint for onSelectAll — reserved for future
+          multi-select export once Data / Schema have more actions. */}
+      {(() => { void onSelectAll; return null; })()}
+    </>
+  );
+}
 
 function PowerBiFilesView({
   resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
@@ -4605,6 +5384,20 @@ export default function Recovery() {
                     else setSelectedItems(new Set());
                   }}
                 />
+              ) : (selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql') ? (
+                /* Azure SQL + PostgreSQL: Configuration / Data / Schema
+                   tabs filtered by item_type suffix. Same shape handles
+                   AZURE_SQL_DB + AZURE_POSTGRESQL + AZURE_POSTGRESQL_SINGLE. */
+                <AzureDbView
+                  resourceId={selectedResource.id}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                />
               ) : (selectedResource.kind === 'm365_group' || selectedResource.kind === 'teams_channel' || selectedResource.kind === 'entra_group') ? (
                 /* Microsoft 365 Groups + Teams + Entra groups: three content
                    surfaces — Site (SharePoint-backing site items), Mail
@@ -4663,9 +5456,9 @@ export default function Recovery() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
-                    <button className="search-btn">
-                      <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ width: 16, height: 16 }}>
-                        <path d="M8.5 8.5L10.5 10.5M7 9.5C5.61929 9.5 4.5 8.38071 4.5 7C4.5 5.61929 5.61929 4.5 7 4.5C8.38071 4.5 9.5 5.61929 9.5 7C9.5 8.38071 8.38071 9.5 7 9.5Z" />
+                    <button className="search-btn" type="button" aria-label="Search">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                        <path d="M15.7955 15.8111L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </button>
                   </div>

@@ -319,6 +319,23 @@ export const SnapshotService = {
   /**
    * Get distinct folder paths for items in a snapshot, optionally filtered by item type.
    */
+  async getAzureDbTable(
+    snapshotId: string,
+    itemId: string,
+    opts: { page?: number; size?: number; op?: string; val?: string } = {},
+  ): Promise<{ columns: string[]; rows: any[]; total: number; page: number; size: number; hasMore: boolean; firstColumn: string | null }> {
+    const params = new URLSearchParams();
+    params.set('item_id', itemId);
+    params.set('page', String(opts.page ?? 1));
+    params.set('size', String(opts.size ?? 50));
+    if (opts.op) params.set('search_op', opts.op);
+    if (opts.val !== undefined) params.set('search_val', opts.val);
+    const url = `${API.SNAPSHOTS.AZURE_DB_TABLE(snapshotId)}?${params}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to load table rows');
+    return res.json();
+  },
+
   async getFolders(
     snapshotId: string,
     itemType?: string,

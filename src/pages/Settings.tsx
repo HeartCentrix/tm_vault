@@ -5,11 +5,10 @@ import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services
 import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../services/auth';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import SlaWizard from '../components/SlaWizard';
-import ResourceGroupManager from '../components/ResourceGroupManager';
 import { fmtLocalDate } from '../utils/datetime';
 import './Settings.css';
 
-type SettingsTab = 'sla' | 'info' | 'admin-consent' | 'resource-groups';
+type SettingsTab = 'sla' | 'info' | 'admin-consent';
 
 interface BackupItem {
   formKey: string;
@@ -50,7 +49,7 @@ const AZURE_BACKUP_ITEMS_RIGHT: BackupItem[] = [
 export default function Settings() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const effectiveServiceType: 'm365' | 'azure' = serviceType === 'azure' ? 'azure' : 'm365';
-  const settingsTabKeys = ['sla', 'info', 'admin-consent', 'resource-groups'] as const;
+  const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
   const subRouteKey = tenantId ? '/protection/settings' : '/settings';
   const tenantSettingsPath = tenantId && serviceType
     ? `/tenants/${tenantId}/${serviceType}/protection/settings`
@@ -75,7 +74,6 @@ export default function Settings() {
 
   const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'sla', label: 'SLA' },
-    { key: 'resource-groups', label: 'Resource Groups' },
     { key: 'info', label: 'Info' },
     { key: 'admin-consent', label: 'Admin Consent' },
   ];
@@ -340,10 +338,6 @@ export default function Settings() {
             </div>
           )}
         </div>
-      )}
-
-      {tenantId && activeTab === 'resource-groups' && (
-        <ResourceGroupManager tenantId={tenantId} policies={policies} />
       )}
 
       {tenantId && activeTab === 'info' && (
