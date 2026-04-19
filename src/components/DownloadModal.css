@@ -1,0 +1,25 @@
+/* Reuse base modal styles from RestoreModal.css (overlay, content, title,
+   columns, radio-row, workload-list, checkbox-row, info-icon, modal-error).
+   Only the submit button differs: teal-filled per afi.ai download popup. */
+
+.download-modal .btn-download {
+  padding: 9px 64px;
+  background: #0d9488;
+  border: 1.5px solid #0d9488;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.download-modal .btn-download:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.download-modal .btn-download:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
