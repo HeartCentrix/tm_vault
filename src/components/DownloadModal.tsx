@@ -138,19 +138,22 @@ export function DownloadModal({
         });
         RecoveryService.subscribeChatExportStatus(jobId, {
           onProgress: (p) => { if (typeof p.percent === 'number') setProgressPct(p.percent); },
-          onComplete: async (c) => {
+          onComplete: (c) => {
+            // SAS URL already carries auth in the query string — don't send any
+            // headers (they'd force a CORS preflight the blob account doesn't
+            // allow). Use an anchor-tag click so the browser streams the ZIP
+            // directly from blob with no XHR / CORS involvement.
             try {
-              const token = localStorage.getItem('access_token');
-              const dlRes = await fetch(c.url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-              const blob = await dlRes.blob();
-              const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
-              a.href = url;
+              a.href = c.url;
               a.download = `teams-chat-${jobId.slice(0, 8)}.zip`;
-              document.body.appendChild(a); a.click(); document.body.removeChild(a);
-              URL.revokeObjectURL(url);
+              a.rel = 'noopener';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
             } finally {
-              setDownloading(false); onClose();
+              setDownloading(false);
+              onClose();
             }
           },
           onError: (e) => { setError(e?.code ?? 'Export failed'); setDownloading(false); },
