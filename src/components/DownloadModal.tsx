@@ -96,7 +96,10 @@ export function DownloadModal({
 
       const token = localStorage.getItem('access_token');
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      for (let i = 0; i < 30; i++) {
+      // Full-drive OneDrive ZIPs for a power user can need a few minutes
+      // to assemble; 60 s (the old cap) timed out on real drives. Poll for
+      // up to 20 min and surface the in-progress state clearly.
+      for (let i = 0; i < 600; i++) {
         await new Promise(r => setTimeout(r, 2000));
         const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
         if (!statusRes.ok) continue;
@@ -105,10 +108,18 @@ export function DownloadModal({
           const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
           if (!dlRes.ok) throw new Error('Download failed');
           const blob = await dlRes.blob();
+          // Prefer the server's Content-Disposition filename — raw_single
+          // responses set it to the user's original filename (e.g. Report.xlsx)
+          // so single-file ORIGINAL downloads don't land as .zip. Fall back
+          // to the ZIP naming for the multi-file case where the header is
+          // the generated export-<jobid>.zip.
+          const cd = dlRes.headers.get('Content-Disposition') || '';
+          const m = cd.match(/filename="?([^"]+)"?/i);
+          const fallback = `export-${jobId.slice(0, 8)}.${exportFormat.toLowerCase()}.zip`;
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `export-${jobId.slice(0, 8)}.${exportFormat.toLowerCase()}.zip`;
+          a.download = m ? m[1] : fallback;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
@@ -192,17 +203,19 @@ export function DownloadModal({
                 </label>
               ))
             )}
-            <label className="checkbox-row" style={{ marginTop: 16 }}>
-              <input
-                type="checkbox"
-                checked={includeAttachments}
-                onChange={(e) => setIncludeAttachments(e.target.checked)}
-              />
-              <span>
-                Include attachments{' '}
-                <span className="info-icon" title="Uncheck for metadata-only export (smaller, faster)">ℹ</span>
-              </span>
-            </label>
+            {contentType === 'mail' && (
+              <label className="checkbox-row" style={{ marginTop: 16 }}>
+                <input
+                  type="checkbox"
+                  checked={includeAttachments}
+                  onChange={(e) => setIncludeAttachments(e.target.checked)}
+                />
+                <span>
+                  Include attachments{' '}
+                  <span className="info-icon" title="Uncheck for metadata-only export (smaller, faster)">ℹ</span>
+                </span>
+              </label>
+            )}
           </div>
         </div>
 

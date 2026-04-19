@@ -1596,7 +1596,7 @@ function odFileIcon(name: string): React.ReactNode {
 function OneDriveTable({
   items, folders, view, selectedFolder, onOpenFolder,
   selectedItems, onToggleItem, onSelectAll, allChecked,
-  onFolderCheck, folderBusy,
+  onFolderCheck, folderBusy, folderSelected,
   snapshotId,
 }: {
   items: RecoveryItem[];
@@ -1610,6 +1610,7 @@ function OneDriveTable({
   allChecked: boolean;
   onFolderCheck: (folderPath: string) => void;
   folderBusy: Set<string>;
+  folderSelected: Set<string>;
   snapshotId: string | null;
 }) {
   // In My Drive mode we interleave direct subfolders at the top of the list
@@ -1637,25 +1638,27 @@ function OneDriveTable({
       <div className="od-table-body">
         {subFolders.map(sf => {
           const busy = folderBusy.has(sf.fullPath);
+          const checked = folderSelected.has(sf.fullPath);
           return (
             <div
               key={`folder:${sf.fullPath}`}
-              className="od-row od-row-folder"
+              className={`od-row od-row-folder ${checked ? 'selected' : ''}`}
               onClick={() => onOpenFolder(sf.fullPath)}
             >
               <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
                 {/* Checkbox selects EVERY file under this folder (recursive).
                     Backend returns all ids where folder_path starts with
-                    sf.fullPath; those get toggled into selectedItems. */}
+                    sf.fullPath; those get toggled into selectedItems.
+                    Checked state flips immediately for UX feedback; the id
+                    fetch resolves asynchronously underneath. */}
                 <input
                   type="checkbox"
-                  // visual state is driven entirely by the async fetch,
-                  // so we don't reflect a half-selected state here —
-                  // it's a fire-and-forget toggle.
+                  checked={checked}
                   disabled={busy}
                   onChange={(e) => { e.stopPropagation(); onFolderCheck(sf.fullPath); }}
                   onClick={e => e.stopPropagation()}
                 />
+                {busy && <span style={{ marginLeft: 4, fontSize: 10, color: '#6b7280' }}>...</span>}
               </div>
               <div className="od-td od-td-name">
                 <span className="od-row-icon" aria-hidden>{FolderIcon}</span>
@@ -2672,6 +2675,13 @@ export default function Recovery() {
   // folder. Clears when the fetch resolves.
   const [oneDriveFolderBusy, setOneDriveFolderBusy] = useState<Set<string>>(new Set());
 
+  // OneDrive-only: folder paths the user has visibly "checked". Needed for
+  // checkbox UI state (the fetch is async, so we can't derive a folder's
+  // selected state from selectedItems until ids come back). Also used by
+  // the Download button to tell the user a selection is in-flight so they
+  // don't click Download too early and hit "No items selected".
+  const [oneDriveFolderSelected, setOneDriveFolderSelected] = useState<Set<string>>(new Set());
+
   // Merge current searchParams with a partial patch and push a new history
   // entry so the browser back/forward buttons walk back/forward through state
   // transitions (folder drill, tab switch, My Drive ↔ Recent) instead of
@@ -3057,13 +3067,33 @@ export default function Recovery() {
   const handleOneDriveFolderCheck = useCallback(async (folderPath: string) => {
     if (!selectedSnapshotId) return;
     if (oneDriveFolderBusy.has(folderPath)) return;
+    const alreadySelected = oneDriveFolderSelected.has(folderPath);
+    // Flip the visible checkbox state immediately so the user gets
+    // feedback; the actual id fetch populates selectedItems below.
+    setOneDriveFolderSelected(prev => {
+      const next = new Set(prev);
+      if (alreadySelected) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
     setOneDriveFolderBusy(prev => new Set(prev).add(folderPath));
     try {
       const ids = await SnapshotService.getOneDriveIdsByPrefix(selectedSnapshotId, folderPath);
+      if (ids.length === 0) {
+        // Backend returned zero files under this folder — roll back the
+        // checkbox state and surface a hint so the user doesn't sit in
+        // front of "Download" thinking they've selected something.
+        setOneDriveFolderSelected(prev => {
+          const next = new Set(prev);
+          next.delete(folderPath);
+          return next;
+        });
+        setDownloadError(`No files found under ${folderPath}.`);
+        return;
+      }
       setSelectedItems(prev => {
         const next = new Set(prev);
-        const anyAlready = ids.some(id => next.has(id));
-        if (anyAlready) {
+        if (alreadySelected) {
           for (const id of ids) next.delete(id);
         } else {
           for (const id of ids) next.add(id);
@@ -3072,6 +3102,12 @@ export default function Recovery() {
       });
     } catch (e) {
       console.error('Folder-select fetch failed:', e);
+      setOneDriveFolderSelected(prev => {
+        const next = new Set(prev);
+        next.delete(folderPath);
+        return next;
+      });
+      setDownloadError('Failed to fetch folder contents.');
     } finally {
       setOneDriveFolderBusy(prev => {
         const next = new Set(prev);
@@ -3079,7 +3115,7 @@ export default function Recovery() {
         return next;
       });
     }
-  }, [selectedSnapshotId, oneDriveFolderBusy]);
+  }, [selectedSnapshotId, oneDriveFolderBusy, oneDriveFolderSelected]);
 
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
@@ -3575,6 +3611,7 @@ export default function Recovery() {
                             allChecked={recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id))}
                             onFolderCheck={handleOneDriveFolderCheck}
                             folderBusy={oneDriveFolderBusy}
+                            folderSelected={oneDriveFolderSelected}
                             snapshotId={selectedSnapshotId}
                           />
                           {loadingMore && (
