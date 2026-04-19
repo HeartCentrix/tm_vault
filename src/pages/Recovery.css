@@ -2710,6 +2710,17 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   font-size: 14px; font-weight: 600; color: #0f172a; margin: 0 0 10px;
 }
 .az-db-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+/* SQL Configuration — 2-column layout matching the Azure portal screenshot.
+   Essential spans both columns at the top, then Compute/Availability/Backups
+   on the left and Networking/Connections/Authentication/Security on the right. */
+.az-db-config-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px 40px;
+}
+.az-db-config-col { display: flex; flex-direction: column; gap: 18px; }
+.az-db-config-col-full { grid-column: 1 / -1; }
+.az-db-muted { color: #94a3b8; }
 .az-db-field {
   display: grid; grid-template-columns: 180px 1fr; gap: 16px; font-size: 13px;
 }
