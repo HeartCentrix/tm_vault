@@ -319,12 +319,22 @@ export const SnapshotService = {
   /**
    * Get distinct folder paths for items in a snapshot, optionally filtered by item type.
    */
-  async getFolders(snapshotId: string, itemType?: string): Promise<SnapshotFolder[]> {
-    let url = `${API.SNAPSHOTS.FOLDERS}?snapshot_id=${snapshotId}`;
+  async getFolders(
+    snapshotId: string,
+    itemType?: string,
+    page: number = 1,
+    size: number = 50,
+  ): Promise<{ content: SnapshotFolder[]; total: number; page: number; size: number; hasMore: boolean }> {
+    let url = `${API.SNAPSHOTS.FOLDERS}?snapshot_id=${snapshotId}&page=${page}&size=${size}`;
     if (itemType) url += `&item_type=${itemType}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch folders');
-    return res.json();
+    const data = await res.json();
+    // Tolerate servers still returning a plain array (older snapshot-service builds).
+    if (Array.isArray(data)) {
+      return { content: data, total: data.length, page: 1, size: data.length, hasMore: false };
+    }
+    return data;
   },
 
   /**

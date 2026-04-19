@@ -3682,6 +3682,14 @@ export default function Recovery() {
     return isOneDriveMyDrive ? '/' : 'all';
   });
   const [foldersLoading, setFoldersLoading] = useState(false);
+  // Left-panel folders pagination — 50 at a time, infinite-scroll appends.
+  const [foldersPage, setFoldersPage] = useState<number>(1);
+  const [foldersHasMore, setFoldersHasMore] = useState<boolean>(false);
+  const [foldersLoadingMore, setFoldersLoadingMore] = useState<boolean>(false);
+  const folderListRef = useRef<HTMLDivElement | null>(null);
+  // Serialise folder-fetches so StrictMode's dev-mode double-effect and
+  // rapid tab switches don't fire the same request twice.
+  const foldersInflightRef = useRef<string>('');
 
   // OneDrive-only: switches the tab between "My Drive" (folder tree nav)
   // and "Recent" (flat list of files sorted by createdDateTime desc). Other
@@ -3879,6 +3887,13 @@ export default function Recovery() {
       return;
     }
 
+    // Wait for the folders list (left panel) to land before firing the
+    // items fetch. On Chats the folders response also auto-selects the
+    // first chat into selectedFolder — if we fired items first we'd send
+    // an all-chats query then immediately refire against the selected
+    // chat, doubling the request count per tab switch.
+    if (foldersLoading) return;
+
     const myKey = ++requestKeyRef.current;
     setItemPage(1);
     setItemsLoading(true);
@@ -3932,7 +3947,7 @@ export default function Recovery() {
       .finally(() => {
         if (myKey === requestKeyRef.current) setItemsLoading(false);
       });
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading]);
 
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
@@ -4035,6 +4050,8 @@ export default function Recovery() {
   // overlapping resource switches).
   useEffect(() => {
     setFolders([]);
+    setFoldersPage(1);
+    setFoldersHasMore(false);
     // Don't reset selectedFolder here — the URL-sync effect is the
     // single source of truth for that value now. Resetting would
     // clobber a restored folder when the user presses browser back.
@@ -4048,13 +4065,23 @@ export default function Recovery() {
       return;
     }
 
+    // StrictMode in dev intentionally mounts/unmounts each effect twice
+    // — guard against the duplicate call landing on the same (snap, tab)
+    // pair. In production builds this is a no-op.
+    const inflightKey = `${snapId}|${activeContentType}|1`;
+    if (foldersInflightRef.current === inflightKey) return;
+    foldersInflightRef.current = inflightKey;
+
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(snapId)
-      .then((data) => {
+    SnapshotService.getFolders(snapId, undefined, 1, 50)
+      .then((resp) => {
         if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
+        const data = resp.content;
         const folderList = [{ path: '', count: data.reduce((sum, f) => sum + f.count, 0) }, ...data];
         setFolders(folderList);
+        setFoldersHasMore(!!resp.hasMore);
+        setFoldersPage(1);
         // Chats tab: no "All" — auto-pick the top chat so the message list
         // opens on real content instead of an aggregate view.
         if (activeContentType === 'chats') {
@@ -4067,9 +4094,49 @@ export default function Recovery() {
         console.error(err);
       })
       .finally(() => {
-        if (myKey === foldersKeyRef.current) setFoldersLoading(false);
+        if (myKey === foldersKeyRef.current) {
+          setFoldersLoading(false);
+          foldersInflightRef.current = '';
+        }
       });
   }, [contentSnapshots, activeContentType]);
+
+  // Infinite-scroll append: when foldersPage advances (driven by the
+  // scroll handler below), fetch the next page and append to the tree.
+  useEffect(() => {
+    if (foldersPage <= 1) return;
+    if (!contentSnapshots) return;
+    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
+    const snapId = entry?.snapshotId;
+    if (!snapId) return;
+    const inflightKey = `${snapId}|${activeContentType}|${foldersPage}`;
+    if (foldersInflightRef.current === inflightKey) return;
+    foldersInflightRef.current = inflightKey;
+    setFoldersLoadingMore(true);
+    SnapshotService.getFolders(snapId, undefined, foldersPage, 50)
+      .then((resp) => {
+        setFolders((prev) => {
+          const seen = new Set(prev.map(f => f.path));
+          const appended = resp.content.filter(f => !seen.has(f.path));
+          return [...prev, ...appended];
+        });
+        setFoldersHasMore(!!resp.hasMore);
+      })
+      .catch(console.error)
+      .finally(() => {
+        setFoldersLoadingMore(false);
+        foldersInflightRef.current = '';
+      });
+  }, [foldersPage, contentSnapshots, activeContentType]);
+
+  // Scroll handler — near the bottom of the folder list, advance page.
+  const handleFolderListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (foldersLoading || foldersLoadingMore || !foldersHasMore) return;
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+      setFoldersPage(p => p + 1);
+    }
+  }, [foldersLoading, foldersLoadingMore, foldersHasMore]);
 
 
 
@@ -4704,7 +4771,7 @@ export default function Recovery() {
                     Clicking a row filters the items list via the `group`
                     parameter. "All" resets the filter. */}
                 <div className="panel-left">
-                  <div className="folder-list">
+                  <div className="folder-list" ref={folderListRef} onScroll={handleFolderListScroll}>
                     {/* "All" aggregates across every folder — useful on mail /
                         onedrive / contacts to see the flat stream. On the
                         chats tab we skip it: each chat is a standalone
@@ -4759,6 +4826,12 @@ export default function Recovery() {
                         </>
                       );
                     })()}
+                    {foldersLoadingMore && (
+                      <div className="folder-loading"><div className="spinner-sm" /></div>
+                    )}
+                    {!foldersLoadingMore && !foldersHasMore && folders.length > 50 && (
+                      <div className="folder-empty"><p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>End of list</p></div>
+                    )}
                   </div>
                 </div>
 
