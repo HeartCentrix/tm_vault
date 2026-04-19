@@ -6,6 +6,7 @@ import {
   type ContentSnapshotsResponse,
 } from '../services/snapshot';
 import { type RecoveryItem } from '../services/recovery';
+import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
@@ -39,6 +40,7 @@ function getKindLabel(kind: string): string {
     sharepoint_site: 'SharePoint',
     teams_channel: 'Teams channel',
     teams_chat: 'Teams chat',
+    entra_directory: 'Azure Active Directory',
     power_bi: 'Power BI workspace',
     azure_vm: 'Azure VM',
     azure_sql: 'Azure SQL',
@@ -1162,27 +1164,25 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  // Per-calendar filter — keys are the folderPath value stored on each
+  // CALENDAR_EVENT item (e.g. "Calendar/United States holidays"). Empty
+  // set = show events from every calendar.
+  const [activeCalendarFilters, setActiveCalendarFilters] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date());
   // Mouse-following tooltip state. `day` points at the cell's day number
   // in the current month; x/y are clientX/clientY so the popover can be
   // absolutely positioned relative to the viewport.
   const [hovered, setHovered] = useState<{ day: number; x: number; y: number } | null>(null);
 
-  // Load all events for this snapshot
+  // Load all events for this snapshot. viewDate stays on today's month
+  // (the initial value passed to useState) so the user always lands on
+  // the current month when they open the Calendar tab.
   useEffect(() => {
     if (!snapshotId) return;
     setLoading(true);
     SnapshotService.listCalendarEvents(snapshotId, 1, 1000)
       .then(data => {
         setAllEvents(data.content);
-        // Auto-navigate to month with most events
-        if (data.content.length > 0) {
-          const first = data.content.find(e => e.start);
-          if (first?.start) {
-            const d = parseAsUtc(first.start);
-            if (d) setViewDate(d);
-          }
-        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -1191,17 +1191,28 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   // Collect unique event types for filter sidebar
   const eventTypes = Array.from(new Set(allEvents.map(e => e.eventType))).sort();
 
-  // Filter events
-  const visibleEvents = activeFilters.size === 0
-    ? allEvents
-    : allEvents.filter(e => activeFilters.has(e.eventType));
+  // Collect unique calendar folder paths for the per-calendar filter.
+  // Each event is tagged with folderPath = "Calendar/<calendarName>" at
+  // backup time — we use the full path as the filter key and strip the
+  // "Calendar/" prefix for display.
+  const calendarPaths = Array.from(new Set(
+    allEvents.map(e => e.folderPath).filter((p): p is string => !!p)
+  )).sort();
+
+  // Apply both filters. Type filter and calendar filter are AND'ed; an
+  // empty filter set on either side means "don't filter on that axis".
+  const visibleEvents = allEvents.filter(e => {
+    if (activeFilters.size > 0 && !activeFilters.has(e.eventType)) return false;
+    if (activeCalendarFilters.size > 0 && (!e.folderPath || !activeCalendarFilters.has(e.folderPath))) return false;
+    return true;
+  });
 
   // Notify parent of the current filtered ID set so Download can scope
-  // to just these events. When activeFilters is empty this is all ids.
+  // to just these events. When all filter sets are empty this is all ids.
   useEffect(() => {
     if (!onFilteredIdsChange) return;
     onFilteredIdsChange(visibleEvents.map(e => e.id));
-  }, [allEvents, activeFilters, onFilteredIdsChange]);
+  }, [allEvents, activeFilters, activeCalendarFilters, onFilteredIdsChange]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -1262,13 +1273,13 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
 
         <div className="cal-filter-section">
           <label
-            className={`cal-filter-all${activeFilters.size === 0 ? ' active' : ''}`}
+            className={`cal-filter-all${activeFilters.size === 0 && activeCalendarFilters.size === 0 ? ' active' : ''}`}
             style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%'}}
           >
             <input
               type="checkbox"
-              checked={activeFilters.size === 0}
-              onChange={() => setActiveFilters(new Set())}
+              checked={activeFilters.size === 0 && activeCalendarFilters.size === 0}
+              onChange={() => { setActiveFilters(new Set()); setActiveCalendarFilters(new Set()); }}
               style={{margin:0}}
             />
             <span className="cal-filter-dot" style={{background:'#16a34a'}} />
@@ -1304,6 +1315,48 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
             );
           })}
         </div>
+
+        {/* Per-calendar filter — every event rows carries
+            folderPath="Calendar/<calendarName>" from the backup handler.
+            Split on / and show the tail as a display label. Empty set =
+            "show all calendars". */}
+        {calendarPaths.length > 0 && (
+          <>
+            <div className="cal-filter-divider" />
+            <div className="cal-filter-section-label">Calendar</div>
+            <div className="cal-filter-section">
+              {calendarPaths.map(path => {
+                const display = path.includes('/') ? path.slice(path.indexOf('/') + 1) : path;
+                const count = allEvents.filter(e => e.folderPath === path).length;
+                const isActive = activeCalendarFilters.has(path);
+                return (
+                  <label
+                    key={path}
+                    className={`cal-filter-item${isActive ? ' active' : ''}`}
+                    style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%'}}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={() => {
+                        setActiveCalendarFilters(prev => {
+                          const next = new Set(prev);
+                          if (next.has(path)) next.delete(path);
+                          else next.add(path);
+                          return next;
+                        });
+                      }}
+                      style={{margin:0}}
+                    />
+                    <span className="cal-filter-dot" style={{background: '#2d3748'}} />
+                    <span className="cal-filter-label" style={{flex:1,textAlign:'left'}} title={path}>{display}</span>
+                    <span className="cal-filter-count">{count}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {loading && (
           <div className="cal-filter-loading">
@@ -1365,16 +1418,20 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
                     <span className="cal-day-number">{day}</span>
                     {hasEvents && (
                       <div className="cal-day-events-list" aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}>
-                        {dayEvents.map(ev => (
-                          <div
-                            key={ev.id}
-                            className="cal-day-event-label"
-                            style={{ borderLeftColor: EVENT_TYPE_COLORS[ev.eventType] || '#16a34a' }}
-                            title={ev.subject || '(no subject)'}
-                          >
-                            {ev.subject || '(no subject)'}
-                          </div>
-                        ))}
+                        {dayEvents.map(ev => {
+                          const cancelled = ev.isCancelled || /^(canceled|cancelled):\s*/i.test(ev.subject || '');
+                          return (
+                            <div
+                              key={ev.id}
+                              className={`cal-day-event-label${cancelled ? ' cancelled' : ''}`}
+                              style={{ borderLeftColor: cancelled ? '#dc2626' : (EVENT_TYPE_COLORS[ev.eventType] || '#16a34a') }}
+                              title={(cancelled ? '[Cancelled] ' : '') + (ev.subject || '(no subject)')}
+                            >
+                              {cancelled && <span className="cal-day-event-tag">Cancelled</span>}
+                              <span className="cal-day-event-name">{ev.subject || '(no subject)'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </>
@@ -1437,13 +1494,14 @@ function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }:
       </div>
       <div className="cal-hover-list">
         {events.map(ev => {
-          const color = EVENT_TYPE_COLORS[ev.eventType] || '#16a34a';
+          const cancelled = ev.isCancelled || /^(canceled|cancelled):\s*/i.test(ev.subject || '');
+          const color = cancelled ? '#dc2626' : (EVENT_TYPE_COLORS[ev.eventType] || '#16a34a');
           const isChecked = selectedItems.has(ev.id);
           const when = ev.start
             ? fmtLocalTime(ev.start, { hour: 'numeric', minute: '2-digit' })
             : '';
           return (
-            <div key={ev.id} className={`cal-hover-row${isChecked ? ' checked' : ''}`}>
+            <div key={ev.id} className={`cal-hover-row${isChecked ? ' checked' : ''}${cancelled ? ' cancelled' : ''}`}>
               <input
                 type="checkbox"
                 className="cal-hover-check"
@@ -1452,7 +1510,10 @@ function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }:
                 onClick={e => e.stopPropagation()}
               />
               <span className="cal-hover-dot" style={{ background: color }} />
-              <span className="cal-hover-subject" title={ev.subject}>{ev.subject || '(no subject)'}</span>
+              <span className="cal-hover-subject" title={ev.subject}>
+                {cancelled && <span className="cal-day-event-tag" style={{ marginRight: 6 }}>Cancelled</span>}
+                {ev.subject || '(no subject)'}
+              </span>
               {when && <span className="cal-hover-time">{when}</span>}
             </div>
           );
@@ -2252,14 +2313,13 @@ function GroupTeamsView({
 
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!latestSnapshot) { setItems([]); return; }
-    setLoading(true); setError(null);
+    setLoading(true);
     SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
       .then(data => setItems(data.content || []))
-      .catch(err => { setError(err.message || 'Failed to load items'); setItems([]); })
+      .catch(() => { setItems([]); })
       .finally(() => setLoading(false));
   }, [latestSnapshot?.id]);
 
@@ -2637,6 +2697,935 @@ function GroupTeamsView({
   void allChecked;
 }
 
+/**
+ * Azure Active Directory content view — 8 tabs matching AFI's office
+ * directory model. Each tab filters snapshot items by their item_type.
+ */
+type EntraTab = 'users' | 'groups' | 'roles' | 'security' | 'audit' | 'applications' | 'intune' | 'adminunits';
+const ENTRA_TAB_LABELS: Record<EntraTab, string> = {
+  users: 'Users',
+  groups: 'Groups',
+  roles: 'Roles',
+  security: 'Security',
+  audit: 'Audit',
+  applications: 'Applications',
+  intune: 'Intune',
+  adminunits: 'Administrative Units',
+};
+const ENTRA_TAB_TYPES: Record<EntraTab, string> = {
+  users: 'ENTRA_DIR_USER',
+  groups: 'ENTRA_DIR_GROUP',
+  roles: 'ENTRA_DIR_ROLE',
+  security: 'ENTRA_DIR_SECURITY',
+  audit: 'ENTRA_DIR_AUDIT',
+  applications: 'ENTRA_DIR_APPLICATION',
+  intune: 'ENTRA_DIR_INTUNE',
+  adminunits: 'ENTRA_DIR_ADMIN_UNIT',
+};
+
+type UserCategory = 'user' | 'shared' | 'room' | 'equipment';
+const USER_CATEGORY_LABELS: Record<UserCategory, string> = {
+  user: 'User mailboxes',
+  shared: 'Shared mailboxes',
+  room: 'Rooms',
+  equipment: 'Equipment',
+};
+
+// ────────────────────────────────────────────────────────────────
+// Shared pieces for Entra Directory tabs — AFI parity.
+// Every tab except Audit uses the same three-panel shape, so we
+// centralise the middle-row card + right-pane detail card here.
+// ────────────────────────────────────────────────────────────────
+
+function EntraTwoLineRow({
+  name, sub, selected, checked, onSelect, onToggleCheck, badge,
+}: {
+  name: string;
+  sub?: string;
+  selected: boolean;
+  checked: boolean;
+  onSelect: () => void;
+  onToggleCheck: (e: React.MouseEvent) => void;
+  badge?: string | null;
+}) {
+  return (
+    <div className={`entra-user-row ${selected ? 'selected' : ''}`} onClick={onSelect}>
+      <input
+        className="entra-user-check"
+        type="checkbox"
+        checked={checked}
+        onChange={() => {}}
+        onClick={onToggleCheck}
+      />
+      <div className="entra-user-text">
+        <div className="entra-user-name">{name}</div>
+        {sub && <div className="entra-user-upn">{sub}</div>}
+      </div>
+      {badge && <span className="entra-user-badge">{badge}</span>}
+    </div>
+  );
+}
+
+
+function EntraDetailCard({
+  title, fields, copyableField,
+}: {
+  title: string;
+  fields: Array<{ label: string; value: React.ReactNode; hidden?: boolean }>;
+  copyableField?: string;
+}) {
+  const initials = (title || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('');
+  return (
+    <div className="entra-user-detail">
+      <div className="entra-user-detail-header">
+        <div className="entra-user-avatar" aria-hidden>{initials}</div>
+        <div className="entra-user-detail-title">{title}</div>
+      </div>
+      <div className="entra-user-detail-body">
+        {fields.filter(f => !f.hidden && f.value !== undefined && f.value !== null && f.value !== '').map((f, i) => (
+          <div key={i} className="entra-user-field">
+            <span className="entra-user-field-label">{f.label}:</span>
+            <span className="entra-user-field-val">
+              {f.value}
+              {copyableField === f.label && typeof f.value === 'string' && (
+                <button
+                  className="entra-user-copy"
+                  title="Copy"
+                  onClick={() => navigator.clipboard?.writeText(f.value as string)}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 13, height: 13 }}>
+                    <rect x="4" y="4" width="9" height="9" rx="1.2" />
+                    <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2h7" />
+                  </svg>
+                </button>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Generic left-buckets → middle-rows → right-detail panel for an
+ * Entra tab. Caller supplies the per-tab bucketing, row shape,
+ * and detail-card field list. Keeps the 7 AFI-parity tabs DRY.
+ */
+function EntraBucketView<T extends { id: string; name?: string | null; metadata?: any }>({
+  buckets,
+  rows,
+  bucketClassifier,
+  rowSub,
+  rowBadge,
+  detailFields,
+  detailTitle,
+  copyableField,
+  emptyListText,
+  emptyRightText,
+  selectedItems,
+  onToggleItem,
+  onSelectAll,
+}: {
+  buckets: string[];
+  rows: T[];
+  bucketClassifier: (row: T) => string;
+  rowSub: (row: T) => string | undefined;
+  rowBadge?: (row: T) => string | null | undefined;
+  detailFields: (row: T) => Array<{ label: string; value: React.ReactNode }>;
+  detailTitle: (row: T) => string;
+  copyableField?: string;
+  emptyListText: string;
+  emptyRightText: string;
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [bucket, setBucket] = useState<string>(buckets[0] || '');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => { setSelectedId(null); }, [bucket]);
+
+  const bucketed = useMemo(() => {
+    const out: Record<string, T[]> = Object.fromEntries(buckets.map(b => [b, []]));
+    for (const r of rows) {
+      const b = bucketClassifier(r);
+      if (out[b]) out[b].push(r);
+    }
+    for (const b of buckets) out[b].sort((a, b2) => String(a.name || '').localeCompare(String(b2.name || '')));
+    return out;
+  }, [rows, buckets, bucketClassifier]);
+
+  const visible = bucketed[bucket] || [];
+  const selected = visible.find(r => r.id === selectedId) || null;
+  const allChecked = visible.length > 0 && visible.every(r => selectedItems.has(r.id));
+
+  return (
+    <div className="three-panel-layout">
+      <div className="panel-left">
+        <div className="folder-list">
+          {buckets.map(b => {
+            const count = (bucketed[b] || []).length;
+            return (
+              <button
+                key={b}
+                className={`folder-item ${bucket === b ? 'active' : ''}`}
+                onClick={() => setBucket(b)}
+              >
+                <span className="folder-name">{b}</span>
+                {count > 0 && <span className="folder-count">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="panel-middle">
+        <div className="entra-user-list-header">
+          <label className="select-all-wrap" title="Select all">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={e => onSelectAll(visible.map(r => r.id), e.target.checked)}
+            />
+          </label>
+          <span className="entra-user-count">Items: {visible.length}</span>
+          <span className="entra-user-sort">Sort by: Display Name</span>
+        </div>
+        <div className="item-list">
+          {visible.length === 0 ? (
+            <div className="empty-state"><p>{emptyListText}</p></div>
+          ) : (
+            visible.map((r: T) => (
+              <EntraTwoLineRow
+                key={r.id}
+                name={r.name || '(unnamed)'}
+                sub={rowSub(r)}
+                selected={selectedId === r.id}
+                checked={selectedItems.has(r.id)}
+                onSelect={() => setSelectedId(r.id)}
+                onToggleCheck={(e) => { e.stopPropagation(); onToggleItem(r.id); }}
+                badge={rowBadge?.(r)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+      <div className="panel-right">
+        {selected ? (
+          <EntraDetailCard
+            title={detailTitle(selected)}
+            fields={detailFields(selected)}
+            copyableField={copyableField}
+          />
+        ) : (
+          <div className="empty-preview"><p>{emptyRightText}</p></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EntraDirectoryView({
+  resourceId, tenantId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  tenantId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<EntraTab>('users');
+
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!latestSnapshot) { setItems([]); return; }
+    setLoading(true);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
+      .then(data => setItems(data.content || []))
+      .catch(() => { setItems([]); })
+      .finally(() => setLoading(false));
+  }, [latestSnapshot?.id]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<EntraTab, number> = {
+      users: 0, groups: 0, roles: 0, security: 0,
+      audit: 0, applications: 0, intune: 0, adminunits: 0,
+    };
+    for (const it of items) {
+      for (const tab of Object.keys(ENTRA_TAB_TYPES) as EntraTab[]) {
+        if (it.itemType === ENTRA_TAB_TYPES[tab]) counts[tab]++;
+      }
+    }
+    return counts;
+  }, [items]);
+
+  const visibleItems = useMemo(
+    () => items.filter(i => i.itemType === ENTRA_TAB_TYPES[activeTab]),
+    [items, activeTab],
+  );
+
+  // ── Users tab: classify ENTRA_DIR_USER rows into mailbox buckets by
+  //    cross-referencing live MAILBOX / SHARED_MAILBOX / ROOM_MAILBOX
+  //    resources (matched on email / userPrincipalName). Users without a
+  //    mailbox resource fall into "User mailboxes" by default.
+  const [userCategory, setUserCategory] = useState<UserCategory>('user');
+  const [mailboxTypeByEmail, setMailboxTypeByEmail] = useState<Record<string, UserCategory>>({});
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'users') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [shared, rooms] = await Promise.all([
+          getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 2000).catch(() => ({ items: [] })),
+          getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 2000).catch(() => ({ items: [] })),
+        ]);
+        if (cancelled) return;
+        const map: Record<string, UserCategory> = {};
+        for (const r of (shared.items || [])) {
+          const e = (r.email || r.name || '').toLowerCase();
+          if (e) map[e] = 'shared';
+        }
+        for (const r of (rooms.items || [])) {
+          const e = (r.email || r.name || '').toLowerCase();
+          if (e) map[e] = 'room';
+        }
+        setMailboxTypeByEmail(map);
+      } catch {
+        setMailboxTypeByEmail({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, tenantId]);
+
+  const usersByCategory = useMemo(() => {
+    const out: Record<UserCategory, any[]> = { user: [], shared: [], room: [], equipment: [] };
+    const userRows = items.filter(i => i.itemType === 'ENTRA_DIR_USER');
+    for (const u of userRows) {
+      const raw = u.metadata?.raw || {};
+      const email = String(raw.mail || raw.userPrincipalName || '').toLowerCase();
+      const cat = mailboxTypeByEmail[email] || 'user';
+      out[cat].push(u);
+    }
+    for (const c of Object.keys(out) as UserCategory[]) {
+      out[c].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    }
+    return out;
+  }, [items, mailboxTypeByEmail]);
+
+  const usersInCategory = usersByCategory[userCategory];
+
+  // Reset the selected user when switching categories so the right pane
+  // doesn't keep showing a user no longer in the list.
+  useEffect(() => { setSelectedUserId(null); }, [userCategory]);
+
+  const selectedUser = useMemo(
+    () => usersInCategory.find(u => u.id === selectedUserId) || null,
+    [usersInCategory, selectedUserId],
+  );
+
+  return (
+    <>
+      <div className="content-type-tabs">
+        {(Object.keys(ENTRA_TAB_LABELS) as EntraTab[]).map(tab => {
+          const count = tabCounts[tab];
+          return (
+            <button
+              key={tab}
+              className={`content-tab ${activeTab === tab ? 'active' : ''}${count ? '' : ' content-tab-empty'}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {ENTRA_TAB_LABELS[tab]}
+              {count > 0 && <span className="content-tab-count">{count.toLocaleString()}</span>}
+            </button>
+          );
+        })}
+      </div>
+      {activeTab === 'users' ? (
+        /* Users tab — matches AFI's 3-panel layout:
+             Left  = mailbox buckets (User / Shared / Rooms / Equipment)
+             Mid   = accounts in the selected bucket (2-line rows)
+             Right = avatar + name header + Account: label-value card
+        */
+        <div className="three-panel-layout">
+          <div className="panel-left">
+            <div className="folder-list">
+              {(Object.keys(USER_CATEGORY_LABELS) as UserCategory[]).map(c => {
+                const count = usersByCategory[c].length;
+                return (
+                  <button
+                    key={c}
+                    className={`folder-item ${userCategory === c ? 'active' : ''}`}
+                    onClick={() => setUserCategory(c)}
+                  >
+                    <span className="folder-name">{USER_CATEGORY_LABELS[c]}</span>
+                    {count > 0 && <span className="folder-count">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="panel-middle">
+            <div className="entra-user-list-header">
+              <label className="select-all-wrap" title="Select all">
+                <input
+                  type="checkbox"
+                  checked={usersInCategory.length > 0 && usersInCategory.every(u => selectedItems.has(u.id))}
+                  onChange={e => onSelectAll(usersInCategory.map(u => u.id), e.target.checked)}
+                />
+              </label>
+              <span className="entra-user-count">Items: {usersInCategory.length}</span>
+              <span className="entra-user-sort">Sort by: Display Name</span>
+            </div>
+            <div className="item-list">
+              {!latestSnapshot ? (
+                <div className="empty-state"><p>No completed backup for this directory yet.</p></div>
+              ) : loading ? (
+                <div className="loading-container"><div className="spinner" /><p>Loading accounts…</p></div>
+              ) : usersInCategory.length === 0 ? (
+                <div className="empty-state"><p>No accounts in this category.</p></div>
+              ) : (
+                usersInCategory.map((u: any) => {
+                  const raw = u.metadata?.raw || {};
+                  const sub = raw.userPrincipalName || raw.mail || '';
+                  return (
+                    <div
+                      key={u.id}
+                      className={`entra-user-row ${selectedUserId === u.id ? 'selected' : ''}`}
+                      onClick={() => setSelectedUserId(u.id)}
+                    >
+                      <input
+                        className="entra-user-check"
+                        type="checkbox"
+                        checked={selectedItems.has(u.id)}
+                        onChange={() => {}}
+                        onClick={(e) => { e.stopPropagation(); onToggleItem(u.id); }}
+                      />
+                      <div className="entra-user-text">
+                        <div className="entra-user-name">{raw.displayName || u.name}</div>
+                        <div className="entra-user-upn">{sub}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="panel-right">
+            {selectedUser ? (() => {
+              const raw = selectedUser.metadata?.raw || {};
+              const displayName = raw.displayName || selectedUser.name;
+              const upn = raw.userPrincipalName || '';
+              const email = raw.mail || '';
+              const objectId = raw.id || selectedUser.externalId || '';
+              const userType = raw.userType || '';
+              const isExternal = String(upn).includes('#EXT#') || userType === 'Guest';
+              // Normalize proxyAddresses -> "address (type)" rows, stripping
+              // the "SMTP:"/"smtp:" prefix and inferring the type.
+              const proxies: Array<{ addr: string; label: string; kind: string }> = [];
+              for (const p of (raw.proxyAddresses || [])) {
+                const s = String(p);
+                const upper = s.startsWith('SMTP:');
+                const lower = s.startsWith('smtp:');
+                const addr = (upper || lower) ? s.slice(5) : s;
+                proxies.push({
+                  addr,
+                  label: addr,
+                  kind: upper ? 'work' : (lower ? 'proxy' : 'other'),
+                });
+              }
+              for (const om of (raw.otherMails || [])) {
+                proxies.push({ addr: String(om), label: String(om), kind: 'other' });
+              }
+              return (
+                <div className="entra-user-detail">
+                  <div className="entra-user-detail-header">
+                    <div className="entra-user-avatar" aria-hidden>
+                      {(displayName || '?').trim().split(/\s+/).slice(0, 2).map((w: string) => w[0]?.toUpperCase() || '').join('')}
+                    </div>
+                    <div className="entra-user-detail-title">{displayName}</div>
+                  </div>
+                  <div className="entra-user-detail-body">
+                    <div className="entra-user-section-header">Account:</div>
+                    <div className="entra-user-field">
+                      <span className="entra-user-field-label">Username:</span>
+                      <span className="entra-user-field-val">{upn || '—'}</span>
+                    </div>
+                    <div className="entra-user-field">
+                      <span className="entra-user-field-label">Email:</span>
+                      <span className="entra-user-field-val">{email || '—'}</span>
+                    </div>
+                    {objectId && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Object ID:</span>
+                        <span className="entra-user-field-val">
+                          {objectId}
+                          <button
+                            className="entra-user-copy"
+                            title="Copy Object ID"
+                            onClick={() => navigator.clipboard?.writeText(objectId)}
+                          >
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 13, height: 13 }}>
+                              <rect x="4" y="4" width="9" height="9" rx="1.2" />
+                              <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2h7" />
+                            </svg>
+                          </button>
+                        </span>
+                      </div>
+                    )}
+                    {proxies.length > 0 && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Other emails:</span>
+                        <span className="entra-user-field-val">
+                          {proxies.map((p, i) => (
+                            <div key={i} className="entra-user-proxy-row">
+                              {p.label} <span className="entra-user-proxy-kind">({p.kind})</span>
+                            </div>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                    {userType && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Type:</span>
+                        <span className="entra-user-field-val">{userType}</span>
+                      </div>
+                    )}
+                    <div className="entra-user-field">
+                      <span className="entra-user-field-label">External:</span>
+                      <span className="entra-user-field-val">{isExternal ? 'Yes' : 'No'}</span>
+                    </div>
+                    {raw.jobTitle && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Job title:</span>
+                        <span className="entra-user-field-val">{raw.jobTitle}</span>
+                      </div>
+                    )}
+                    {raw.department && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Department:</span>
+                        <span className="entra-user-field-val">{raw.department}</span>
+                      </div>
+                    )}
+                    {raw.accountEnabled === false && (
+                      <div className="entra-user-field">
+                        <span className="entra-user-field-label">Account enabled:</span>
+                        <span className="entra-user-field-val">No</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="empty-preview"><p>Select an account to preview</p></div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'groups' ? (
+        /* Groups — 4 buckets by groupTypes / mailEnabled / securityEnabled.
+           Right panel: Email / Object ID (copy) / Description / Created /
+           Owners / Membership type / Members with "Download all members". */
+        <EntraBucketView
+          buckets={['Microsoft 365', 'Distribution', 'Mail-Enabled Security', 'Security']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const gt = (raw.groupTypes || []).map((t: string) => t.toLowerCase());
+            if (gt.includes('unified')) return 'Microsoft 365';
+            if (raw.mailEnabled && !raw.securityEnabled) return 'Distribution';
+            if (raw.mailEnabled && raw.securityEnabled) return 'Mail-Enabled Security';
+            return 'Security';
+          }}
+          rowSub={(r: any) => r.metadata?.raw?.mail || ''}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const owners = (raw._owners || []).map((o: any) =>
+              `${o.displayName}${o.userPrincipalName ? ` (${o.userPrincipalName})` : ''}`,
+            ).join(', ');
+            const members = (raw._members || []).map((m: any) =>
+              `${m.displayName}${m.userPrincipalName ? ` (${m.userPrincipalName})` : ''}`,
+            ).join(', ');
+            const membership = raw.groupTypes?.includes('DynamicMembership') ? 'Dynamic' : 'Assigned';
+            return [
+              { label: 'Email', value: raw.mail || '' },
+              { label: 'Object ID', value: raw.id || r.externalId || '' },
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Created', value: raw.createdDateTime ? fmtLocal(raw.createdDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+              { label: 'Owners', value: owners || '' },
+              { label: 'Membership type', value: membership },
+              { label: 'Members', value: raw._memberCount > 0 ? `${members}${raw._memberCount >= 50 ? ` (+ more, ${raw._memberCount} shown)` : ''}` : '' },
+            ];
+          }}
+          copyableField="Object ID"
+          emptyListText="No groups in this category."
+          emptyRightText="Select a group to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'roles' ? (
+        /* Roles — single bucket. Right panel: Description + Privileges. */
+        <EntraBucketView
+          buckets={['Roles']}
+          rows={visibleItems}
+          bucketClassifier={() => 'Roles'}
+          rowSub={(r: any) => {
+            const d = r.metadata?.raw?.description || '';
+            return d.length > 80 ? d.slice(0, 80) + '…' : d;
+          }}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const privList = (raw.rolePermissions || []).flatMap((rp: any) =>
+              (rp.allowedResourceActions || []),
+            );
+            return [
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Privileges', value: privList.length > 0 ? (
+                <div>
+                  {privList.map((p: string, i: number) => <div key={i}>{p}</div>)}
+                </div>
+              ) : '' },
+            ];
+          }}
+          emptyListText="No roles captured."
+          emptyRightText="Select a role to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'security' ? (
+        /* Security — 5 buckets, driven by _sec_bucket tag set at backup. */
+        <EntraBucketView
+          buckets={['Conditional Access', 'Authentication Contexts', 'Authentication Strengths', 'Named Locations', 'Policies']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => r.metadata?.raw?._sec_bucket || 'Policies'}
+          rowSub={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            return `Details: ${raw.state || raw.isBuiltIn ? 'Built-In' : (raw.policyType || 'Custom')}`;
+          }}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            return [
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Created', value: raw.createdDateTime ? fmtLocal(raw.createdDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+              { label: 'Details', value: raw.isBuiltIn ? 'Built-In' : (raw.state || '') },
+            ];
+          }}
+          emptyListText="No security items"
+          emptyRightText="No security items selected"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'audit' ? (
+        /* Audit — full-width table (no right panel). Two buckets in the
+           left rail: Audit Logs / Sign-In Logs. */
+        <EntraAuditView
+          rows={visibleItems}
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'applications' ? (
+        /* Applications — App Registrations vs Enterprise Applications. */
+        <EntraBucketView
+          buckets={['App Registrations', 'Enterprise Applications']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => r.metadata?.raw?._app_bucket || 'App Registrations'}
+          rowSub={(r: any) => r.metadata?.raw?.appId || ''}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            // Flatten requiredResourceAccess into repeating Permission blocks.
+            const perms: React.ReactNode[] = [];
+            for (const rra of (raw.requiredResourceAccess || [])) {
+              const apiName = rra.resourceAppId === '00000003-0000-0000-c000-000000000000' ? 'Microsoft Graph' : rra.resourceAppId;
+              for (const access of (rra.resourceAccess || [])) {
+                perms.push(
+                  <div key={perms.length} className="entra-user-perm-block">
+                    <div className="entra-user-perm-row"><span className="entra-user-perm-label">API Name:</span><span>{apiName}</span></div>
+                    <div className="entra-user-perm-row"><span className="entra-user-perm-label">Claim value:</span><span>{access.id}</span></div>
+                    <div className="entra-user-perm-row"><span className="entra-user-perm-label">Type:</span><span>{access.type === 'Scope' ? 'Delegated' : 'Application'}</span></div>
+                  </div>
+                );
+              }
+            }
+            for (const r2 of (raw.appRoles || [])) {
+              perms.push(
+                <div key={perms.length} className="entra-user-perm-block">
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">API Name:</span><span>{raw.displayName}</span></div>
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">Claim value:</span><span>{r2.value}</span></div>
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">Permission:</span><span>{r2.displayName}</span></div>
+                  <div className="entra-user-perm-row"><span className="entra-user-perm-label">Type:</span><span>Application</span></div>
+                </div>
+              );
+            }
+            return [
+              { label: 'App ID', value: raw.appId || '' },
+              { label: 'Created', value: raw.createdDateTime ? fmtLocal(raw.createdDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+              { label: 'Permissions', value: perms.length > 0 ? <div>{perms}</div> : '' },
+            ];
+          }}
+          copyableField="App ID"
+          emptyListText="No applications in this category."
+          emptyRightText="Select an application to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : activeTab === 'intune' ? (
+        /* Intune — Devices / Compliance Policies / Configuration Profiles. */
+        <EntraBucketView
+          buckets={['Devices', 'Compliance Policies', 'Configuration Profiles']}
+          rows={visibleItems}
+          bucketClassifier={(r: any) => r.metadata?.raw?._intune_bucket || 'Devices'}
+          rowSub={(r: any) => {
+            const o = r.metadata?.raw?._owner_display;
+            return o ? `Owner: ${o}` : '';
+          }}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            const joinType = raw.trustType === 'AzureAd' ? 'Microsoft Entra joined'
+                           : raw.trustType === 'Workplace' ? 'Microsoft Entra registered'
+                           : raw.trustType || '';
+            return [
+              { label: 'Object ID', value: raw.id || r.externalId || '' },
+              { label: 'Enabled', value: raw.accountEnabled === undefined ? '' : (raw.accountEnabled ? 'Yes' : 'No') },
+              { label: 'OS', value: raw.operatingSystem || '' },
+              { label: 'Version', value: raw.operatingSystemVersion || '' },
+              { label: 'Join type', value: joinType },
+              { label: 'Owner', value: raw._owner_display || '' },
+              { label: 'MDM', value: raw.isManaged === undefined ? '' : (raw.isManaged ? 'Yes' : 'No') },
+              { label: 'Compliant', value: raw.isCompliant === undefined ? '' : (raw.isCompliant ? 'Yes' : 'No') },
+              { label: 'Registered', value: raw.registrationDateTime ? fmtLocal(raw.registrationDateTime, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '' },
+            ];
+          }}
+          copyableField="Object ID"
+          emptyListText="No items in this category."
+          emptyRightText="Select an item to preview"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      ) : (
+        /* Administrative Units — single bucket. */
+        <EntraBucketView
+          buckets={['Administrative Units']}
+          rows={visibleItems}
+          bucketClassifier={() => 'Administrative Units'}
+          rowSub={(r: any) => r.metadata?.raw?.description || ''}
+          detailTitle={(r: any) => r.metadata?.raw?.displayName || r.name || ''}
+          detailFields={(r: any) => {
+            const raw = r.metadata?.raw || {};
+            return [
+              { label: 'Object ID', value: raw.id || r.externalId || '' },
+              { label: 'Description', value: raw.description || '' },
+              { label: 'Visibility', value: raw.visibility || '' },
+            ];
+          }}
+          copyableField="Object ID"
+          emptyListText="No administrative units"
+          emptyRightText="No administrative unit selected"
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
+          onSelectAll={onSelectAll}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Audit tab — full-width table (Name · Time · Initiated By · Category
+ * · Operation Type). Left rail still splits Audit Logs / Sign-In Logs.
+ */
+function EntraAuditView({
+  rows, selectedItems, onToggleItem, onSelectAll,
+}: {
+  rows: any[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [bucket, setBucket] = useState<'Audit Logs' | 'Sign-In Logs'>('Audit Logs');
+  // AFI opens a modal when a row is clicked showing full audit details.
+  const [modalRow, setModalRow] = useState<any | null>(null);
+  const bucketed = useMemo(() => {
+    const out: Record<string, any[]> = { 'Audit Logs': [], 'Sign-In Logs': [] };
+    for (const r of rows) {
+      const b = r.metadata?.raw?._audit_bucket || 'Audit Logs';
+      if (out[b]) out[b].push(r);
+    }
+    return out;
+  }, [rows]);
+  const visible = bucketed[bucket];
+  const allChecked = visible.length > 0 && visible.every(r => selectedItems.has(r.id));
+  return (
+    <div className="three-panel-layout">
+      <div className="panel-left">
+        <div className="folder-list">
+          {(['Audit Logs', 'Sign-In Logs'] as const).map(b => (
+            <button
+              key={b}
+              className={`folder-item ${bucket === b ? 'active' : ''}`}
+              onClick={() => setBucket(b)}
+            >
+              <span className="folder-name">{b}</span>
+              {bucketed[b].length > 0 && <span className="folder-count">{bucketed[b].length}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="panel-middle" style={{ flex: 1 }}>
+        <div className="od-table">
+          <div className="od-table-head entra-audit-head">
+            <div className="od-th od-th-check">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={e => onSelectAll(visible.map(r => r.id), e.target.checked)}
+              />
+            </div>
+            <div className="od-th">Name</div>
+            <div className="od-th">Time</div>
+            <div className="od-th">Initiated By</div>
+            <div className="od-th">Category</div>
+            <div className="od-th">Operation Type</div>
+          </div>
+          <div className="od-table-body">
+            {visible.length === 0 ? (
+              <div className="empty-state" style={{ padding: 32 }}><p>No {bucket.toLowerCase()} captured.</p></div>
+            ) : visible.map((r: any) => {
+              const raw = r.metadata?.raw || {};
+              const name = raw.activityDisplayName || raw.operationName || r.name || '';
+              const time = raw.activityDateTime || raw.createdDateTime || r.createdAt;
+              const who = raw.initiatedBy?.user?.displayName
+                       || raw.initiatedBy?.user?.userPrincipalName
+                       || raw.initiatedBy?.app?.displayName
+                       || raw.userDisplayName
+                       || '—';
+              const cat = raw.category || raw.loggedByService || '—';
+              const op = raw.operationType || raw.status?.errorCode === 0 ? 'Success' : (raw.result || '—');
+              return (
+                <div
+                  key={r.id}
+                  className={`od-row entra-audit-row ${selectedItems.has(r.id) ? 'selected' : ''}`}
+                  onClick={() => setModalRow(r)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.has(r.id)}
+                      onChange={() => onToggleItem(r.id)}
+                    />
+                  </div>
+                  <div className="od-td">{name}</div>
+                  <div className="od-td">{time ? fmtLocal(time, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—'}</div>
+                  <div className="od-td">{who}</div>
+                  <div className="od-td">{cat}</div>
+                  <div className="od-td">{op}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      {modalRow && <EntraAuditModal row={modalRow} onClose={() => setModalRow(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Audit modal — opens when a row is clicked. Mirrors AFI's layout:
+ * Name / Time / Initiated By (with type tag) / Category / Operation Type
+ * / Result / Targets (list) / Details (list of property/value pairs).
+ */
+function EntraAuditModal({ row, onClose }: { row: any; onClose: () => void }) {
+  const raw = row.metadata?.raw || {};
+  const name = raw.activityDisplayName || raw.operationName || row.name || '';
+  const time = raw.activityDateTime || raw.createdDateTime || row.createdAt;
+  const init = raw.initiatedBy || {};
+  const initName = init.user?.displayName || init.user?.userPrincipalName || init.app?.displayName || '—';
+  const initType = init.user ? 'User' : (init.app ? 'Service principal' : '');
+  const cat = raw.category || raw.loggedByService || '';
+  const op = raw.operationType || '';
+  const result = raw.result || (raw.status?.errorCode === 0 ? 'Success' : raw.status?.failureReason) || '';
+  const targets = raw.targetResources || [];
+  const details = raw.additionalDetails || [];
+
+  // Close on ESC.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  return (
+    <div className="entra-audit-modal-backdrop" onClick={onClose}>
+      <div className="entra-audit-modal" onClick={e => e.stopPropagation()}>
+        <button className="entra-audit-modal-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="entra-audit-modal-title">Audit Log Entry</div>
+        <div className="entra-audit-modal-body">
+          <div className="entra-audit-field"><span className="entra-audit-label">Name:</span><span>{name}</span></div>
+          <div className="entra-audit-field"><span className="entra-audit-label">Time:</span><span>{time ? fmtLocal(time, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—'}</span></div>
+          <div className="entra-audit-field">
+            <span className="entra-audit-label">Initiated By:</span>
+            <span>{initName}{initType && <span className="entra-audit-initkind"> ({initType})</span>}</span>
+          </div>
+          {cat && <div className="entra-audit-field"><span className="entra-audit-label">Category:</span><span>{cat}</span></div>}
+          {op && <div className="entra-audit-field"><span className="entra-audit-label">Operation Type:</span><span>{op}</span></div>}
+          {result && <div className="entra-audit-field"><span className="entra-audit-label">Result:</span><span>{result}</span></div>}
+          {targets.length > 0 && (
+            <div className="entra-audit-field entra-audit-multi">
+              <span className="entra-audit-label">Targets:</span>
+              <div className="entra-audit-sublist">
+                {targets.map((t: any, i: number) => (
+                  <div key={i} className="entra-audit-subrow">
+                    <span className="entra-audit-sublabel">Type:</span><span>{t.type || 'Unknown type'}</span>
+                    <span className="entra-audit-sublabel">Name:</span><span>{t.displayName || 'Unknown target'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {details.length > 0 && (
+            <div className="entra-audit-field entra-audit-multi">
+              <span className="entra-audit-label">Details:</span>
+              <div className="entra-audit-sublist">
+                {details.map((d: any, i: number) => (
+                  <div key={i} className="entra-audit-subrow">
+                    <span className="entra-audit-sublabel">Property:</span><span>{d.key || ''}</span>
+                    <span className="entra-audit-sublabel">Value:</span><span style={{ wordBreak: 'break-all' }}>{String(d.value || '')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2682,6 +3671,14 @@ export default function Recovery() {
     return isOneDriveMyDrive ? '/' : 'all';
   });
   const [foldersLoading, setFoldersLoading] = useState(false);
+  // Left-panel folders pagination — 50 at a time, infinite-scroll appends.
+  const [foldersPage, setFoldersPage] = useState<number>(1);
+  const [foldersHasMore, setFoldersHasMore] = useState<boolean>(false);
+  const [foldersLoadingMore, setFoldersLoadingMore] = useState<boolean>(false);
+  const folderListRef = useRef<HTMLDivElement | null>(null);
+  // Serialise folder-fetches so StrictMode's dev-mode double-effect and
+  // rapid tab switches don't fire the same request twice.
+  const foldersInflightRef = useRef<string>('');
 
   // OneDrive-only: switches the tab between "My Drive" (folder tree nav)
   // and "Recent" (flat list of files sorted by createdDateTime desc). Other
@@ -2865,13 +3862,34 @@ export default function Recovery() {
       return;
     }
 
+    // Calendar tab has its own dedicated fetch inside CalendarMonthView
+    // (which calls /snapshots/{id}/calendar directly). Don't double-fetch
+    // the same events through the generic /items endpoint — saves one
+    // network round trip per calendar-tab open.
+    if (activeContentType === 'calendar') {
+      setRecoveryItems([]);
+      setItemCount(0);
+      setItemTotalPages(1);
+      setHasMore(false);
+      setItemPage(1);
+      setItemsLoading(false);
+      return;
+    }
+
+    // Wait for the folders list (left panel) to land before firing the
+    // items fetch. On Chats the folders response also auto-selects the
+    // first chat into selectedFolder — if we fired items first we'd send
+    // an all-chats query then immediately refire against the selected
+    // chat, doubling the request count per tab switch.
+    if (foldersLoading) return;
+
     const myKey = ++requestKeyRef.current;
     setItemPage(1);
     setItemsLoading(true);
     if (itemListRef.current) itemListRef.current.scrollTop = 0;
-    // Calendar dumps benefit from a larger page (no pagination control on the
-    // calendar layout); the other four tabs use the standard list size.
-    const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    // Calendar tab returns early above, so by this point activeContentType
+    // is narrowed to non-calendar. Use a fixed page size of 50.
+    const pageSize = 50;
     const isChats = activeContentType === 'chats';
     // OneDrive "Recent" mode: drop the folder filter and ask backend to
     // sort by createdDateTime DESC. "My Drive" uses default name_asc so
@@ -2918,7 +3936,7 @@ export default function Recovery() {
       .finally(() => {
         if (myKey === requestKeyRef.current) setItemsLoading(false);
       });
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading]);
 
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
@@ -2927,10 +3945,15 @@ export default function Recovery() {
   // view doesn't yank when new rows appear at the top.
   useEffect(() => {
     if (itemPage <= 1 || !selectedSnapshotId || !activeContentType) return;
+    // Calendar tab runs its own fetch in CalendarMonthView; skip the
+    // infinite-scroll page-append path here so we don't duplicate.
+    if (activeContentType === 'calendar') return;
     const myKey = requestKeyRef.current;
     const isChats = activeContentType === 'chats';
     setLoadingMore(true);
-    const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    // activeContentType is narrowed away from 'calendar' by the guard
+    // above, so a fixed page size of 50 is correct here.
+    const pageSize = 50;
     // Snapshot the scroll height BEFORE the next page lands so we can
     // anchor the viewport to the same content after prepending.
     const el = itemListRef.current;
@@ -3018,6 +4041,8 @@ export default function Recovery() {
   // overlapping resource switches).
   useEffect(() => {
     setFolders([]);
+    setFoldersPage(1);
+    setFoldersHasMore(false);
     // Don't reset selectedFolder here — the URL-sync effect is the
     // single source of truth for that value now. Resetting would
     // clobber a restored folder when the user presses browser back.
@@ -3031,13 +4056,23 @@ export default function Recovery() {
       return;
     }
 
+    // StrictMode in dev intentionally mounts/unmounts each effect twice
+    // — guard against the duplicate call landing on the same (snap, tab)
+    // pair. In production builds this is a no-op.
+    const inflightKey = `${snapId}|${activeContentType}|1`;
+    if (foldersInflightRef.current === inflightKey) return;
+    foldersInflightRef.current = inflightKey;
+
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(snapId)
-      .then((data) => {
+    SnapshotService.getFolders(snapId, undefined, 1, 50)
+      .then((resp) => {
         if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
+        const data = resp.content;
         const folderList = [{ path: '', count: data.reduce((sum, f) => sum + f.count, 0) }, ...data];
         setFolders(folderList);
+        setFoldersHasMore(!!resp.hasMore);
+        setFoldersPage(1);
         // Chats tab: no "All" — auto-pick the top chat so the message list
         // opens on real content instead of an aggregate view.
         if (activeContentType === 'chats') {
@@ -3050,9 +4085,49 @@ export default function Recovery() {
         console.error(err);
       })
       .finally(() => {
-        if (myKey === foldersKeyRef.current) setFoldersLoading(false);
+        if (myKey === foldersKeyRef.current) {
+          setFoldersLoading(false);
+          foldersInflightRef.current = '';
+        }
       });
   }, [contentSnapshots, activeContentType]);
+
+  // Infinite-scroll append: when foldersPage advances (driven by the
+  // scroll handler below), fetch the next page and append to the tree.
+  useEffect(() => {
+    if (foldersPage <= 1) return;
+    if (!contentSnapshots) return;
+    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
+    const snapId = entry?.snapshotId;
+    if (!snapId) return;
+    const inflightKey = `${snapId}|${activeContentType}|${foldersPage}`;
+    if (foldersInflightRef.current === inflightKey) return;
+    foldersInflightRef.current = inflightKey;
+    setFoldersLoadingMore(true);
+    SnapshotService.getFolders(snapId, undefined, foldersPage, 50)
+      .then((resp) => {
+        setFolders((prev) => {
+          const seen = new Set(prev.map(f => f.path));
+          const appended = resp.content.filter(f => !seen.has(f.path));
+          return [...prev, ...appended];
+        });
+        setFoldersHasMore(!!resp.hasMore);
+      })
+      .catch(console.error)
+      .finally(() => {
+        setFoldersLoadingMore(false);
+        foldersInflightRef.current = '';
+      });
+  }, [foldersPage, contentSnapshots, activeContentType]);
+
+  // Scroll handler — near the bottom of the folder list, advance page.
+  const handleFolderListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (foldersLoading || foldersLoadingMore || !foldersHasMore) return;
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+      setFoldersPage(p => p + 1);
+    }
+  }, [foldersLoading, foldersLoadingMore, foldersHasMore]);
 
 
 
@@ -3492,6 +4567,22 @@ export default function Recovery() {
                     else setSelectedItems(new Set());
                   }}
                 />
+              ) : selectedResource.kind === 'entra_directory' ? (
+                /* Azure Active Directory singleton: 8-tab header (Users
+                   / Groups / Roles / Security / Audit / Applications /
+                   Intune / Administrative Units). Items filtered from
+                   the latest snapshot by item_type. */
+                <EntraDirectoryView
+                  resourceId={selectedResource.id}
+                  tenantId={tenantId || ''}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                />
               ) : (selectedResource.kind === 'm365_group' || selectedResource.kind === 'teams_channel' || selectedResource.kind === 'entra_group') ? (
                 /* Microsoft 365 Groups + Teams + Entra groups: three content
                    surfaces — Site (SharePoint-backing site items), Mail
@@ -3671,7 +4762,7 @@ export default function Recovery() {
                     Clicking a row filters the items list via the `group`
                     parameter. "All" resets the filter. */}
                 <div className="panel-left">
-                  <div className="folder-list">
+                  <div className="folder-list" ref={folderListRef} onScroll={handleFolderListScroll}>
                     {/* "All" aggregates across every folder — useful on mail /
                         onedrive / contacts to see the flat stream. On the
                         chats tab we skip it: each chat is a standalone
@@ -3726,6 +4817,12 @@ export default function Recovery() {
                         </>
                       );
                     })()}
+                    {foldersLoadingMore && (
+                      <div className="folder-loading"><div className="spinner-sm" /></div>
+                    )}
+                    {!foldersLoadingMore && !foldersHasMore && folders.length > 50 && (
+                      <div className="folder-empty"><p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>End of list</p></div>
+                    )}
                   </div>
                 </div>
 

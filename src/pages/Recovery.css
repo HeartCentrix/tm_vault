@@ -145,7 +145,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #0d9488;
+  background: #2d3748;
   color: #fff;
   display: flex;
   align-items: center;
@@ -289,7 +289,7 @@
 .resource-avatar {
   width: 48px;
   height: 48px;
-  background: #0d9488;
+  background: #2d3748;
   color: #fff;
   border-radius: 50%;
   display: flex;
@@ -2035,7 +2035,30 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+/* Cancelled events — strike-through + muted colour + red badge.
+   Applies both on the day-cell chip and inside the hover tooltip. */
+.cal-day-event-label.cancelled .cal-day-event-name,
+.cal-hover-row.cancelled .cal-hover-subject {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.cal-day-event-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+.cal-hover-row.cancelled { opacity: 0.8; }
 
 /* Floating popover that tracks the cursor. position: fixed so the
    inline top/left coordinates we compute from clientX/clientY land
@@ -2435,4 +2458,216 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .od-row.sp-subsite-row {
   grid-template-columns: minmax(200px, 2fr) minmax(280px, 3fr) minmax(120px, 1fr);
 }
+
+/* ---------------------------------------------------------------- */
+/* Entra Directory → Users tab (mirrors AFI's 3-panel "User accounts" */
+/* view). Lives inside .three-panel-layout so it inherits flex sizing. */
+/* ---------------------------------------------------------------- */
+.entra-user-list-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  font-size: 13px;
+  color: #475569;
+}
+.entra-user-count { font-weight: 500; color: #0f172a; }
+.entra-user-sort { margin-left: auto; color: #475569; }
+
+.entra-user-row {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+}
+.entra-user-row:hover { background: #f8fafc; }
+.entra-user-row.selected { background: #eef6ff; }
+.entra-user-check { margin: 0; justify-self: start; }
+.entra-user-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.entra-user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entra-user-upn {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Right panel — selected user's detail card. */
+.entra-user-detail {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.entra-user-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+}
+.entra-user-avatar {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: #e0e7ff;
+  color: #4338ca;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.entra-user-detail-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.entra-user-detail-body {
+  padding: 18px 22px;
+  font-size: 13px;
+  color: #0f172a;
+}
+.entra-user-section-header {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #0f172a;
+}
+.entra-user-field {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  padding: 6px 0;
+  align-items: flex-start;
+}
+.entra-user-field-label { color: #475569; }
+.entra-user-field-val {
+  color: #0f172a;
+  word-break: break-all;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.entra-user-copy {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.entra-user-copy:hover { color: #0f172a; background: #e2e8f0; }
+.entra-user-proxy-row { display: block; line-height: 1.6; }
+.entra-user-proxy-kind { color: #16a34a; font-size: 12px; }
+
+/* Small "Modified" / "New" pill next to rows. */
+.entra-user-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #cffafe;
+  color: #0e7490;
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+/* Permissions block inside Applications detail card — one block per
+   API/Claim triple (AFI-style). */
+.entra-user-perm-block {
+  padding: 8px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+.entra-user-perm-block:last-child { border-bottom: none; }
+.entra-user-perm-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+.entra-user-perm-label { color: #475569; }
+
+/* Audit full-width table — five visible cols (Name / Time / Initiated
+   By / Category / Operation Type) + a checkbox column. */
+.od-table-head.entra-audit-head,
+.od-row.entra-audit-row {
+  grid-template-columns: 40px minmax(180px, 2fr) minmax(170px, 1.5fr) minmax(220px, 2fr) minmax(160px, 1fr) minmax(120px, 1fr);
+  font-size: 13px;
+}
+.od-row.entra-audit-row:hover { background: #f8fafc; }
+
+/* Audit detail modal. */
+.entra-audit-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.entra-audit-modal {
+  background: #fff;
+  border-radius: 6px;
+  width: min(680px, 90vw);
+  max-height: 85vh;
+  overflow: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  padding: 28px 32px 24px;
+  position: relative;
+}
+.entra-audit-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.entra-audit-modal-close:hover { background: #f1f5f9; color: #0f172a; }
+.entra-audit-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.entra-audit-field {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #0f172a;
+}
+.entra-audit-label { color: #475569; }
+.entra-audit-initkind { color: #64748b; margin-left: 6px; }
+.entra-audit-multi { align-items: flex-start; }
+.entra-audit-sublist { display: flex; flex-direction: column; gap: 10px; }
+.entra-audit-subrow {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px 1fr;
+  gap: 12px;
+  font-size: 12px;
+}
+.entra-audit-sublabel { color: #475569; }
 
