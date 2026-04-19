@@ -5,6 +5,7 @@ import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocalDate, fmtLocalTime, parseAsUtc } from '../utils/datetime';
+import { API } from '../config/api';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
@@ -341,6 +342,44 @@ export default function Protection() {
   }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
+
+  // Silent auto-refresh while any resource has an in-flight backup.
+  // Polls getResources every 8s and stops the moment every row settles
+  // on a terminal status, so the UI stays live without requiring the
+  // user to hit Refresh — and no perpetual network chatter when idle.
+  useEffect(() => {
+    if (!tenantId) return;
+    const IN_FLIGHT = new Set(['RUNNING', 'QUEUED', 'DISPATCHED']);
+    const anyLive = resources.some(r => !!r.last_backup_status && IN_FLIGHT.has(r.last_backup_status));
+    if (!anyLive) return;
+    const tick = async () => {
+      try {
+        // Hit the gateway directly so we can append `_silent=1` — the
+        // gateway's uvicorn access-log filter suppresses log lines for
+        // that query param, so the polling stays quiet in docker logs.
+        const token = localStorage.getItem('access_token');
+        const params = new URLSearchParams({
+          tenantId, type: activeTab,
+          page: String(searchQuery ? 1 : page),
+          size: String(searchQuery ? 10000 : 50),
+          _silent: '1',
+        });
+        if (searchQuery) params.set('search', searchQuery);
+        if (slaFilter) params.set('slaPolicyId', slaFilter);
+        if (resourceFilter) params.set('resourceFilter', resourceFilter);
+        if (serviceType) params.set('serviceType', serviceType);
+        const res = await fetch(`${API.RESOURCES.LIST}?${params}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setResources(data.items || []);
+      } catch { /* ignore transient failures — next tick retries */ }
+    };
+    const t = setInterval(tick, 8000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resources, tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
 
   // Apply client-side search filtering
   const filteredResources = useMemo(() => {
@@ -772,7 +811,16 @@ export default function Protection() {
                     const sizeBytes = resource.usage?.size || 0;
                     const status = resource.last_backup_status;
                     const isDiscovering = discovering.has(resource.id);
-                    const isRunning = status === 'RUNNING' || !!backingUp[resource.id];
+                    // Treat QUEUED / DISPATCHED the same as RUNNING —
+                    // from the user's perspective the backup is already
+                    // in flight, and we don't want a refresh to flip the
+                    // cell back to the previous date just because the
+                    // worker hasn't picked the message up yet. The
+                    // "In Progress" state only clears once the latest
+                    // job settles on a terminal status.
+                    const IN_PROGRESS_STATUSES = new Set(['RUNNING', 'QUEUED', 'DISPATCHED']);
+                    const isRunning = (status && IN_PROGRESS_STATUSES.has(status))
+                      || !!backingUp[resource.id];
 
                     if (isDiscovering) {
                       return (
@@ -805,14 +853,37 @@ export default function Protection() {
                   })()}
                 </td>
                 <td className="actions-cell">
-                  <button
-                    className="action-btn-sm"
-                    onClick={() => handleBackupNow(resource)}
-                    disabled={!!backingUp[resource.id] || discovering.has(resource.id) || !resource.protections?.[0]?.policy_id}
-                    title={backupButtonTitle}
-                  >
-                    {discovering.has(resource.id) ? 'Discovering…' : backingUp[resource.id] ? 'Starting…' : 'Backup now'}
-                  </button>
+                  {(() => {
+                    // Disable "Backup now" while the resource already
+                    // has a backup in flight. Mirrors the "In Progress"
+                    // status cell logic so clicks can't stack up
+                    // duplicate jobs during QUEUED/RUNNING/DISPATCHED.
+                    const IN_FLIGHT = new Set(['RUNNING', 'QUEUED', 'DISPATCHED']);
+                    const rowInFlight = !!resource.last_backup_status
+                      && IN_FLIGHT.has(resource.last_backup_status);
+                    const label = discovering.has(resource.id)
+                      ? 'Discovering…'
+                      : backingUp[resource.id]
+                        ? 'Starting…'
+                        : rowInFlight
+                          ? 'In Progress'
+                          : 'Backup now';
+                    return (
+                      <button
+                        className="action-btn-sm"
+                        onClick={() => handleBackupNow(resource)}
+                        disabled={
+                          !!backingUp[resource.id]
+                          || discovering.has(resource.id)
+                          || rowInFlight
+                          || !resource.protections?.[0]?.policy_id
+                        }
+                        title={rowInFlight ? 'A backup is already running for this resource' : backupButtonTitle}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })()}
                   <button
                     className="action-btn-sm"
                     onClick={() => handleRecover(resource)}
