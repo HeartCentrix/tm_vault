@@ -67,6 +67,9 @@ export interface RecoveryRequest {
   // True when selection came from a folder checkbox (preserve folder
   // tree in the output ZIP even if expansion is a single file).
   preserveTree?: boolean;
+  // Optional folder filter for USER_CONTACT exports. Omit (or empty) to
+  // include all contact folders. Backend filters items by parentFolderName.
+  contactFolders?: string[];
 }
 
 export interface RecoveryResponse {
