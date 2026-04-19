@@ -2749,6 +2749,11 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 .od-table-head .az-db-th-check { width: 40px; }
 .az-db-schema-row { display: grid; grid-template-columns: 40px 1fr; align-items: center; }
+.az-db-schema-folder { cursor: pointer; }
+.az-db-schema-folder:hover { background: #f8fafc; }
+.az-db-schema-folder .od-row-name { font-weight: 500; }
+.az-db-schema-file-nested .od-td:not(.od-td-check) { padding-left: 28px; }
+.az-db-folder-caret { display: inline-flex; align-items: center; color: #64748b; margin-right: 4px; }
 
 /* Database tab — tree + data view (AFI-parity) */
 .az-db-data-layout .panel-left { width: 260px; background: #fff; }

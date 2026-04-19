@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
@@ -2288,12 +2288,8 @@ function AzureDbDataTab({
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
-  // Auto-expand the first db + schema so the view doesn't open collapsed.
-  useEffect(() => {
-    if (databases.length && expandedDbs.size === 0) {
-      setExpandedDbs(new Set([databases[0]]));
-    }
-  }, [databases, expandedDbs.size]);
+  // All dbs start collapsed — user expands what they need. Keeps the
+  // left rail compact on load, matching the AFI behavior.
 
   // Build db → schema → tables map from folder_path.
   const tree = useMemo(() => {
@@ -2696,13 +2692,32 @@ function AzureDbView({
     if (!schemaSelectedDb && databases.length) setSchemaSelectedDb(databases[0]);
   }, [activeTab, databases, schemaSelectedDb]);
 
-  const schemaFilesForDb = useMemo(() => {
-    if (!schemaSelectedDb) return [];
-    return schemaFiles.filter(f => {
-      const fp = (f.folderPath || '').split('/')[0];
-      return fp === schemaSelectedDb;
-    });
+  // Group captured schema files into a 1-deep tree under the selected
+  // db. Files at folder_path === <db> are "root" files; anything under
+  // <db>/<sub> is collected into the matching folder bucket. The Schema
+  // tab renders folders as expandable rows with their contained files.
+  const schemaTree = useMemo(() => {
+    const root: { folders: Record<string, any[]>; files: any[] } = { folders: {}, files: [] };
+    if (!schemaSelectedDb) return root;
+    for (const f of schemaFiles) {
+      const parts = (f.folderPath || '').split('/').filter(Boolean);
+      if (parts[0] !== schemaSelectedDb) continue;
+      const sub = parts.slice(1);
+      if (sub.length === 0) {
+        root.files.push(f);
+      } else {
+        const top = sub[0];
+        if (!root.folders[top]) root.folders[top] = [];
+        root.folders[top].push(f);
+      }
+    }
+    return root;
   }, [schemaFiles, schemaSelectedDb]);
+
+  const [expandedSchemaFolders, setExpandedSchemaFolders] = useState<Set<string>>(new Set());
+  // Reset folder expansion when the selected db changes so each db
+  // starts collapsed (matches the AFI screenshots).
+  useEffect(() => { setExpandedSchemaFolders(new Set()); }, [schemaSelectedDb]);
 
   // Data tab state — database selection + table selection (future).
   const [dataSelectedDb, setDataSelectedDb] = useState<string | null>(null);
@@ -2782,37 +2797,111 @@ function AzureDbView({
                 <div className="od-table">
                   <div className="od-table-head"><div className="od-th az-db-th-check" /><div className="od-th">Name</div></div>
                   <div className="od-table-body">
-                    {schemaFilesForDb.length === 0 ? (
+                    {(Object.keys(schemaTree.folders).length === 0 && schemaTree.files.length === 0) ? (
                       <div className="empty-state"><p>No schema files captured for this database.</p></div>
                     ) : (
-                      schemaFilesForDb.map(f => {
-                        const hasBlob = !!f.blobPath;
-                        return (
-                          <div key={f.id} className="od-row od-row-file az-db-schema-row">
-                            <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
-                              <input type="checkbox" checked={selectedItems.has(f.id)} onChange={() => onToggleItem(f.id)} />
+                      <>
+                        {/* Folder rows first, then root-level files, mirroring AFI's layout. */}
+                        {Object.keys(schemaTree.folders).sort().map(folderName => {
+                          const expanded = expandedSchemaFolders.has(folderName);
+                          const children = schemaTree.folders[folderName];
+                          return (
+                            <React.Fragment key={`folder-${folderName}`}>
+                              <div
+                                className="od-row od-row-folder az-db-schema-row az-db-schema-folder"
+                                onClick={() => setExpandedSchemaFolders(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(folderName)) next.delete(folderName); else next.add(folderName);
+                                  return next;
+                                })}
+                              >
+                                <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={children.every(c => selectedItems.has(c.id))}
+                                    onChange={() => {
+                                      const allOn = children.every(c => selectedItems.has(c.id));
+                                      children.forEach(c => {
+                                        if (allOn === selectedItems.has(c.id)) onToggleItem(c.id);
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="od-td">
+                                  <span className="od-row-icon az-db-folder-caret" aria-hidden>
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2"
+                                         style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .12s' }}>
+                                      <polyline points="9 6 15 12 9 18" />
+                                    </svg>
+                                  </span>
+                                  <span className="od-row-icon" aria-hidden>
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                                    </svg>
+                                  </span>
+                                  <span className="od-row-name">{folderName}</span>
+                                </div>
+                              </div>
+                              {expanded && children.map(f => {
+                                const hasBlob = !!f.blobPath;
+                                return (
+                                  <div key={f.id} className="od-row od-row-file az-db-schema-row az-db-schema-file-nested">
+                                    <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                                      <input type="checkbox" checked={selectedItems.has(f.id)} onChange={() => onToggleItem(f.id)} />
+                                    </div>
+                                    <div className="od-td">
+                                      {hasBlob && latestSnapshot ? (
+                                        <a
+                                          className="od-row-link"
+                                          href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, f.id)}
+                                          download={f.name || undefined}
+                                          target="_blank" rel="noopener noreferrer"
+                                        >
+                                          <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
+                                          <span className="od-row-name">{f.name}</span>
+                                        </a>
+                                      ) : (
+                                        <>
+                                          <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
+                                          <span className="od-row-name">{f.name}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </React.Fragment>
+                          );
+                        })}
+                        {schemaTree.files.map(f => {
+                          const hasBlob = !!f.blobPath;
+                          return (
+                            <div key={f.id} className="od-row od-row-file az-db-schema-row">
+                              <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                                <input type="checkbox" checked={selectedItems.has(f.id)} onChange={() => onToggleItem(f.id)} />
+                              </div>
+                              <div className="od-td">
+                                {hasBlob && latestSnapshot ? (
+                                  <a
+                                    className="od-row-link"
+                                    href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, f.id)}
+                                    download={f.name || undefined}
+                                    target="_blank" rel="noopener noreferrer"
+                                  >
+                                    <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
+                                    <span className="od-row-name">{f.name}</span>
+                                  </a>
+                                ) : (
+                                  <>
+                                    <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
+                                    <span className="od-row-name">{f.name}</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
-                            <div className="od-td">
-                              {hasBlob && latestSnapshot ? (
-                                <a
-                                  className="od-row-link"
-                                  href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, f.id)}
-                                  download={f.name || undefined}
-                                  target="_blank" rel="noopener noreferrer"
-                                >
-                                  <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
-                                  <span className="od-row-name">{f.name}</span>
-                                </a>
-                              ) : (
-                                <>
-                                  <span className="od-row-icon" aria-hidden>{odFileIcon(f.name || '')}</span>
-                                  <span className="od-row-name">{f.name}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                      </>
                     )}
                   </div>
                 </div>
