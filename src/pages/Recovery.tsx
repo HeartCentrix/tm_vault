@@ -2320,8 +2320,8 @@ function AzureSqlConfiguration({ raw }: { raw: any }) {
   const uaidCount = identity.user_assigned_count ?? 0;
 
   return (
-    <div className="az-db-config-card">
-      <section>
+    <div className="az-db-config-card az-db-config-2col">
+      <section className="az-db-config-col az-db-config-col-full">
         <h4 className="az-db-section-title">Essential</h4>
         <div className="az-db-grid">
           <Row label="Subscription ID" value={raw.subscription_id || ''} copyable={raw.subscription_id} />
@@ -2333,68 +2333,72 @@ function AzureSqlConfiguration({ raw }: { raw: any }) {
         </div>
       </section>
 
-      <section>
-        <h4 className="az-db-section-title">Compute + storage</h4>
-        <div className="az-db-grid">
-          <Row label="Service tier" value={tier} />
-          <Row label="Compute tier" value={skuName} />
-          <Row label="vCores" value={capacity != null ? `${capacity} vCore` : ''} />
-          <Row label="Max storage" value={maxGb} />
-          <Row label="Auto-pause delay" value={raw.auto_pause_delay || 'Disabled'} />
-        </div>
-      </section>
+      <div className="az-db-config-col">
+        <section>
+          <h4 className="az-db-section-title">Compute + storage</h4>
+          <div className="az-db-grid">
+            <Row label="Service tier" value={tier} />
+            <Row label="Compute tier" value={skuName} />
+            <Row label="vCores" value={capacity != null ? `${capacity} vCore` : ''} />
+            <Row label="Max storage" value={maxGb} />
+            <Row label="Auto-pause delay" value={raw.auto_pause_delay || 'Disabled'} />
+          </div>
+        </section>
 
-      <section>
-        <h4 className="az-db-section-title">Availability</h4>
-        <div className="az-db-grid">
-          <Row label="Replication" value={String(replication.replica_count ?? 0)} />
-          <Row label="Availability Zone" value={raw.availability_zone || ''} />
-        </div>
-      </section>
+        <section>
+          <h4 className="az-db-section-title">Availability</h4>
+          <div className="az-db-grid">
+            <Row label="Replication" value={String(replication.replica_count ?? 0)} />
+            <Row label="Availability Zone" value={raw.availability_zone || ''} />
+          </div>
+        </section>
 
-      <section>
-        <h4 className="az-db-section-title">Backups</h4>
-        <div className="az-db-grid">
-          <Row label="Storage redundancy" value={raw.backup_storage_redundancy || ''} />
-        </div>
-      </section>
+        <section>
+          <h4 className="az-db-section-title">Backups</h4>
+          <div className="az-db-grid">
+            <Row label="Storage redundancy" value={raw.backup_storage_redundancy || ''} />
+          </div>
+        </section>
+      </div>
 
-      <section>
-        <h4 className="az-db-section-title">Networking</h4>
-        <div className="az-db-grid">
-          <Row label="Public access" value={raw.network?.publicNetworkAccess || ''} />
-          <Row label="Firewall rules" value={fwLabel} />
-          <Row label="Private access" value={`${peCount} private endpoint connection${peCount === 1 ? '' : 's'}`} />
-        </div>
-      </section>
+      <div className="az-db-config-col">
+        <section>
+          <h4 className="az-db-section-title">Networking</h4>
+          <div className="az-db-grid">
+            <Row label="Public access" value={raw.network?.publicNetworkAccess || ''} />
+            <Row label="Firewall rules" value={fwLabel} />
+            <Row label="Private access" value={`${peCount} private endpoint connection${peCount === 1 ? '' : 's'}`} />
+          </div>
+        </section>
 
-      <section>
-        <h4 className="az-db-section-title">Connections</h4>
-        <div className="az-db-grid">
-          <Row label="Primary endpoint" value={raw.fully_qualified_domain_name || ''} copyable={raw.fully_qualified_domain_name} />
-        </div>
-      </section>
+        <section>
+          <h4 className="az-db-section-title">Connections</h4>
+          <div className="az-db-grid">
+            <Row label="Primary endpoint" value={raw.fully_qualified_domain_name || ''} copyable={raw.fully_qualified_domain_name} />
+          </div>
+        </section>
 
-      <section>
-        <h4 className="az-db-section-title">Authentication</h4>
-        <div className="az-db-grid">
-          <Row label="Authentication method" value={auth.method || ''} />
-          <Row label="SQL admin" value={auth.sql_admin || ''} />
-          <Row label="Entra ID admin" value={auth.entra_admin || ''} />
-        </div>
-      </section>
+        <section>
+          <h4 className="az-db-section-title">Authentication</h4>
+          <div className="az-db-grid">
+            <Row label="Authentication method" value={auth.method || ''} />
+            <Row label="SQL admin" value={auth.sql_admin || ''} />
+            <Row label="Entra ID admin" value={auth.entra_admin || ''} />
+          </div>
+        </section>
 
-      <section>
-        <h4 className="az-db-section-title">Security</h4>
-        <div className="az-db-grid">
-          <Row label="System-assigned identity" value={identity.system_assigned || 'Disabled'} />
-          <Row label="User-assigned identities" value={`${uaidCount} identit${uaidCount === 1 ? 'y' : 'ies'}`} />
-          <Row label="Primary identity" value={identity.primary_user_assigned || 'Not configured'} />
-          <Row label="Ledger database" value={ledger.enabled || 'Disabled'} />
-          <Row label="Ledger automatic digest storage" value={ledger.digest_storage || 'Not configured'} />
-          <Row label="Always encrypted with secure enclaves" value={raw.secure_enclaves || 'Disabled'} />
-        </div>
-      </section>
+        <section>
+          <h4 className="az-db-section-title">Security</h4>
+          <div className="az-db-grid">
+            <Row label="System-assigned identity" value={identity.system_assigned || 'Disabled'} />
+            <Row label="User-assigned identities" value={`${uaidCount} identit${uaidCount === 1 ? 'y' : 'ies'}`} />
+            <Row label="Primary identity" value={identity.primary_user_assigned || 'Not configured'} />
+            <Row label="Ledger database" value={ledger.enabled || 'Disabled'} />
+            <Row label="Ledger automatic digest storage" value={ledger.digest_storage || 'Not configured'} />
+            <Row label="Always encrypted with secure enclaves" value={raw.secure_enclaves || 'Disabled'} />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -2726,8 +2730,12 @@ function AzureDbDataTab({
                   <tbody>
                     {visibleRows.map((r, i) => (
                       <tr key={i}>
-                        {data.columns.map(c => {
-                          const v = r?.[c];
+                        {data.columns.map((c, ci) => {
+                          // Backend returns rows as arrays aligned with
+                          // data.columns (`rows: [[1, "Ada", ...], ...]`).
+                          // Fall back to an object lookup for any legacy
+                          // snapshots that stored rows as keyed dicts.
+                          const v = Array.isArray(r) ? r[ci] : (r as any)?.[c];
                           return <td key={c} title={String(v ?? '')}>{v === null || v === undefined ? '' : String(v)}</td>;
                         })}
                       </tr>
