@@ -2766,14 +2766,6 @@ function EntraTwoLineRow({
   );
 }
 
-function EntraListHeader({ count }: { count: number }) {
-  return (
-    <div className="entra-user-list-header">
-      <span className="entra-user-count">Items: {count}</span>
-      <span className="entra-user-sort">Sort by: Display Name</span>
-    </div>
-  );
-}
 
 function EntraDetailCard({
   title, fields, copyableField,
@@ -2957,14 +2949,13 @@ function EntraDirectoryView({
 
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!latestSnapshot) { setItems([]); return; }
-    setLoading(true); setError(null);
+    setLoading(true);
     SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
       .then(data => setItems(data.content || []))
-      .catch(err => { setError(err.message || 'Failed to load'); setItems([]); })
+      .catch(() => { setItems([]); })
       .finally(() => setLoading(false));
   }, [latestSnapshot?.id]);
 
@@ -2985,8 +2976,6 @@ function EntraDirectoryView({
     () => items.filter(i => i.itemType === ENTRA_TAB_TYPES[activeTab]),
     [items, activeTab],
   );
-
-  const allChecked = visibleItems.length > 0 && visibleItems.every(i => selectedItems.has(i.id));
 
   // ── Users tab: classify ENTRA_DIR_USER rows into mailbox buckets by
   //    cross-referencing live MAILBOX / SHARED_MAILBOX / ROOM_MAILBOX
@@ -3898,9 +3887,9 @@ export default function Recovery() {
     setItemPage(1);
     setItemsLoading(true);
     if (itemListRef.current) itemListRef.current.scrollTop = 0;
-    // Calendar dumps benefit from a larger page (no pagination control on the
-    // calendar layout); the other four tabs use the standard list size.
-    const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    // Calendar tab returns early above, so by this point activeContentType
+    // is narrowed to non-calendar. Use a fixed page size of 50.
+    const pageSize = 50;
     const isChats = activeContentType === 'chats';
     // OneDrive "Recent" mode: drop the folder filter and ask backend to
     // sort by createdDateTime DESC. "My Drive" uses default name_asc so
@@ -3962,7 +3951,9 @@ export default function Recovery() {
     const myKey = requestKeyRef.current;
     const isChats = activeContentType === 'chats';
     setLoadingMore(true);
-    const pageSize = activeContentType === 'calendar' ? 500 : 50;
+    // activeContentType is narrowed away from 'calendar' by the guard
+    // above, so a fixed page size of 50 is correct here.
+    const pageSize = 50;
     // Snapshot the scroll height BEFORE the next page lands so we can
     // anchor the viewport to the same content after prepending.
     const el = itemListRef.current;
