@@ -27,9 +27,6 @@ const azureTabs: { key: ResourceTab; label: string }[] = [
   { key: 'virtual-machines', label: 'Virtual machines' },
   { key: 'sql-databases', label: 'Azure SQL databases' },
   { key: 'postgresql-servers', label: 'Azure PostgreSQL servers' },
-  // Auto-protection
-  { key: 'resource-groups', label: 'Resource groups' },
-  { key: 'dynamic', label: 'Dynamic groups' },
 ];
 
 function getInitials(name: string): string {
@@ -548,14 +545,12 @@ export default function Protection() {
     <div className="protection-page">
       <div className="resource-tabs">
         {serviceType === 'azure' ? (
-          // Azure-specific tabs layout
+          // Azure-specific tabs layout — auto-protection (Resource
+          // groups / Dynamic groups) is intentionally omitted here
+          // while the auto-protection rail is paused.
           <>
             {tabs.map(tab => (
-              tab.key === 'resource-groups' ? (
-                <Fragment key={`d-${tab.key}`}><div className="tab-divider" /><button className={`resource-tab pill ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button></Fragment>
-              ) : (
-                <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
-              )
+              <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
             ))}
           </>
         ) : (

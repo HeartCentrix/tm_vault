@@ -2671,3 +2671,71 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 .entra-audit-sublabel { color: #475569; }
 
+/* ── Azure SQL / PostgreSQL Recovery view ─────────────────────── */
+.az-db-config {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 28px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  position: relative;
+}
+.az-db-config-actions {
+  position: absolute; top: 12px; right: 16px;
+  display: flex; gap: 8px;
+}
+.az-db-action-btn {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; color: #475569; cursor: pointer;
+  text-decoration: none;
+}
+.az-db-action-btn:hover { background: #f1f5f9; color: #0f172a; }
+
+.az-db-section { padding: 8px 0 16px; border-bottom: 1px solid #f1f5f9; }
+.az-db-section:last-child { border-bottom: none; }
+.az-db-section-title {
+  font-size: 14px; font-weight: 600; color: #0f172a; margin: 0 0 10px;
+}
+.az-db-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.az-db-field {
+  display: grid; grid-template-columns: 180px 1fr; gap: 16px; font-size: 13px;
+}
+.az-db-field-label { color: #64748b; }
+.az-db-field-val {
+  color: #0f172a;
+  display: inline-flex; align-items: center; gap: 6px;
+  word-break: break-all;
+}
+.az-db-field-val.az-db-link { color: #2563eb; }
+.az-db-copy {
+  background: transparent; border: none; padding: 2px; cursor: pointer;
+  color: #64748b; border-radius: 3px;
+}
+.az-db-copy:hover { color: #0f172a; background: #e2e8f0; }
+
+.az-db-split {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+  padding-top: 8px;
+}
+
+/* Schema + Data left rail — database rows */
+.folder-item.az-db-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.az-db-check { margin: 0; flex-shrink: 0; }
+.az-db-icon { color: #475569; display: inline-flex; flex-shrink: 0; }
+.az-db-chevron { color: #64748b; font-size: 10px; width: 10px; flex-shrink: 0; }
+.az-db-tree-row { display: flex; flex-direction: column; }
+.az-db-noschemas {
+  padding: 4px 16px 10px 48px; color: #94a3b8; font-size: 12px;
+}
+.az-db-breadcrumb {
+  padding: 10px 16px;
+  font-size: 13px; color: #475569;
+  border-bottom: 1px solid #e2e8f0; background: #fff;
+}
+.od-table-head .az-db-th-check { width: 40px; }
+.az-db-schema-row { display: grid; grid-template-columns: 40px 1fr; align-items: center; }
+
