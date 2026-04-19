@@ -88,6 +88,10 @@ export const API = {
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
     ITEM_ATTACHMENTS: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/attachments`,
     ITEM_CONTENT_DOWNLOAD: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/content?download=1`,
+    AZURE_DB_EXPORT: (snapshotId: string, itemIds: string[]) =>
+      `${API_URL}/resources/snapshots/${snapshotId}/azure-db/export?items=${encodeURIComponent(itemIds.join(','))}`,
+    AZURE_DB_EXPORT_BY_TYPE: (snapshotId: string, itemType: string) =>
+      `${API_URL}/resources/snapshots/${snapshotId}/azure-db/export?item_type=${encodeURIComponent(itemType)}`,
     FOLDERS: `${API_URL}/resources/snapshots/folders`,
     // Five fixed per-content-type endpoints — replace the dynamic
     // /content-types lookup. Recovery hardcodes its tabs and queries these.

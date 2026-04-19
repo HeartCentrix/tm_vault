@@ -2428,11 +2428,13 @@ function AzureSqlConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshot
  * row-view with search (op + value on the first column) on the right.
  */
 function AzureDbDataTab({
-  snapshotId, databases, tableItems,
+  snapshotId, databases, tableItems, selectedItems, onToggleItem,
 }: {
   snapshotId: string;
   databases: string[];
   tableItems: any[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
 }) {
   // Tree state — set of expanded db names and schema keys.
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
@@ -2604,6 +2606,37 @@ function AzureDbDataTab({
     const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n;
   });
 
+  // Cascade selection — checking a database/schema row should tick
+  // every table beneath it; unchecking should untick the same set.
+  // Re-uses onToggleItem so the lifted `selectedItems` Set on the
+  // parent stays the single source of truth.
+  const tablesUnderDb = (db: string): any[] => {
+    const out: any[] = [];
+    for (const sch of Object.keys(tree[db] || {})) {
+      out.push(...(tree[db][sch] || []));
+    }
+    return out;
+  };
+  const tablesUnderSchema = (db: string, schema: string): any[] =>
+    (tree[db] && tree[db][schema]) || [];
+
+  const setMany = (items: any[], on: boolean) => {
+    for (const t of items) {
+      const isOn = selectedItems.has(t.id);
+      if (on && !isOn) onToggleItem(t.id);
+      else if (!on && isOn) onToggleItem(t.id);
+    }
+  };
+
+  const dbChecked = (db: string): boolean => {
+    const ts = tablesUnderDb(db);
+    return ts.length > 0 && ts.every(t => selectedItems.has(t.id));
+  };
+  const schemaChecked = (db: string, schema: string): boolean => {
+    const ts = tablesUnderSchema(db, schema);
+    return ts.length > 0 && ts.every(t => selectedItems.has(t.id));
+  };
+
   return (
     <div className="three-panel-layout az-db-data-layout">
       <div className="panel-left">
@@ -2623,7 +2656,13 @@ function AzureDbDataTab({
                   role="button"
                   aria-expanded={dbOpen}
                 >
-                  <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                  <input
+                    type="checkbox"
+                    className="az-db-tree-check"
+                    checked={dbChecked(db)}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => setMany(tablesUnderDb(db), e.target.checked)}
+                  />
                   <span className="az-db-tree-caret">{dbOpen ? CaretOpen : CaretClosed}</span>
                   <span className="az-db-icon az-db-icon-db" aria-hidden>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" style={{ width: 14, height: 14 }}>
@@ -2647,7 +2686,13 @@ function AzureDbDataTab({
                         role="button"
                         aria-expanded={schemaOpen}
                       >
-                        <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                        <input
+                          type="checkbox"
+                          className="az-db-tree-check"
+                          checked={schemaChecked(db, schema)}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setMany(tablesUnderSchema(db, schema), e.target.checked)}
+                        />
                         <span className="az-db-tree-caret">{schemaOpen ? CaretOpen : CaretClosed}</span>
                         <span className="az-db-icon az-db-icon-folder" aria-hidden>
                           <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 13, height: 13 }}>
@@ -2665,7 +2710,13 @@ function AzureDbDataTab({
                           className={`az-db-tree-row az-db-tree-tablerow ${selectedTableId === tbl.id ? 'active' : ''}`}
                           onClick={() => setSelectedTableId(tbl.id)}
                         >
-                          <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                          <input
+                            type="checkbox"
+                            className="az-db-tree-check"
+                            checked={selectedItems.has(tbl.id)}
+                            onClick={e => e.stopPropagation()}
+                            onChange={() => onToggleItem(tbl.id)}
+                          />
                           <span className="az-db-tree-label">{tbl.name}</span>
                         </div>
                       ))}
@@ -3232,7 +3283,9 @@ function AzureDbView({
                     className={`folder-item az-db-row ${schemaSelectedDb === db ? 'active' : ''}`}
                     onClick={() => setSchemaSelectedDb(db)}
                   >
-                    <input type="checkbox" className="az-db-check" checked={false} onChange={() => {}} onClick={e => e.stopPropagation()} />
+                    {/* No checkbox on the Schema left rail — selection
+                        happens in the middle-panel folder tree. Left
+                        rail is just a database picker. */}
                     <span className="az-db-icon" aria-hidden>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: 16, height: 16 }}>
                         <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6a9 3 0 0 0 18 0V5" /><path d="M3 11v6a9 3 0 0 0 18 0v-6" />
@@ -3271,6 +3324,8 @@ function AzureDbView({
           snapshotId={latestSnapshot?.id || ''}
           databases={databases}
           tableItems={tableItems}
+          selectedItems={selectedItems}
+          onToggleItem={onToggleItem}
         />
       )}
       {/* Suppress unused lint for onSelectAll — reserved for future
@@ -4985,6 +5040,13 @@ export default function Recovery() {
       return;
     }
 
+    // Switching resources must invalidate the previously-selected
+    // snapshot — otherwise the auto-seed below (`prev || newest.id`)
+    // keeps the old resource's snapshot id, and Download/Recover fire
+    // with a mismatched snapshot (items belong to the new resource's
+    // snapshots, not the old one → backend returns "No items found").
+    setSelectedSnapshotId('');
+    setSelectedItems(new Set());
     setSnapshotsLoading(true);
     Promise.all([
       // Sparkline needs the historical snapshot list (date + size). For
@@ -4994,11 +5056,32 @@ export default function Recovery() {
       // kinds (Tier 1 MAILBOX, etc.) have no children and the flag is a
       // no-op for them.
       SnapshotService.listByResource(selectedResource.id, 1, 200, true).catch(() => ({ content: [] })),
-      SnapshotService.getContentSnapshots(selectedResource.id),
+      // Content-snapshots only exists for M365 parents — for Azure DB /
+      // VM / SharePoint / Power BI the endpoint can 404. Swallow the
+      // error locally so the Promise.all still resolves and `snapshots`
+      // gets populated (otherwise the whole effect rejected and the
+      // Download toolbar never saw a snapshot to latch onto).
+      SnapshotService.getContentSnapshots(selectedResource.id).catch(() => null),
     ])
       .then(([list, content]) => {
-        setSnapshots(list.content || []);
-        setContentSnapshots(content);
+        const snapList = list.content || [];
+        setSnapshots(snapList);
+        setContentSnapshots(content as any);
+        // Auto-seed selectedSnapshotId for kinds that don't flow through
+        // the M365 content-snapshot resolver (Azure DB / VM / SharePoint
+        // / Power BI). Without this the Download / Recover buttons stay
+        // permanently disabled — hasSnapshot depends on it. Skip if the
+        // caller already picked one.
+        const newestCompleted = snapList
+          .filter((s: any) => (s.status || '').toUpperCase() === 'COMPLETED')
+          .sort((a: any, b: any) => {
+            const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return tb - ta;
+          })[0];
+        if (newestCompleted) {
+          setSelectedSnapshotId(prev => prev || newestCompleted.id);
+        }
       })
       .catch(console.error)
       .finally(() => setSnapshotsLoading(false));
@@ -5011,10 +5094,23 @@ export default function Recovery() {
   // parent only holds identity items (profile/manager/group memberships),
   // so cross-using its folder_paths on another tab leaks folder rows from
   // an unrelated snapshot into the left panel.
+  //
+  // Skip when the resource isn't M365-shaped (Azure DB / VM / SharePoint /
+  // Power BI don't use contentSnapshots at all) — otherwise this effect
+  // would reset the selection to '' on every render and fight with the
+  // RecoveryToolbar's auto-select of the newest COMPLETED snapshot.
   useEffect(() => {
     if (!contentSnapshots) return;
+    if (!activeContentType || !(CONTENT_TABS as string[]).includes(activeContentType as string)) return;
     const entry = contentSnapshots.byContent[activeContentType as ContentTab];
-    setSelectedSnapshotId(entry?.snapshotId || '');
+    // Only propagate the resolver's choice when it actually has one —
+    // otherwise leave selectedSnapshotId alone. Non-M365 resources
+    // (Azure DB, VM, SharePoint, Power BI) use contentSnapshots with
+    // every byContent key set to null, which used to blank the toolbar's
+    // auto-select and keep Download disabled.
+    if (entry?.snapshotId) {
+      setSelectedSnapshotId(entry.snapshotId);
+    }
   }, [contentSnapshots, activeContentType]);
 
   // Debounce the search box so we don't refetch on every keystroke. 300ms
@@ -5198,10 +5294,14 @@ export default function Recovery() {
   // Without clearing selectedItems, ids from one tab leak into another
   // (Download/Recover would act on stale ids). Folder changes deliberately
   // keep the current selection — the user may be narrowing a subset.
+  // For Azure DB the "active tab" lives in `?tab=configuration|database|
+  // schema` (URL-synced inside AzureDbView), not in activeContentType —
+  // include that value so switching between Configuration / Database /
+  // Schema also resets the checkbox state.
   useEffect(() => {
     setSelectedItem(null);
     setSelectedItems(new Set());
-  }, [selectedSnapshotId, activeContentType]);
+  }, [selectedSnapshotId, activeContentType, searchParams.get('tab')]);
 
   // Left-panel grouping is uniform across mail / onedrive / contacts /
   // chats — all driven by the active tab's snapshot's distinct folder_paths.
@@ -5424,6 +5524,43 @@ export default function Recovery() {
   const handleDownload = () => {
     if (!selectedSnapshotId) return;
     setDownloadError(null);
+
+    // Azure DB gets its own download path — the generic DownloadModal
+    // can't emit per-tab formats (config → JSON, table → CSV, schema →
+    // original extension, multi-select → ZIP with folder structure).
+    // We route to /azure-db/export which streams exactly that.
+    const kind = selectedResource?.kind;
+    const isAzureDb = kind === 'azure_sql' || kind === 'azure_postgresql' || kind === 'azure_postgresql_single';
+    if (isAzureDb) {
+      const rawTab = searchParams.get('tab') || 'configuration';
+      const activeDbTab: 'configuration' | 'database' | 'schema' =
+        rawTab === 'database' || rawTab === 'schema' ? (rawTab as any) : 'configuration';
+
+      // Nothing selected → ask the backend for "every item of this
+      // tab's item_type". Something selected → send the explicit IDs.
+      // The main page's `recoveryItems` doesn't carry Azure DB items
+      // (those live inside AzureDbView's local state), so the item_id
+      // list here would always be empty on unticked clicks — the type
+      // fallback keeps the implicit download working.
+      const bucket = activeDbTab === 'configuration'
+        ? 'AZURE_DB_CONFIG'
+        : activeDbTab === 'schema'
+          ? 'AZURE_DB_SCHEMA_FILE'
+          : 'AZURE_DB_TABLE';
+      const url = selectedItems.size > 0
+        ? API.SNAPSHOTS.AZURE_DB_EXPORT(selectedSnapshotId, Array.from(selectedItems))
+        : API.SNAPSHOTS.AZURE_DB_EXPORT_BY_TYPE(selectedSnapshotId, bucket);
+      // Anchor click → browser handles the stream + filename header.
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
     // If we're on the calendar tab and the user hasn't ticked any
     // individual events, inherit the sidebar's filtered set as the
     // download scope so "Meeting" + "Online Meeting" (or any combo)
@@ -5748,11 +5885,16 @@ export default function Recovery() {
                 // the left panel). Database and Schema don't, so hide
                 // the search input there. AzureDbView syncs its tab to
                 // ?tab=configuration|database|schema in the URL.
-                const isAzureDb = kind === 'azure_sql' || kind === 'azure_postgresql';
+                const isAzureDb = kind === 'azure_sql' || kind === 'azure_postgresql' || kind === 'azure_postgresql_single';
                 const rawTab = searchParams.get('tab') || '';
                 const azureDbTab = (rawTab === 'database' || rawTab === 'schema') ? rawTab : 'configuration';
                 const showForAzureDb = isAzureDb && azureDbTab === 'configuration';
                 const showSearch = showForM365 || showForKind || showForAzureDb;
+                // Azure DB Configuration has a single implicit target
+                // (the config JSON) — let Download work without the
+                // user ticking anything. Everywhere else the user has
+                // to select first.
+                const allowEmptyDownload = isAzureDb && azureDbTab === 'configuration';
                 return (
                   <RecoveryToolbar
                     snapshots={snapshots}
@@ -5762,6 +5904,7 @@ export default function Recovery() {
                     onRecover={handleRecover}
                     selectedCount={selectedItems.size}
                     downloadError={downloadError}
+                    allowEmptyDownload={allowEmptyDownload}
                     searchValue={showSearch ? searchQuery : undefined}
                     onSearchChange={showSearch ? setSearchQuery : undefined}
                     onSearchSubmit={showSearch ? () => { /* debounced via searchQuery */ } : undefined}
@@ -5824,7 +5967,7 @@ export default function Recovery() {
                     else setSelectedItems(new Set());
                   }}
                 />
-              ) : (selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql') ? (
+              ) : (selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql' || selectedResource.kind === 'azure_postgresql_single') ? (
                 /* Azure SQL + PostgreSQL: Configuration / Data / Schema
                    tabs filtered by item_type suffix. Same shape handles
                    AZURE_SQL_DB + AZURE_POSTGRESQL + AZURE_POSTGRESQL_SINGLE. */
