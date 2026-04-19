@@ -35,7 +35,7 @@ export const EXPORT_FORMATS: Record<ContentTab, ExportFormatOption[]> = {
 
 export const DEFAULT_FORMAT: Record<ContentTab, string> = {
   mail: 'EML',
-  onedrive: 'ZIP',
+  onedrive: 'ORIGINAL',
   contacts: 'VCF',
   calendar: 'ICS',
   chats: 'HTML',
