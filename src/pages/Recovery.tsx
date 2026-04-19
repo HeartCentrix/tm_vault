@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
@@ -1723,6 +1723,455 @@ function OneDriveTable({
   );
 }
 
+// ==================== SharePoint Site Recovery view ====================
+// SharePoint sites don't fit the five fixed tabs either. The left rail has
+// two options — "Site content" (all files captured in the latest snapshot)
+// and "Subsites" (live list from Graph). Middle panel swaps based on which
+// is selected. Similar shape to OneDrive's My Drive / Recent pattern.
+
+function SiteContentIcon() {
+  return (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path d="M3.5 8.5V1.5C3.5 0.947715 3.94772 0.5 4.5 0.5H7.5L9.5 2.5H13.5C14.0523 2.5 14.5 2.94772 14.5 3.5V8.5C14.5 9.05228 14.0523 9.5 13.5 9.5H4.5M3.5 8.5C3.5 9.05229 3.94772 9.5 4.5 9.5M3.5 8.5V5.5H1.5C0.947715 5.5 0.5 5.94772 0.5 6.5V13.5C0.5 14.0523 0.947715 14.5 1.5 14.5H10.5C11.0523 14.5 11.5 14.0523 11.5 13.5V9.5H4.5" />
+    </svg>
+  );
+}
+
+function SubsitesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path d="M3 12H21M12 8V12M6.5 12V16M17.5 12V16M10.1 8H13.9C14.4601 8 14.7401 8 14.954 7.89101C15.1422 7.79513 15.2951 7.64215 15.391 7.45399C15.5 7.24008 15.5 6.96005 15.5 6.4V4.6C15.5 4.03995 15.5 3.75992 15.391 3.54601C15.2951 3.35785 15.1422 3.20487 14.954 3.10899C14.7401 3 14.4601 3 13.9 3H10.1C9.53995 3 9.25992 3 9.04601 3.10899C8.85785 3.20487 8.70487 3.35785 8.60899 3.54601C8.5 3.75992 8.5 4.03995 8.5 4.6V6.4C8.5 6.96005 8.5 7.24008 8.60899 7.45399C8.70487 7.64215 8.85785 7.79513 9.04601 7.89101C9.25992 8 9.53995 8 10.1 8ZM15.6 21H19.4C19.9601 21 20.2401 21 20.454 20.891C20.6422 20.7951 20.7951 20.6422 20.891 20.454C21 20.2401 21 19.9601 21 19.4V17.6C21 17.0399 21 16.7599 20.891 16.546C20.7951 16.3578 20.6422 16.2049 20.454 16.109C20.2401 16 19.9601 16 19.4 16H15.6C15.0399 16 14.7599 16 14.546 16.109C14.3578 16.2049 14.2049 16.3578 14.109 16.546C14 16.7599 14 17.0399 14 17.6V19.4C14 19.9601 14 20.2401 14.109 20.454C14.2049 20.6422 14.3578 20.7951 14.546 20.891C14.7599 21 15.0399 21 15.6 21ZM4.6 21H8.4C8.96005 21 9.24008 21 9.45399 20.891C9.64215 20.7951 9.79513 20.6422 9.89101 20.454C10 20.2401 10 19.9601 10 19.4V17.6C10 17.0399 10 16.7599 9.89101 16.546C9.79513 16.3578 9.64215 16.2049 9.45399 16.109C9.24008 16 8.96005 16 8.4 16H4.6C4.03995 16 3.75992 16 3.54601 16.109C3.35785 16.2049 3.20487 16.3578 3.10899 16.546C3 16.7599 3 17.0399 3 17.6V19.4C3 19.9601 3 20.2401 3.10899 20.454C3.20487 20.6422 3.35785 20.7951 3.54601 20.891C3.75992 21 4.03995 21 4.6 21Z" />
+    </svg>
+  );
+}
+
+function SharePointView({
+  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [view, setView] = useState<'content' | 'subsites'>('content');
+
+  // Latest COMPLETED snapshot for this site — holds the captured files.
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  // Site content = items in the latest snapshot (loaded lazily on demand).
+  const [items, setItems] = useState<any[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  // Path inside "{site_label}/lists/" — e.g. ["Site Pages"] or ["Site Pages","Templates"].
+  // Empty array shows the lists themselves as folders.
+  const [spPath, setSpPath] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (view !== 'content' || !latestSnapshot) return;
+    setItemsLoading(true); setItemsError(null);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
+      .then(data => setItems(data.content || []))
+      .catch(err => { setItemsError(err.message || 'Failed to load files'); setItems([]); })
+      .finally(() => setItemsLoading(false));
+  }, [view, latestSnapshot?.id]);
+
+  // Reset drill-down path whenever the snapshot changes.
+  useEffect(() => { setSpPath([]); }, [latestSnapshot?.id]);
+
+  // Derive the site_label prefix ("Communication site/lists/") from any
+  // row — all rows share the same parent. Needed because folder_path
+  // is ABSOLUTE and we strip it to site-relative for navigation.
+  const spPrefix = useMemo(() => {
+    const probe = items.find(i => (i.folderPath || '').includes('/lists'));
+    if (!probe?.folderPath) return '';
+    const marker = '/lists';
+    const idx = probe.folderPath.indexOf(marker);
+    return idx >= 0 ? probe.folderPath.slice(0, idx + marker.length) : '';
+  }, [items]);
+
+  // Group by folderPath → what shows at the current drill-down level.
+  const { displayRows, displayFolders } = useMemo(() => {
+    const prefix = spPrefix + (spPath.length ? '/' + spPath.join('/') : '');
+    const files: any[] = [];
+    const folderSet = new Set<string>();
+
+    for (const it of items) {
+      const fp: string = it.folderPath || '';
+      if (!fp.startsWith(prefix)) continue;
+      const rest = fp.slice(prefix.length).replace(/^\//, '');
+      if (rest === '') {
+        // Item lives directly at this level.
+        files.push(it);
+      } else {
+        // Deeper item — promote its first segment as a visible folder.
+        const seg = rest.split('/')[0];
+        if (seg) folderSet.add(seg);
+      }
+    }
+
+    return {
+      displayRows: files,
+      displayFolders: Array.from(folderSet).sort((a, b) => a.localeCompare(b)),
+    };
+  }, [items, spPrefix, spPath]);
+
+  // Subsites = live Graph lookup. Doesn't depend on snapshots.
+  const [subsites, setSubsites] = useState<any[]>([]);
+  const [subsitesLoading, setSubsitesLoading] = useState(false);
+  const [subsitesError, setSubsitesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (view !== 'subsites') return;
+    setSubsitesLoading(true); setSubsitesError(null);
+    SnapshotService.listSharePointSubsites(resourceId)
+      .then(data => setSubsites(data.subsites || []))
+      .catch(err => { setSubsitesError(err.message || 'Failed to load subsites'); setSubsites([]); })
+      .finally(() => setSubsitesLoading(false));
+  }, [view, resourceId]);
+
+  const allChecked = items.length > 0 && items.every(i => selectedItems.has(i.id));
+
+  return (
+    <>
+      <div className="panel-left od-panel-left">
+        <div className="od-left">
+          <button
+            className={`od-left-section ${view === 'content' ? 'active' : ''}`}
+            onClick={() => setView('content')}
+          >
+            <span className="od-left-icon od-left-icon-svg" aria-hidden><SiteContentIcon /></span>
+            <span className="od-left-label">Site content</span>
+          </button>
+          <button
+            className={`od-left-section ${view === 'subsites' ? 'active' : ''}`}
+            onClick={() => setView('subsites')}
+          >
+            <span className="od-left-icon od-left-icon-svg" aria-hidden><SubsitesIcon /></span>
+            <span className="od-left-label">Subsites</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="panel-middle od-panel-middle">
+        {view === 'content' ? (
+          <>
+            <div className="od-main-header">
+              <span className="od-breadcrumb">
+                <button
+                  className="od-breadcrumb-link"
+                  onClick={() => setSpPath([])}
+                  disabled={spPath.length === 0}
+                >Site content</button>
+                {spPath.map((seg, i) => (
+                  <span key={i}>
+                    <span className="od-breadcrumb-sep"> / </span>
+                    <button
+                      className="od-breadcrumb-link"
+                      onClick={() => setSpPath(spPath.slice(0, i + 1))}
+                      disabled={i === spPath.length - 1}
+                    >{seg}</button>
+                  </span>
+                ))}
+              </span>
+              <span className="od-count">
+                {(displayFolders.length + displayRows.length) > 0
+                  ? `${displayFolders.length} folder${displayFolders.length === 1 ? '' : 's'}, ${displayRows.length} item${displayRows.length === 1 ? '' : 's'}`
+                  : ''}
+              </span>
+            </div>
+            {!latestSnapshot ? (
+              <div className="pbi-empty"><p>No completed backup for this site yet.</p></div>
+            ) : itemsLoading ? (
+              <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
+            ) : itemsError ? (
+              <div className="pbi-empty"><p>{itemsError}</p></div>
+            ) : items.length === 0 ? (
+              <div className="pbi-empty"><p>No items captured in this snapshot yet.</p></div>
+            ) : (
+              <div className="od-list">
+                <div className="od-table">
+                  <div className="od-table-head">
+                    <div className="od-th od-th-check">
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        onChange={e => onSelectAll(displayRows.map(i => i.id), e.target.checked)}
+                      />
+                    </div>
+                    <div className="od-th od-th-name">Name</div>
+                    <div className="od-th od-th-owner">Owner</div>
+                    <div className="od-th od-th-modified">Last modified</div>
+                    <div className="od-th od-th-size">File size</div>
+                  </div>
+                  <div className="od-table-body">
+                    {displayFolders.map((seg) => (
+                      <div
+                        key={`folder-${seg}`}
+                        className="od-row od-row-folder"
+                        onClick={() => setSpPath([...spPath, seg])}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="od-td od-td-check" />
+                        <div className="od-td od-td-name" title={seg}>
+                          <span className="od-row-icon" aria-hidden>{FolderIcon}</span>
+                          <span className="od-row-name">{seg}</span>
+                        </div>
+                        <div className="od-td od-td-owner">—</div>
+                        <div className="od-td od-td-modified">—</div>
+                        <div className="od-td od-td-size">—</div>
+                      </div>
+                    ))}
+                    {displayRows.map((item: any) => {
+                      const md = item.metadata || {};
+                      const owner = md.created_by || md.modified_by || '—';
+                      const modified = md.modified || md.created || item.createdAt;
+                      const size = item.contentSize ?? md.file?.Length ?? 0;
+                      const hasBlob = !!item.blobPath;
+                      return (
+                        <div
+                          key={item.id}
+                          className={`od-row od-row-file ${selectedItems.has(item.id) ? 'selected' : ''}`}
+                          title={md.server_relative_url || ''}
+                        >
+                          <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.has(item.id)}
+                              onChange={() => onToggleItem(item.id)}
+                            />
+                          </div>
+                          <div className="od-td od-td-name" title={item.name}>
+                            {hasBlob && latestSnapshot ? (
+                              <a
+                                className="od-row-link"
+                                href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, item.id)}
+                                download={item.name || undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                title={`Download ${item.name}`}
+                              >
+                                <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                                <span className="od-row-name">{item.name}</span>
+                              </a>
+                            ) : (
+                              <>
+                                <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                                <span className="od-row-name">{item.name}</span>
+                                {!hasBlob && <span className="od-row-tag">metadata only</span>}
+                              </>
+                            )}
+                          </div>
+                          <div className="od-td od-td-owner">{owner}</div>
+                          <div className="od-td od-td-modified">{modified ? fmtLocalDate(modified, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
+                          <div className="od-td od-td-size">{size ? bytesToSize(size) : '—'}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="od-main-header">
+              <span className="od-breadcrumb">Subsites</span>
+              <span className="od-count">{subsites.length ? `${subsites.length.toLocaleString()} subsites` : ''}</span>
+            </div>
+            {subsitesLoading ? (
+              <div className="loading-container"><div className="spinner" /><p>Loading subsites...</p></div>
+            ) : subsitesError ? (
+              <div className="pbi-empty"><p>{subsitesError}</p></div>
+            ) : subsites.length === 0 ? (
+              <div className="pbi-empty"><p>No subsites under this site.</p></div>
+            ) : (
+              <div className="od-list">
+                <div className="od-table">
+                  <div className="od-table-head sp-subsite-head">
+                    <div className="od-th od-th-name">Name</div>
+                    <div className="od-th">URL</div>
+                    <div className="od-th od-th-modified">Last modified</div>
+                  </div>
+                  <div className="od-table-body">
+                    {subsites.map((sub: any) => (
+                      <div key={sub.id} className="od-row od-row-file sp-subsite-row">
+                        <div className="od-td od-td-name" title={sub.displayName}>
+                          <span className="od-row-icon" aria-hidden><SubsitesIcon /></span>
+                          <span className="od-row-name">{sub.displayName}</span>
+                        </div>
+                        <div className="od-td" title={sub.webUrl}>
+                          {sub.webUrl ? (
+                            <a href={sub.webUrl} target="_blank" rel="noopener noreferrer" className="od-row-link">{sub.webUrl}</a>
+                          ) : '—'}
+                        </div>
+                        <div className="od-td od-td-modified">
+                          {sub.lastModifiedDateTime ? fmtLocalDate(sub.lastModifiedDateTime, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ==================== Power BI Files view ====================
+// Power BI workspaces don't fit the five fixed Mail/OneDrive/... tabs —
+// they have reports, datasets, dashboards, permissions blobs, etc. The
+// Recovery page collapses all that into a single "Files" panel for
+// power_bi resources: one flat list pulled from the generic
+// /snapshots/{id}/files endpoint.
+
+function PowerBiFilesView({
+  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  // Pick the newest COMPLETED snapshot for this resource. Power BI
+  // resources aren't Tier 1/Tier 2 — just one resource = one lineage of
+  // snapshots, so we just take the latest one that finished.
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!latestSnapshot) {
+      setItems([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 500)
+      .then(data => setItems(data.content || []))
+      .catch(err => { setError(err.message || 'Failed to load files'); setItems([]); })
+      .finally(() => setLoading(false));
+  }, [latestSnapshot?.id]);
+
+  if (!latestSnapshot) {
+    return (
+      <div className="pbi-empty">
+        <p>No completed backup for this resource yet.</p>
+      </div>
+    );
+  }
+
+  const allChecked = items.length > 0 && items.every(i => selectedItems.has(i.id));
+
+  return (
+    <div className="pbi-files">
+      <div className="content-type-tabs">
+        <button className="content-tab active">
+          Files
+          {items.length > 0 && <span className="content-tab-count">{items.length.toLocaleString()}</span>}
+        </button>
+      </div>
+
+      <div className="pbi-files-panel">
+        {loading ? (
+          <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
+        ) : error ? (
+          <div className="pbi-empty"><p>{error}</p></div>
+        ) : items.length === 0 ? (
+          <div className="pbi-empty"><p>No files captured in this snapshot.</p></div>
+        ) : (
+          <div className="od-table">
+            <div className="od-table-head pbi-head">
+              <div className="od-th od-th-check">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={e => onSelectAll(items.map(i => i.id), e.target.checked)}
+                />
+              </div>
+              <div className="od-th od-th-name">Name</div>
+              <div className="od-th">Type</div>
+              <div className="od-th od-th-size">Size</div>
+              <div className="od-th od-th-modified">Captured at</div>
+            </div>
+            <div className="od-table-body">
+              {items.map((item: any) => {
+                const hasBlob = !!item.blobPath;
+                const size = item.contentSize || 0;
+                const typeLabel = (item.itemType || '').replace(/^POWER_BI_/, '').toLowerCase();
+                return (
+                  <div
+                    key={item.id}
+                    className={`od-row od-row-file pbi-row${selectedItems.has(item.id) ? ' selected' : ''}`}
+                  >
+                    <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.has(item.id)}
+                        onChange={() => onToggleItem(item.id)}
+                      />
+                    </div>
+                    <div className="od-td od-td-name" title={item.name}>
+                      {hasBlob ? (
+                        <a
+                          className="od-row-link"
+                          href={API.SNAPSHOTS.ITEM_CONTENT_DOWNLOAD(latestSnapshot.id, item.id)}
+                          download={item.name || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          title={`Download ${item.name}`}
+                        >
+                          <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                          <span className="od-row-name">{item.name}</span>
+                        </a>
+                      ) : (
+                        <>
+                          <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                          <span className="od-row-name">{item.name}</span>
+                          <span className="od-row-tag">metadata only</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="od-td pbi-type">{typeLabel || '—'}</div>
+                    <div className="od-td od-td-size">{size ? bytesToSize(size) : '—'}</div>
+                    <div className="od-td od-td-modified">
+                      {item.createdAt ? fmtLocalDate(item.createdAt, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1891,8 +2340,13 @@ export default function Recovery() {
 
     setSnapshotsLoading(true);
     Promise.all([
-      // Sparkline still needs the historical snapshot list (date + size).
-      SnapshotService.listByResource(selectedResource.id, 1, 50).catch(() => ({ content: [] })),
+      // Sparkline needs the historical snapshot list (date + size). For
+      // ENTRA_USER parents the real content bytes live on Tier 2 children
+      // (USER_MAIL / USER_ONEDRIVE / …), not on the parent itself — so
+      // we ask the backend to include child snapshots. Other resource
+      // kinds (Tier 1 MAILBOX, etc.) have no children and the flag is a
+      // no-op for them.
+      SnapshotService.listByResource(selectedResource.id, 1, 200, true).catch(() => ({ content: [] })),
       SnapshotService.getContentSnapshots(selectedResource.id),
     ])
       .then(([list, content]) => {
@@ -2498,9 +2952,27 @@ export default function Recovery() {
                   {/* afi-style size panel: total + 1w/1m/1y deltas + 7-day sparkline
                       centered on today. All derived client-side from the `snapshots`
                       array already loaded for this resource. */}
+                  {/* Total bytes: parent's own storage_bytes is often tiny
+                      for ENTRA_USER rows (just metadata). The real content
+                      bytes are split across Tier 2 children; contentSnapshots
+                      has the per-tab latest-snapshot bytesTotal. Sum those
+                      plus the parent row itself so the headline "Backup
+                      size" reflects what the user actually has. */}
                   <BackupSizeSummary
                     snapshots={snapshots}
-                    totalBytes={selectedResource.storage_bytes}
+                    totalBytes={(() => {
+                      const parentBytes = selectedResource.storage_bytes || 0;
+                      const childBytes = contentSnapshots
+                        ? Object.values(contentSnapshots.byContent).reduce(
+                            (sum, entry) => sum + (entry?.bytesTotal || 0),
+                            0,
+                          )
+                        : 0;
+                      // If child bytes are non-zero they're the source of
+                      // truth (contentSnapshots already rolls up per tab);
+                      // otherwise fall back to the parent's own size.
+                      return childBytes > 0 ? childBytes : parentBytes;
+                    })()}
                   />
 
                   {/* Snapshot picker is gone — the user no longer chooses a
@@ -2518,6 +2990,46 @@ export default function Recovery() {
                 </div>
               </div>
 
+              {selectedResource.kind === 'sharepoint_site' ? (
+                /* SharePoint sites: a single "Site" content-type tab at the
+                   top (parity with the Mail/OneDrive/... tab bar on other
+                   kinds) plus a two-option left rail (Site content / Subsites)
+                   in a full-width middle panel. Reuses OneDrive's
+                   od-layout-mode so the middle panel absorbs the right-
+                   preview space. */
+                <>
+                  <div className="content-type-tabs">
+                    <button className="content-tab active" type="button">Site</button>
+                  </div>
+                  <div className="three-panel-layout od-layout-mode">
+                    <SharePointView
+                      resourceId={selectedResource.id}
+                      snapshots={snapshots}
+                      selectedItems={selectedItems}
+                      onToggleItem={toggleSelectItem}
+                      onSelectAll={(ids, checked) => {
+                        if (checked) setSelectedItems(new Set(ids));
+                        else setSelectedItems(new Set());
+                      }}
+                    />
+                  </div>
+                </>
+              ) : selectedResource.kind === 'power_bi' ? (
+                /* Power BI workspaces don't fit the five fixed tabs — swap
+                   the whole content area for a single Files panel pulled
+                   from the generic /snapshots/{id}/files endpoint. */
+                <PowerBiFilesView
+                  resourceId={selectedResource.id}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                />
+              ) : (
+                <>
               {/* Content Type Tabs — fixed five (Mail / OneDrive / Contacts / Calendar / Chats).
                   Each tab shows its backed-up item count from the content-
                   snapshots resolver; tabs with no snapshot yet stay clickable
@@ -2865,6 +3377,8 @@ export default function Recovery() {
                           </div>
                         )}
               </div>
+                </>
+              )}
             </>
           )}
         </div>

@@ -149,9 +149,14 @@ const getAuthHeaders = (): Record<string, string> => {
 };
 
 export const SnapshotService = {
-  async listByResource(resourceId: string, page = 1, size = 20): Promise<SnapshotListResponse> {
+  async listByResource(resourceId: string, page = 1, size = 20, includeChildren = false): Promise<SnapshotListResponse> {
     const url = API.SNAPSHOTS.LIST(resourceId);
-    const res = await fetch(`${url}?page=${page}&size=${size}`, {
+    // `includeChildren` rolls in snapshots from Tier 2 child resources
+    // (USER_MAIL/USER_ONEDRIVE/... under an ENTRA_USER parent). Needed
+    // so the Recovery sparkline charts actual content bytes instead of
+    // just the parent's metadata row.
+    const suffix = includeChildren ? '&include_children=true' : '';
+    const res = await fetch(`${url}?page=${page}&size=${size}${suffix}`, {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to fetch snapshots');
@@ -181,6 +186,28 @@ export const SnapshotService = {
     return res.json();
   },
 
+  /** Return EVERY item in a snapshot as a uniform file-row shape. Used by
+   *  the Recovery page for resource kinds outside the five fixed tabs
+   *  (Power BI workspaces today; SharePoint sites, Azure workloads, etc.
+   *  can share the same render path). No item_type filter — whatever was
+   *  backed up shows up. */
+  async listSnapshotFiles(snapshotId: string, page = 1, size = 200, search?: string): Promise<SnapshotItemListResponse> {
+    let url = `${API.SNAPSHOTS.DETAIL(snapshotId)}/files?page=${page}&size=${size}`;
+    if (search && search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch snapshot files');
+    const data = await res.json();
+    if (data.content) {
+      data.content = data.content.map((item: any) => ({
+        ...item,
+        metadata: item.metadata && Object.keys(item.metadata).length > 0
+          ? item.metadata
+          : { raw: item },
+      }));
+    }
+    return data;
+  },
+
   /** Return every ONEDRIVE_FILE item id in this snapshot whose folder_path
    *  starts with `folderPrefix`. Used by the Recovery UI's folder-row
    *  checkbox to bulk-select everything under a folder, including files
@@ -191,6 +218,16 @@ export const SnapshotService = {
     if (!res.ok) throw new Error('Failed to fetch folder file ids');
     const data = await res.json();
     return Array.isArray(data.ids) ? data.ids : [];
+  },
+
+  /** Live Graph lookup for subsites of a SharePoint site resource. Used by
+   *  the Recovery page's Subsites panel. Returns whatever the tenant has
+   *  now — not a snapshot-frozen view. */
+  async listSharePointSubsites(resourceId: string): Promise<{ resourceId: string; subsites: any[]; count: number }> {
+    const url = `${API.RESOURCES.LIST}/${resourceId}/subsites`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch subsites');
+    return res.json();
   },
 
   async getContentSnapshots(resourceId: string): Promise<ContentSnapshotsResponse> {
