@@ -568,6 +568,8 @@ export default function Protection() {
                 <button key={tab.key} className={`resource-tab ${activeTab === tab.key ? 'active' : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
               ) : null
             ))}
+            {/* Auto-protection group (Entra ID groups / Dynamic groups) —
+                hidden for now. Uncomment when auto-protection is ready.
             <fieldset className="auto-protection-group">
               <legend className="auto-protection-label">Auto-protection</legend>
               <div className="auto-protection-tabs">
@@ -575,6 +577,7 @@ export default function Protection() {
                 <button className={`resource-tab ${activeTab === 'dynamic' ? 'active' : ''}`} onClick={() => setActiveTab('dynamic')}>Dynamic groups</button>
               </div>
             </fieldset>
+            */}
           </>
         )}
       </div>
