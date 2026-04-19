@@ -3021,6 +3021,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   width: 14px;
   height: 14px;
   display: block;
+}
 /* T20: single-select thread checkbox on chats folder list. The base
    .folder-item above is a button; the has-check variant is a div that
    wraps a checkbox + an inner folder-name-btn (button-in-button is
