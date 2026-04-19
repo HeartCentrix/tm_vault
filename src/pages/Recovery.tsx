@@ -2510,9 +2510,27 @@ function GroupTeamsView({
               <div className="items-list">
                 {messagesInChannel.map((m: any) => {
                   const raw = m.metadata?.raw || {};
-                  const author = raw.from?.user?.displayName || raw.from?.application?.displayName || 'Unknown';
                   const when = raw.createdDateTime || m.createdAt;
-                  const preview = String(raw.body?.content || '').replace(/<[^>]+>/g, '').slice(0, 140);
+                  // Teams system events (member added, role updated, meeting
+                  // started, channel renamed, …) arrive with from: null and
+                  // body "<systemEventMessage/>". Render them as labeled
+                  // system rows instead of "Unknown".
+                  const isSystem =
+                    !raw.from ||
+                    String(raw.body?.content || '').includes('<systemEventMessage/>') ||
+                    !!raw.eventDetail;
+                  const sysLabel = String(raw.eventDetail?.['@odata.type'] || '')
+                    .replace('#microsoft.graph.', '')
+                    .replace(/EventMessageDetail$/, '')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/^./, (c) => c.toUpperCase());
+                  const author =
+                    raw.from?.user?.displayName ||
+                    raw.from?.application?.displayName ||
+                    (isSystem ? 'System event' : 'Unknown');
+                  const preview = isSystem
+                    ? (sysLabel || 'System event')
+                    : String(raw.body?.content || '').replace(/<[^>]+>/g, '').slice(0, 140);
                   return (
                     <div
                       key={m.id}
