@@ -29,6 +29,10 @@ export interface RecoveryToolbarProps {
   recoverDisabled?: boolean;
   /** Disable just the Download button — same reasoning as above. */
   downloadDisabled?: boolean;
+  /** When true, Download stays enabled even with zero selected items.
+   *  Used on content types that have a single implicit target (e.g.
+   *  Azure DB Configuration = one config file). */
+  allowEmptyDownload?: boolean;
   /** Optional search wiring. Omit to hide the search box (e.g. for
    *  resource kinds where search isn't supported yet). */
   searchValue?: string;
@@ -127,6 +131,7 @@ export default function RecoveryToolbar({
   downloadError,
   recoverDisabled,
   downloadDisabled,
+  allowEmptyDownload,
   searchValue,
   onSearchChange,
   onSearchSubmit,
@@ -141,8 +146,24 @@ export default function RecoveryToolbar({
       return tb - ta;
     });
 
+  // If the parent didn't pre-seed `selectedSnapshotId` (Azure DB / VM /
+  // SharePoint don't flow through the M365 content-snapshot resolver),
+  // default to the newest COMPLETED snapshot so Download / Recover are
+  // enabled from the first render.
+  useEffect(() => {
+    if (!selectedSnapshotId && completed.length > 0) {
+      onSelectSnapshot(completed[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSnapshotId, completed.length > 0 ? completed[0].id : '']);
+
   const hasSnapshot = !!selectedSnapshotId;
-  const disableDownload = !hasSnapshot || !!downloadDisabled;
+  // Download is gated on selection by default — the user has to tick
+  // something before exporting. Set `allowEmptyDownload` on tabs where
+  // the target is implicit (Azure DB Configuration's single file).
+  const disableDownload = !hasSnapshot
+    || !!downloadDisabled
+    || (selectedCount === 0 && !allowEmptyDownload);
   const disableRecover = !hasSnapshot || selectedCount === 0 || !!recoverDisabled;
 
   const showSearch = typeof onSearchChange === 'function';
