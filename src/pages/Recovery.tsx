@@ -1153,10 +1153,13 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   'Appointment':    '#16a34a',
 };
 
-function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
+function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredIdsChange }: {
   snapshotId: string;
   selectedItems: Set<string>;
   onItemCheck: (itemId: string) => void;
+  // Emitted whenever the sidebar filter set changes so the parent can
+  // scope Download to just those event IDs.
+  onFilteredIdsChange?: (ids: string[]) => void;
 }) {
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1194,6 +1197,13 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
   const visibleEvents = activeFilters.size === 0
     ? allEvents
     : allEvents.filter(e => activeFilters.has(e.eventType));
+
+  // Notify parent of the current filtered ID set so Download can scope
+  // to just these events. When activeFilters is empty this is all ids.
+  useEffect(() => {
+    if (!onFilteredIdsChange) return;
+    onFilteredIdsChange(visibleEvents.map(e => e.id));
+  }, [allEvents, activeFilters, onFilteredIdsChange]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -1253,14 +1263,20 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
         </div>
 
         <div className="cal-filter-section">
-          <button
+          <label
             className={`cal-filter-all${activeFilters.size === 0 ? ' active' : ''}`}
-            onClick={() => setActiveFilters(new Set())}
+            style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%'}}
           >
+            <input
+              type="checkbox"
+              checked={activeFilters.size === 0}
+              onChange={() => setActiveFilters(new Set())}
+              style={{margin:0}}
+            />
             <span className="cal-filter-dot" style={{background:'#16a34a'}} />
-            All events
+            <span style={{flex:1,textAlign:'left'}}>All events</span>
             <span className="cal-filter-count">{allEvents.length}</span>
-          </button>
+          </label>
         </div>
 
         <div className="cal-filter-divider" />
@@ -1272,15 +1288,21 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck }: {
             const count = allEvents.filter(e => e.eventType === type).length;
             const isActive = activeFilters.has(type);
             return (
-              <button
+              <label
                 key={type}
                 className={`cal-filter-item${isActive ? ' active' : ''}`}
-                onClick={() => toggleFilter(type)}
+                style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%'}}
               >
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={() => toggleFilter(type)}
+                  style={{margin:0}}
+                />
                 <span className="cal-filter-dot" style={{background: color}} />
-                <span className="cal-filter-label">{type}</span>
+                <span className="cal-filter-label" style={{flex:1,textAlign:'left'}}>{type}</span>
                 <span className="cal-filter-count">{count}</span>
-              </button>
+              </label>
             );
           })}
         </div>
@@ -4082,9 +4104,22 @@ export default function Recovery() {
     setRestoreModalOpen(true);
   };
 
+  // Calendar sidebar's currently-filtered event IDs. Empty filter =
+  // every event; otherwise only the event types the user ticked.
+  // Scopes Download on the calendar tab so the ZIP only contains the
+  // events matching the sidebar checkboxes.
+  const [filteredCalendarIds, setFilteredCalendarIds] = useState<string[]>([]);
+
   const handleDownload = () => {
     if (!selectedSnapshotId) return;
     setDownloadError(null);
+    // If we're on the calendar tab and the user hasn't ticked any
+    // individual events, inherit the sidebar's filtered set as the
+    // download scope so "Meeting" + "Online Meeting" (or any combo)
+    // narrows what lands in the export.
+    if (activeContentType === 'calendar' && selectedItems.size === 0 && filteredCalendarIds.length > 0) {
+      setSelectedItems(new Set(filteredCalendarIds));
+    }
     setDownloadModalOpen(true);
   };
 
@@ -4514,6 +4549,7 @@ export default function Recovery() {
                         snapshotId={selectedSnapshotId}
                         selectedItems={selectedItems}
                         onItemCheck={toggleSelectItem}
+                        onFilteredIdsChange={setFilteredCalendarIds}
                       />
                     )}
                   </div>
@@ -4804,6 +4840,7 @@ export default function Recovery() {
         snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
         selectedCount={selectedItems.size}
         contentType={activeContentType as ContentTab}
+        preserveTree={oneDriveFolderSelected.size > 0}
         snapshotDate={
           // Tab-selected snapshot's date lives on contentSnapshots.byContent — the
           // top-level `snapshots` list is just the first 50 from listByResource

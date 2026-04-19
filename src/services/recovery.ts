@@ -64,6 +64,9 @@ export interface RecoveryRequest {
   exportFormat?: string;
   workloads?: string[];
   includeAttachments?: boolean;
+  // True when selection came from a folder checkbox (preserve folder
+  // tree in the output ZIP even if expansion is a single file).
+  preserveTree?: boolean;
 }
 
 export interface RecoveryResponse {
