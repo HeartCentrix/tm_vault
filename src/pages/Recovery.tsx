@@ -1164,27 +1164,25 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  // Per-calendar filter — keys are the folderPath value stored on each
+  // CALENDAR_EVENT item (e.g. "Calendar/United States holidays"). Empty
+  // set = show events from every calendar.
+  const [activeCalendarFilters, setActiveCalendarFilters] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date());
   // Mouse-following tooltip state. `day` points at the cell's day number
   // in the current month; x/y are clientX/clientY so the popover can be
   // absolutely positioned relative to the viewport.
   const [hovered, setHovered] = useState<{ day: number; x: number; y: number } | null>(null);
 
-  // Load all events for this snapshot
+  // Load all events for this snapshot. viewDate stays on today's month
+  // (the initial value passed to useState) so the user always lands on
+  // the current month when they open the Calendar tab.
   useEffect(() => {
     if (!snapshotId) return;
     setLoading(true);
     SnapshotService.listCalendarEvents(snapshotId, 1, 1000)
       .then(data => {
         setAllEvents(data.content);
-        // Auto-navigate to month with most events
-        if (data.content.length > 0) {
-          const first = data.content.find(e => e.start);
-          if (first?.start) {
-            const d = parseAsUtc(first.start);
-            if (d) setViewDate(d);
-          }
-        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -1193,17 +1191,28 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   // Collect unique event types for filter sidebar
   const eventTypes = Array.from(new Set(allEvents.map(e => e.eventType))).sort();
 
-  // Filter events
-  const visibleEvents = activeFilters.size === 0
-    ? allEvents
-    : allEvents.filter(e => activeFilters.has(e.eventType));
+  // Collect unique calendar folder paths for the per-calendar filter.
+  // Each event is tagged with folderPath = "Calendar/<calendarName>" at
+  // backup time — we use the full path as the filter key and strip the
+  // "Calendar/" prefix for display.
+  const calendarPaths = Array.from(new Set(
+    allEvents.map(e => e.folderPath).filter((p): p is string => !!p)
+  )).sort();
+
+  // Apply both filters. Type filter and calendar filter are AND'ed; an
+  // empty filter set on either side means "don't filter on that axis".
+  const visibleEvents = allEvents.filter(e => {
+    if (activeFilters.size > 0 && !activeFilters.has(e.eventType)) return false;
+    if (activeCalendarFilters.size > 0 && (!e.folderPath || !activeCalendarFilters.has(e.folderPath))) return false;
+    return true;
+  });
 
   // Notify parent of the current filtered ID set so Download can scope
-  // to just these events. When activeFilters is empty this is all ids.
+  // to just these events. When all filter sets are empty this is all ids.
   useEffect(() => {
     if (!onFilteredIdsChange) return;
     onFilteredIdsChange(visibleEvents.map(e => e.id));
-  }, [allEvents, activeFilters, onFilteredIdsChange]);
+  }, [allEvents, activeFilters, activeCalendarFilters, onFilteredIdsChange]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -1264,13 +1273,13 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
 
         <div className="cal-filter-section">
           <label
-            className={`cal-filter-all${activeFilters.size === 0 ? ' active' : ''}`}
+            className={`cal-filter-all${activeFilters.size === 0 && activeCalendarFilters.size === 0 ? ' active' : ''}`}
             style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%'}}
           >
             <input
               type="checkbox"
-              checked={activeFilters.size === 0}
-              onChange={() => setActiveFilters(new Set())}
+              checked={activeFilters.size === 0 && activeCalendarFilters.size === 0}
+              onChange={() => { setActiveFilters(new Set()); setActiveCalendarFilters(new Set()); }}
               style={{margin:0}}
             />
             <span className="cal-filter-dot" style={{background:'#16a34a'}} />
@@ -1306,6 +1315,48 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
             );
           })}
         </div>
+
+        {/* Per-calendar filter — every event rows carries
+            folderPath="Calendar/<calendarName>" from the backup handler.
+            Split on / and show the tail as a display label. Empty set =
+            "show all calendars". */}
+        {calendarPaths.length > 0 && (
+          <>
+            <div className="cal-filter-divider" />
+            <div className="cal-filter-section-label">Calendar</div>
+            <div className="cal-filter-section">
+              {calendarPaths.map(path => {
+                const display = path.includes('/') ? path.slice(path.indexOf('/') + 1) : path;
+                const count = allEvents.filter(e => e.folderPath === path).length;
+                const isActive = activeCalendarFilters.has(path);
+                return (
+                  <label
+                    key={path}
+                    className={`cal-filter-item${isActive ? ' active' : ''}`}
+                    style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',width:'100%'}}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={() => {
+                        setActiveCalendarFilters(prev => {
+                          const next = new Set(prev);
+                          if (next.has(path)) next.delete(path);
+                          else next.add(path);
+                          return next;
+                        });
+                      }}
+                      style={{margin:0}}
+                    />
+                    <span className="cal-filter-dot" style={{background: '#2d3748'}} />
+                    <span className="cal-filter-label" style={{flex:1,textAlign:'left'}} title={path}>{display}</span>
+                    <span className="cal-filter-count">{count}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {loading && (
           <div className="cal-filter-loading">
@@ -1367,16 +1418,20 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
                     <span className="cal-day-number">{day}</span>
                     {hasEvents && (
                       <div className="cal-day-events-list" aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}>
-                        {dayEvents.map(ev => (
-                          <div
-                            key={ev.id}
-                            className="cal-day-event-label"
-                            style={{ borderLeftColor: EVENT_TYPE_COLORS[ev.eventType] || '#16a34a' }}
-                            title={ev.subject || '(no subject)'}
-                          >
-                            {ev.subject || '(no subject)'}
-                          </div>
-                        ))}
+                        {dayEvents.map(ev => {
+                          const cancelled = ev.isCancelled || /^(canceled|cancelled):\s*/i.test(ev.subject || '');
+                          return (
+                            <div
+                              key={ev.id}
+                              className={`cal-day-event-label${cancelled ? ' cancelled' : ''}`}
+                              style={{ borderLeftColor: cancelled ? '#dc2626' : (EVENT_TYPE_COLORS[ev.eventType] || '#16a34a') }}
+                              title={(cancelled ? '[Cancelled] ' : '') + (ev.subject || '(no subject)')}
+                            >
+                              {cancelled && <span className="cal-day-event-tag">Cancelled</span>}
+                              <span className="cal-day-event-name">{ev.subject || '(no subject)'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </>
@@ -1439,13 +1494,14 @@ function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }:
       </div>
       <div className="cal-hover-list">
         {events.map(ev => {
-          const color = EVENT_TYPE_COLORS[ev.eventType] || '#16a34a';
+          const cancelled = ev.isCancelled || /^(canceled|cancelled):\s*/i.test(ev.subject || '');
+          const color = cancelled ? '#dc2626' : (EVENT_TYPE_COLORS[ev.eventType] || '#16a34a');
           const isChecked = selectedItems.has(ev.id);
           const when = ev.start
             ? fmtLocalTime(ev.start, { hour: 'numeric', minute: '2-digit' })
             : '';
           return (
-            <div key={ev.id} className={`cal-hover-row${isChecked ? ' checked' : ''}`}>
+            <div key={ev.id} className={`cal-hover-row${isChecked ? ' checked' : ''}${cancelled ? ' cancelled' : ''}`}>
               <input
                 type="checkbox"
                 className="cal-hover-check"
@@ -1454,7 +1510,10 @@ function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }:
                 onClick={e => e.stopPropagation()}
               />
               <span className="cal-hover-dot" style={{ background: color }} />
-              <span className="cal-hover-subject" title={ev.subject}>{ev.subject || '(no subject)'}</span>
+              <span className="cal-hover-subject" title={ev.subject}>
+                {cancelled && <span className="cal-day-event-tag" style={{ marginRight: 6 }}>Cancelled</span>}
+                {ev.subject || '(no subject)'}
+              </span>
               {when && <span className="cal-hover-time">{when}</span>}
             </div>
           );
@@ -2254,14 +2313,13 @@ function GroupTeamsView({
 
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!latestSnapshot) { setItems([]); return; }
-    setLoading(true); setError(null);
+    setLoading(true);
     SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
       .then(data => setItems(data.content || []))
-      .catch(err => { setError(err.message || 'Failed to load items'); setItems([]); })
+      .catch(() => { setItems([]); })
       .finally(() => setLoading(false));
   }, [latestSnapshot?.id]);
 
@@ -3807,6 +3865,20 @@ export default function Recovery() {
       return;
     }
 
+    // Calendar tab has its own dedicated fetch inside CalendarMonthView
+    // (which calls /snapshots/{id}/calendar directly). Don't double-fetch
+    // the same events through the generic /items endpoint — saves one
+    // network round trip per calendar-tab open.
+    if (activeContentType === 'calendar') {
+      setRecoveryItems([]);
+      setItemCount(0);
+      setItemTotalPages(1);
+      setHasMore(false);
+      setItemPage(1);
+      setItemsLoading(false);
+      return;
+    }
+
     const myKey = ++requestKeyRef.current;
     setItemPage(1);
     setItemsLoading(true);
@@ -3869,6 +3941,9 @@ export default function Recovery() {
   // view doesn't yank when new rows appear at the top.
   useEffect(() => {
     if (itemPage <= 1 || !selectedSnapshotId || !activeContentType) return;
+    // Calendar tab runs its own fetch in CalendarMonthView; skip the
+    // infinite-scroll page-append path here so we don't duplicate.
+    if (activeContentType === 'calendar') return;
     const myKey = requestKeyRef.current;
     const isChats = activeContentType === 'chats';
     setLoadingMore(true);

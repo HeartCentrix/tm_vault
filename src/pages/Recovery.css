@@ -2035,7 +2035,30 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+/* Cancelled events — strike-through + muted colour + red badge.
+   Applies both on the day-cell chip and inside the hover tooltip. */
+.cal-day-event-label.cancelled .cal-day-event-name,
+.cal-hover-row.cancelled .cal-hover-subject {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.cal-day-event-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+.cal-hover-row.cancelled { opacity: 0.8; }
 
 /* Floating popover that tracks the cursor. position: fixed so the
    inline top/left coordinates we compute from clientX/clientY land
