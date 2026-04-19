@@ -624,50 +624,61 @@
   border-color: #0d9488;
 }
 
+/* Wrapper holds the border — input + button read as one rounded pill.
+   The border lives on the wrapper so there is zero gap or seam between
+   the input and the trailing search-icon button. */
 .search-wrapper {
   display: flex;
-  align-items: stretch;  /* children fill wrapper height — keeps input and button exactly the same height */
-  gap: 6px;
+  align-items: stretch;
+  gap: 0;
   flex: 1;
   max-width: 400px;
+  height: 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
 }
+.search-wrapper:hover { border-color: #cbd5e0; }
+.search-wrapper:focus-within { border-color: #94a3b8; }
 
 .search-wrapper .search-input {
   flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  height: 100%;
+  padding: 0 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   font-size: 13px;
   color: #0f172a;
   outline: none;
   box-sizing: border-box;
 }
 
-.search-wrapper .search-input:focus {
-  border-color: #94a3b8;
-}
-
+/* Icon-only button nested inside the wrapper — transparent bg, no
+   border, just a color shift on the stroke for hover feedback. */
 .search-wrapper .search-btn {
-  /* Match input's vertical footprint exactly: same padding + same border
-     width + same box-sizing + align-stretch on the parent = identical
-     computed height across both. */
-  padding: 8px 12px;
+  width: 36px;
+  height: 100%;
+  padding: 0 8px;
   background: transparent;
-  border: 1px solid #cbd5e0;
-  border-radius: 6px;
-  color: #475569;
+  border: none;
+  color: #64748b;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  transition: border-color 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
-
-.search-wrapper .search-btn:hover {
-  border-color: #94a3b8;
-  color: #1e293b;
+.search-wrapper .search-btn:hover,
+.search-wrapper .search-btn:focus-visible {
+  color: #0f172a;
+  outline: none;
 }
+.search-wrapper .search-btn svg { width: 16px; height: 16px; display: block; }
 
 .toolbar-right {
   display: flex;
@@ -2738,4 +2749,272 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 .od-table-head .az-db-th-check { width: 40px; }
 .az-db-schema-row { display: grid; grid-template-columns: 40px 1fr; align-items: center; }
+
+/* Database tab — tree + data view (AFI-parity) */
+.az-db-data-layout .panel-left { width: 260px; background: #fff; }
+.az-db-tree { padding: 10px 0; }
+.az-db-tree-row {
+  display: grid;
+  grid-template-columns: 20px 14px 18px 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  color: #1e293b;
+  cursor: pointer;
+}
+.az-db-tree-row:hover { background: #f8fafc; }
+.az-db-tree-row.active {
+  background: #e0f7fa;
+  box-shadow: inset 3px 0 0 #14b8a6;
+}
+.az-db-tree-check { margin: 0; justify-self: center; }
+.az-db-tree-caret {
+  background: transparent; border: none; padding: 0; font-size: 9px;
+  color: #64748b; cursor: pointer; justify-self: center;
+}
+.az-db-icon-db { color: #475569; justify-self: center; }
+.az-db-icon-folder { color: #334155; justify-self: center; }
+.az-db-tree-dbrow { font-weight: 500; }
+.az-db-tree-schemarow { padding-left: 28px; grid-template-columns: 20px 14px 18px 1fr; }
+.az-db-tree-tablerow {
+  padding-left: 60px;
+  grid-template-columns: 20px 1fr;
+  color: #475569;
+  font-size: 12.5px;
+}
+.az-db-tree-tablerow .az-db-tree-check { grid-column: 1; }
+.az-db-tree-tablerow .az-db-tree-label { grid-column: 2; }
+.az-db-tree-label {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.az-db-noschemas {
+  padding: 4px 0 8px 56px; color: #94a3b8; font-size: 12px;
+}
+.az-db-noschemas-deep { padding-left: 76px; }
+
+.az-db-data-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+
+.az-db-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 10px;
+  gap: 16px;
+}
+.az-db-breadcrumb-new {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+}
+.az-db-pager-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: #475569;
+}
+.az-db-pager-label { color: #64748b; }
+.az-db-pager-size {
+  height: 28px;
+  padding: 0 26px 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background-color: #fff;
+  font-weight: 500;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%2364748b' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'><path d='M1 1l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px 6px;
+  transition: border-color 0.15s ease;
+}
+.az-db-pager-size:hover { border-color: #cbd5e1; }
+.az-db-pager-size:focus {
+  outline: none;
+  border-color: #94a3b8;
+}
+.az-db-pager-range { color: #0f172a; font-weight: 500; }
+.az-db-pager-nav { display: flex; gap: 0; }
+.az-db-pager-nav button {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none;
+  color: #475569; cursor: pointer;
+  font-size: 13px;
+}
+.az-db-pager-nav button:hover:not(:disabled) { color: #0f172a; background: #f1f5f9; border-radius: 3px; }
+.az-db-pager-nav button:disabled { color: #cbd5e1; cursor: not-allowed; }
+
+.az-db-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px 14px;
+  font-size: 13px;
+}
+.az-db-search-label { color: #475569; font-weight: 500; }
+/* Shared arrow for every select on this tab — 10 × 6 viewBox renders
+   the chevron at the right ~10px proportion regardless of the select's
+   height, so it never gets stretched. */
+.az-db-search-col {
+  width: 160px;
+  height: 34px;
+  padding: 0 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 34px;
+  cursor: not-allowed;
+}
+.az-db-search-col:disabled { opacity: 1; }
+
+.az-db-search-op {
+  height: 34px;
+  padding: 0 30px 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background-color: #fff;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  min-width: 78px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%2364748b' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'><path d='M1 1l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px 6px;
+  transition: border-color 0.15s ease;
+}
+.az-db-search-op:hover { border-color: #cbd5e1; }
+.az-db-search-op:focus {
+  outline: none;
+  border-color: #94a3b8;
+}
+/* The opened <option> list — browser-specific styling we can influence:
+   Chromium honours color/background on options + border-radius on the
+   select's popup when it renders in-page. */
+.az-db-search-op option,
+.az-db-pager-size option {
+  background: #fff;
+  color: #0f172a;
+  padding: 8px 14px;
+  border: none;
+  font-weight: 400;
+}
+/* Wrapper that glues the value input + search button into one visual
+   pill. The input and button share the wrapper's border so there is
+   no gap or doubled line between them. */
+.az-db-search-field {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-width: 260px;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.az-db-search-field:hover { border-color: #cbd5e1; }
+.az-db-search-field:focus-within { border-color: #94a3b8; }
+
+.az-db-search-val {
+  flex: 1;
+  height: 100%;
+  padding: 0 14px;
+  border: none;
+  border-radius: 0;
+  font-size: 13px;
+  color: #0f172a;
+  background: #fff;
+}
+.az-db-search-val::placeholder { color: #94a3b8; }
+.az-db-search-val:focus { outline: none; }
+
+/* Icon-only button nested inside the search-field wrapper. No
+   background, no border, no bg on hover — just a color shift on the
+   icon stroke so it reads as part of the input. */
+.az-db-search-btn {
+  width: 36px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #64748b;
+  border: none;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.az-db-search-btn:hover,
+.az-db-search-btn:focus-visible { color: #0f172a; outline: none; }
+.az-db-search-btn svg { width: 16px; height: 16px; display: block; }
+.az-db-search-clear {
+  padding: 6px 12px;
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.az-db-table-wrap {
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+}
+.az-db-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.az-db-data-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  padding: 12px 20px;
+  text-align: left;
+  font-weight: 500;
+  color: #0f172a;
+  white-space: nowrap;
+  border-bottom: 1px solid #e2e8f0;
+}
+.az-db-data-table tbody td {
+  padding: 14px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.az-db-data-table tbody tr:hover td { background: #f8fafc; }
+.az-db-col-pk {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: #09244b;
+  vertical-align: middle;
+}
+.az-db-col-pk svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
 

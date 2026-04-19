@@ -2151,10 +2151,10 @@ function SharePointView({
  *   - AZURE_DB_TABLE         — each table. folder_path = db_name/schema.
  *   - AZURE_DB_ROW           — future: per-row snapshots for the Data tab.
  */
-type AzureDbTab = 'configuration' | 'data' | 'schema';
+type AzureDbTab = 'configuration' | 'database' | 'schema';
 const AZURE_DB_TAB_LABELS: Record<AzureDbTab, string> = {
   configuration: 'Configuration',
-  data: 'Data',
+  database: 'Database',
   schema: 'Schema',
 };
 
@@ -2272,6 +2272,354 @@ function AzureDbConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshotI
   );
 }
 
+/**
+ * Database tab body — tree db → schema → tables on the left, paginated
+ * row-view with search (op + value on the first column) on the right.
+ */
+function AzureDbDataTab({
+  snapshotId, databases, tableItems,
+}: {
+  snapshotId: string;
+  databases: string[];
+  tableItems: any[];
+}) {
+  // Tree state — set of expanded db names and schema keys.
+  const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
+  const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+
+  // Auto-expand the first db + schema so the view doesn't open collapsed.
+  useEffect(() => {
+    if (databases.length && expandedDbs.size === 0) {
+      setExpandedDbs(new Set([databases[0]]));
+    }
+  }, [databases, expandedDbs.size]);
+
+  // Build db → schema → tables map from folder_path.
+  const tree = useMemo(() => {
+    const t: Record<string, Record<string, any[]>> = {};
+    for (const it of tableItems) {
+      const [db, schema = 'public'] = (it.folderPath || '').split('/');
+      if (!db) continue;
+      if (!t[db]) t[db] = {};
+      if (!t[db][schema]) t[db][schema] = [];
+      t[db][schema].push(it);
+    }
+    // Ensure every discovered db at least shows up even if it has no tables.
+    for (const db of databases) if (!t[db]) t[db] = {};
+    return t;
+  }, [tableItems, databases]);
+
+  // ── Selected table + its row data ──
+  const selectedTable = useMemo(
+    () => tableItems.find(t => t.id === selectedTableId) || null,
+    [tableItems, selectedTableId],
+  );
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [data, setData] = useState<{ columns: string[]; rows: any[]; total: number; hasMore: boolean; firstColumn: string | null }>({
+    columns: [], rows: [], total: 0, hasMore: false, firstColumn: null,
+  });
+  const [loading, setLoading] = useState(false);
+
+  // Search input state — default op to "=" so the first option shown
+  // in the dropdown matches the state, otherwise `submitSearch` bails
+  // out early thinking no operator was chosen.
+  const [searchOp, setSearchOp] = useState<'=' | '>' | '<' | '>=' | '<=' | '[]'>('=');
+  const [searchVal, setSearchVal] = useState('');
+  const [appliedFilter, setAppliedFilter] = useState<{ op: string; val: string } | null>(null);
+
+  // Reset page/search whenever the selected table changes.
+  useEffect(() => {
+    setPage(1);
+    setSearchOp('=');
+    setSearchVal('');
+    setAppliedFilter(null);
+  }, [selectedTableId]);
+
+  // Load data whenever page or applied filter changes.
+  useEffect(() => {
+    if (!selectedTableId || !snapshotId) {
+      setData({ columns: [], rows: [], total: 0, hasMore: false, firstColumn: null });
+      return;
+    }
+    setLoading(true);
+    SnapshotService.getAzureDbTable(snapshotId, selectedTableId, {
+      page, size: pageSize,
+      op: appliedFilter?.op,
+      val: appliedFilter?.val,
+    })
+      .then(setData)
+      .catch(() => setData({ columns: [], rows: [], total: 0, hasMore: false, firstColumn: null }))
+      .finally(() => setLoading(false));
+  }, [snapshotId, selectedTableId, page, appliedFilter]);
+
+  const firstCol = data.firstColumn || selectedTable?.metadata?.columns?.[0] || '';
+  const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  const breadcrumb = selectedTable
+    ? `${selectedTable.metadata?.database_name || ''} > ${selectedTable.metadata?.schema || 'public'} > ${selectedTable.name}`
+    : '';
+  const rangeStart = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(data.total, page * pageSize);
+
+  // Client-side "look in current page first" — quick visual filter of
+  // the already-loaded rows matching the typed value, without a fetch.
+  // "[]" now means "any of these values" — tokens split on commas and
+  // whitespace.
+  const clientMatches = useMemo(() => {
+    if (!searchVal || !firstCol || !searchOp) return null;
+    const coerce = (x: any) => { const n = Number(x); return Number.isNaN(n) ? String(x) : n; };
+    const target = coerce(searchVal);
+    let targetSet: any[] = [];
+    if (searchOp === '[]') {
+      targetSet = searchVal.split(/[\s,]+/).filter(Boolean).map(coerce);
+    }
+    const filtered = data.rows.filter(r => {
+      const v = coerce(r?.[firstCol]);
+      try {
+        if (searchOp === '=') return v === target;
+        if (searchOp === '>') return v > target;
+        if (searchOp === '<') return v < target;
+        if (searchOp === '>=') return v >= target;
+        if (searchOp === '<=') return v <= target;
+        if (searchOp === '[]') {
+          return targetSet.includes(v) || targetSet.map(String).includes(String(v));
+        }
+      } catch { return false; }
+      return false;
+    });
+    return filtered;
+  }, [data.rows, searchVal, searchOp, firstCol]);
+
+  const submitSearch = () => {
+    if (!searchOp || !searchVal) { setAppliedFilter(null); return; }
+    // If the current page already has matches, keep them local; otherwise
+    // apply the filter server-side (separate call).
+    if (clientMatches && clientMatches.length > 0) {
+      setAppliedFilter(null);
+      return;
+    }
+    setPage(1);
+    setAppliedFilter({ op: searchOp, val: searchVal });
+  };
+
+  const clearSearch = () => {
+    setSearchOp('=');
+    setSearchVal('');
+    setAppliedFilter(null);
+  };
+
+  const visibleRows = (clientMatches && clientMatches.length > 0 && !appliedFilter)
+    ? clientMatches : data.rows;
+
+  // Inline SVG carets supplied by the user — "open" (down-pointing V)
+  // appears when the node is expanded; "closed" (right-pointing chevron)
+  // appears when collapsed. Matches the AFI icon set exactly.
+  const CaretOpen = (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: 14, height: 14 }} aria-hidden>
+      <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+  const CaretClosed = (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: 14, height: 14 }} aria-hidden>
+      <path d="M10 7L15 12L10 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+
+  const toggleDb = (db: string) => setExpandedDbs(prev => {
+    const n = new Set(prev); if (n.has(db)) n.delete(db); else n.add(db); return n;
+  });
+  const toggleSchema = (key: string) => setExpandedSchemas(prev => {
+    const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n;
+  });
+
+  return (
+    <div className="three-panel-layout az-db-data-layout">
+      <div className="panel-left">
+        <div className="az-db-tree">
+          {databases.length === 0 ? (
+            <div className="folder-empty"><p>No databases</p></div>
+          ) : databases.map(db => {
+            const dbOpen = expandedDbs.has(db);
+            const schemas = Object.keys(tree[db] || {}).sort();
+            return (
+              <div key={db} className="az-db-tree-db">
+                {/* Entire db row is clickable — click anywhere to toggle.
+                    Checkbox click is stopped so it doesn't bubble. */}
+                <div
+                  className="az-db-tree-row az-db-tree-dbrow"
+                  onClick={() => toggleDb(db)}
+                  role="button"
+                  aria-expanded={dbOpen}
+                >
+                  <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                  <span className="az-db-tree-caret">{dbOpen ? CaretOpen : CaretClosed}</span>
+                  <span className="az-db-icon az-db-icon-db" aria-hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" style={{ width: 14, height: 14 }}>
+                      <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6a9 3 0 0 0 18 0V5" /><path d="M3 11v6a9 3 0 0 0 18 0v-6" />
+                    </svg>
+                  </span>
+                  <span className="az-db-tree-label">{db}</span>
+                </div>
+                {dbOpen && schemas.length === 0 && (
+                  <div className="az-db-noschemas">No schemas</div>
+                )}
+                {dbOpen && schemas.map(schema => {
+                  const key = `${db}/${schema}`;
+                  const schemaOpen = expandedSchemas.has(key);
+                  const tablesHere = tree[db][schema] || [];
+                  return (
+                    <div key={key} className="az-db-tree-schema">
+                      <div
+                        className="az-db-tree-row az-db-tree-schemarow"
+                        onClick={() => toggleSchema(key)}
+                        role="button"
+                        aria-expanded={schemaOpen}
+                      >
+                        <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                        <span className="az-db-tree-caret">{schemaOpen ? CaretOpen : CaretClosed}</span>
+                        <span className="az-db-icon az-db-icon-folder" aria-hidden>
+                          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 13, height: 13 }}>
+                            <path d="M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          </svg>
+                        </span>
+                        <span className="az-db-tree-label">{schema}</span>
+                      </div>
+                      {schemaOpen && tablesHere.length === 0 && (
+                        <div className="az-db-noschemas az-db-noschemas-deep">No tables</div>
+                      )}
+                      {schemaOpen && tablesHere.map(tbl => (
+                        <div
+                          key={tbl.id}
+                          className={`az-db-tree-row az-db-tree-tablerow ${selectedTableId === tbl.id ? 'active' : ''}`}
+                          onClick={() => setSelectedTableId(tbl.id)}
+                        >
+                          <input type="checkbox" className="az-db-tree-check" onClick={e => e.stopPropagation()} onChange={() => {}} />
+                          <span className="az-db-tree-label">{tbl.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel-middle az-db-data-main">
+        {!selectedTable ? (
+          <div className="empty-preview"><p>Select a table to view rows.</p></div>
+        ) : (
+          <>
+            <div className="az-db-header-row">
+              <div className="az-db-breadcrumb-new">{breadcrumb}</div>
+              <div className="az-db-pager-top">
+                <span className="az-db-pager-label">Rows per page:</span>
+                <select
+                  className="az-db-pager-size"
+                  value={pageSize}
+                  onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="az-db-pager-range">
+                  {rangeStart} – {rangeEnd} of {data.total.toLocaleString()} rows
+                </span>
+                <div className="az-db-pager-nav">
+                  <button disabled={page <= 1} onClick={() => setPage(1)} aria-label="First">⏮</button>
+                  <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} aria-label="Prev">‹</button>
+                  <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next">›</button>
+                  <button disabled={page >= totalPages} onClick={() => setPage(totalPages)} aria-label="Last">⏭</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="az-db-search-bar">
+              <span className="az-db-search-label">Search</span>
+              <input
+                className="az-db-search-col"
+                value={firstCol || '(column)'}
+                disabled
+                title="Search is applied to the first column"
+              />
+              <select
+                className="az-db-search-op"
+                value={searchOp}
+                onChange={e => setSearchOp(e.target.value as any)}
+              >
+                <option value="=">=</option>
+                <option value=">">&gt;</option>
+                <option value="<">&lt;</option>
+                <option value=">=">&gt;=</option>
+                <option value="<=">&lt;=</option>
+                <option value="[]">[ ]</option>
+              </select>
+              <div className="az-db-search-field">
+                <input
+                  className="az-db-search-val"
+                  placeholder={searchOp === '[]' ? 'Values (e.g. 2 4 6 or 2,4,6)' : 'Type to search'}
+                  value={searchVal}
+                  onChange={e => setSearchVal(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') submitSearch(); }}
+                />
+                <button className="az-db-search-btn" onClick={submitSearch} aria-label="Search" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                    <path d="M15.7955 15.8111L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              {(appliedFilter || (clientMatches && clientMatches.length > 0)) && (
+                <button className="az-db-search-clear" onClick={clearSearch}>Clear</button>
+              )}
+            </div>
+
+            <div className="az-db-table-wrap">
+              {loading ? (
+                <div className="loading-container"><div className="spinner" /><p>Loading rows…</p></div>
+              ) : visibleRows.length === 0 ? (
+                <div className="empty-state"><p>No rows.</p></div>
+              ) : (
+                <table className="az-db-data-table">
+                  <thead>
+                    <tr>
+                      {data.columns.map((c, idx) => (
+                        <th key={c}>
+                          {c}
+                          {idx === 0 && (
+                            <span className="az-db-col-pk" aria-hidden title="Primary column (searchable)">
+                              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
+                                <path d="M11.852,5.78189 C13.6093,4.02453 16.4586,4.02453 18.2159,5.78189 C19.9733,7.53925 19.9733,10.3885 18.2159,12.1459 C16.8717,13.49 14.8868,13.8075 13.2397,13.0923 C12.9957,12.9863 12.7116,12.9136 12.4028,12.9136 L11.0413,12.9136 C10.3509,12.9136 9.79129,13.4733 9.7913,14.1636 L9.7913,15.742 L8.21287,15.742 C7.52251,15.742 6.96287,16.3017 6.96287,16.992 L6.96287,18.5705 L4.72023,18.5705 L4.72023,17.1563 L10.0756,11.8009 C10.62,11.2565 10.7551,10.5046 10.6254,9.8695 C10.3325,8.43555 10.7426,6.89123 11.852,5.78189 Z M19.6301,4.36768 C17.0917,1.82927 12.9761,1.82927 10.4377,4.36768 C8.83366,5.97176 8.24428,8.20575 8.66584,10.2697 C8.67902,10.3343 8.66399,10.3813 8.66021,10.3878 L3.15957,15.8885 C2.87827,16.1698 2.72023,16.5513 2.72023,16.9492 L2.72023,19.5605 C2.72023,20.1182 3.17239,20.5705 3.7301,20.5705 L7.71287,20.5705 C8.40322,20.5705 8.96287,20.0108 8.96287,19.3205 L8.96287,17.742 L10.5413,17.742 C11.2317,17.742 11.7913,17.1824 11.7913,16.492 L11.7913,14.9136 L12.4015,14.9136 C12.4035,14.9138 12.4173,14.9156 12.4431,14.9268 C14.8181,15.958 17.6858,15.5044 19.6301,13.5601 C22.1685,11.0217 22.1685,6.90609 19.6301,4.36768 Z M14.6804,9.31743 C15.2662,9.90321 16.2159,9.90321 16.8017,9.31743 C17.3875,8.73164 17.3875,7.78189 16.8017,7.19611 C16.2159,6.61032 15.2662,6.61032 14.6804,7.19611 C14.0946,7.78189 14.0946,8.73164 14.6804,9.31743 Z" />
+                              </svg>
+                            </span>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map((r, i) => (
+                      <tr key={i}>
+                        {data.columns.map(c => {
+                          const v = r?.[c];
+                          return <td key={c} title={String(v ?? '')}>{v === null || v === undefined ? '' : String(v)}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AzureDbView({
   resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
 }: {
@@ -2360,7 +2708,7 @@ function AzureDbView({
   const [dataSelectedDb, setDataSelectedDb] = useState<string | null>(null);
   const [dataSelectedTable, setDataSelectedTable] = useState<string | null>(null);
   useEffect(() => {
-    if (activeTab !== 'data') return;
+    if (activeTab !== 'database') return;
     if (!dataSelectedDb && databases.length) setDataSelectedDb(databases[0]);
   }, [activeTab, databases, dataSelectedDb]);
 
@@ -2375,7 +2723,7 @@ function AzureDbView({
   return (
     <>
       <div className="content-type-tabs">
-        {(['configuration', 'data', 'schema'] as AzureDbTab[]).map(tab => (
+        {(['configuration', 'database', 'schema'] as AzureDbTab[]).map(tab => (
           <button
             key={tab}
             className={`content-tab ${activeTab === tab ? 'active' : ''}`}
@@ -2473,65 +2821,13 @@ function AzureDbView({
           </div>
         </div>
       ) : (
-        /* Data tab */
-        <div className="three-panel-layout">
-          <div className="panel-left">
-            <div className="folder-list">
-              {databases.length === 0 ? (
-                <div className="folder-empty"><p>No databases</p></div>
-              ) : (
-                databases.map(db => {
-                  const expanded = dataSelectedDb === db;
-                  const dbTables = tableItems.filter(t => (t.folderPath || '').split('/')[0] === db);
-                  return (
-                    <div key={db} className="az-db-tree-row">
-                      <button
-                        className={`folder-item az-db-row ${expanded ? 'active' : ''}`}
-                        onClick={() => { setDataSelectedDb(db); setDataSelectedTable(null); }}
-                      >
-                        <input type="checkbox" className="az-db-check" checked={false} onChange={() => {}} onClick={e => e.stopPropagation()} />
-                        <span className="az-db-chevron" aria-hidden>{expanded ? '▾' : '▸'}</span>
-                        <span className="az-db-icon" aria-hidden>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: 16, height: 16 }}>
-                            <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6a9 3 0 0 0 18 0V5" /><path d="M3 11v6a9 3 0 0 0 18 0v-6" />
-                          </svg>
-                        </span>
-                        <span className="folder-name">{db}</span>
-                      </button>
-                      {expanded && dbTables.length === 0 && (
-                        <div className="az-db-noschemas">No schemas</div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-          <div className="panel-middle">
-            {tablesForDb.length === 0 ? (
-              <div className="empty-state"><p>No tables captured for this database.</p></div>
-            ) : (
-              tablesForDb.map(t => (
-                <div
-                  key={t.id}
-                  className={`item-row ${dataSelectedTable === t.id ? 'selected' : ''}`}
-                  onClick={() => setDataSelectedTable(t.id)}
-                >
-                  <div className="item-content">
-                    <div className="item-subject">{t.name}</div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          <div className="panel-right">
-            {!dataSelectedTable ? (
-              <div className="empty-preview"><p>No table selected</p></div>
-            ) : (
-              <div className="empty-preview"><p>Row-level data not yet captured.</p></div>
-            )}
-          </div>
-        </div>
+        /* Database tab — tree left rail (db → schema → tables) +
+           full-width middle data pane with search + pagination. */
+        <AzureDbDataTab
+          snapshotId={latestSnapshot?.id || ''}
+          databases={databases}
+          tableItems={tableItems}
+        />
       )}
       {/* Suppress unused lint for onSelectAll — reserved for future
           multi-select export once Data / Schema have more actions. */}
@@ -5071,9 +5367,9 @@ export default function Recovery() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
-                    <button className="search-btn">
-                      <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" style={{ width: 16, height: 16 }}>
-                        <path d="M8.5 8.5L10.5 10.5M7 9.5C5.61929 9.5 4.5 8.38071 4.5 7C4.5 5.61929 5.61929 4.5 7 4.5C8.38071 4.5 9.5 5.61929 9.5 7C9.5 8.38071 8.38071 9.5 7 9.5Z" />
+                    <button className="search-btn" type="button" aria-label="Search">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                        <path d="M15.7955 15.8111L21 21M18 10.5C18 14.6421 14.6421 18 10.5 18C6.35786 18 3 14.6421 3 10.5C3 6.35786 6.35786 3 10.5 3C14.6421 3 18 6.35786 18 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </button>
                   </div>
