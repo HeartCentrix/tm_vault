@@ -2807,21 +2807,12 @@ function AzureDbView({
     return out;
   };
 
-  // Data tab state — database selection + table selection (future).
+  // Data tab state — database selection drives AzureDbDataTab below.
   const [dataSelectedDb, setDataSelectedDb] = useState<string | null>(null);
-  const [dataSelectedTable, setDataSelectedTable] = useState<string | null>(null);
   useEffect(() => {
     if (activeTab !== 'database') return;
     if (!dataSelectedDb && databases.length) setDataSelectedDb(databases[0]);
   }, [activeTab, databases, dataSelectedDb]);
-
-  const tablesForDb = useMemo(() => {
-    if (!dataSelectedDb) return [];
-    return tableItems.filter(t => {
-      const fp = (t.folderPath || '').split('/')[0];
-      return fp === dataSelectedDb;
-    });
-  }, [tableItems, dataSelectedDb]);
 
   return (
     <>
