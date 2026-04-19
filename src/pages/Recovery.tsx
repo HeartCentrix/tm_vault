@@ -2173,6 +2173,445 @@ function PowerBiFilesView({
   );
 }
 
+/**
+ * Teams & Groups content view — 3 tabs:
+ *   - Site            (SHAREPOINT_* items captured for the group's backing site)
+ *   - Mail            (GROUP_MAILBOX_* items)
+ *   - Team Channels   (TEAMS_CHANNEL_* / CHANNEL_MESSAGE items)
+ *
+ * Filters the latest snapshot's items by item_type prefix per tab.
+ */
+type GroupTab = 'site' | 'mail' | 'channels';
+const GROUP_TAB_LABELS: Record<GroupTab, string> = {
+  site: 'Site',
+  mail: 'Mail',
+  channels: 'Team Channels',
+};
+
+function groupTabMatches(tab: GroupTab, itemType: string): boolean {
+  const t = (itemType || '').toUpperCase();
+  if (tab === 'site') return t.startsWith('SHAREPOINT_');
+  if (tab === 'mail') return t.startsWith('GROUP_MAILBOX_');
+  if (tab === 'channels') return t === 'TEAMS_MESSAGE' || t === 'TEAMS_MESSAGE_REPLY';
+  return false;
+}
+
+function sanitizeMessageHtml(raw: any): string {
+  const html = raw?.body?.content ?? '';
+  if (!html) return '';
+  // Strip inline <img> tags (Teams embeds giant base64 images that make
+  // the right pane unreadable). Replace them with a small placeholder.
+  return String(html).replace(/<img[^>]*>/gi, '[image]');
+}
+
+function GroupTeamsView({
+  resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+}: {
+  resourceId: string;
+  snapshots: SnapshotItem[];
+  selectedItems: Set<string>;
+  onToggleItem: (id: string) => void;
+  onSelectAll: (ids: string[], checked: boolean) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<GroupTab>('site');
+
+  const latestSnapshot = useMemo(() => {
+    return snapshots
+      .filter(s => s.resourceId === resourceId && s.status === 'COMPLETED')
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      })[0] || null;
+  }, [snapshots, resourceId]);
+
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!latestSnapshot) { setItems([]); return; }
+    setLoading(true); setError(null);
+    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
+      .then(data => setItems(data.content || []))
+      .catch(err => { setError(err.message || 'Failed to load items'); setItems([]); })
+      .finally(() => setLoading(false));
+  }, [latestSnapshot?.id]);
+
+  // Counts per tab for the tab header badges. For Mail we only count
+  // actual posts (GROUP_MAILBOX_POST) — threads are folder containers,
+  // not discrete mail items, so including them inflates the badge. For
+  // Channels we count only top-level messages, not replies.
+  const tabCounts = useMemo(() => ({
+    site: items.filter(i => groupTabMatches('site', i.itemType)).length,
+    mail: items.filter(i => (i.itemType || '').toUpperCase() === 'GROUP_MAILBOX_POST').length,
+    channels: items.filter(i => (i.itemType || '').toUpperCase() === 'TEAMS_MESSAGE').length,
+  }), [items]);
+
+  const visibleItems = useMemo(
+    () => items.filter(i => groupTabMatches(activeTab, i.itemType)),
+    [items, activeTab],
+  );
+
+  const allChecked = visibleItems.length > 0 && visibleItems.every(i => selectedItems.has(i.id));
+
+  // ------ Mail: same layout as users' mail view ------
+  // Left: threads as "folders". Middle: posts under selected thread as
+  // EmailItemRow rows. Right: EmailPreview for selected post.
+  const mailThreads = useMemo(
+    () => items.filter(i => (i.itemType || '').toUpperCase() === 'GROUP_MAILBOX_THREAD'),
+    [items],
+  );
+  const mailPosts = useMemo(
+    () => items.filter(i => (i.itemType || '').toUpperCase() === 'GROUP_MAILBOX_POST'),
+    [items],
+  );
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'mail') return;
+    if (!selectedThreadId && mailThreads.length) setSelectedThreadId(mailThreads[0].externalId);
+  }, [activeTab, mailThreads, selectedThreadId]);
+
+  const postsInThread = useMemo(() => {
+    if (!selectedThreadId) return [];
+    return mailPosts
+      .filter(p => (p.metadata?.threadId || '') === selectedThreadId)
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.metadata?.raw?.receivedDateTime || a.metadata?.raw?.sentDateTime || a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.metadata?.raw?.receivedDateTime || b.metadata?.raw?.sentDateTime || b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      });
+  }, [mailPosts, selectedThreadId]);
+
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  useEffect(() => { setSelectedPostId(null); }, [selectedThreadId]);
+  useEffect(() => {
+    if (activeTab !== 'mail') return;
+    if (!selectedPostId && postsInThread.length) setSelectedPostId(postsInThread[0].id);
+  }, [activeTab, postsInThread, selectedPostId]);
+  const selectedPost = useMemo(
+    () => postsInThread.find(p => p.id === selectedPostId) || null,
+    [postsInThread, selectedPostId],
+  );
+  // Inject snapshotId onto the item so EmailPreview's attachment lookup works.
+  const selectedPostForPreview = useMemo(
+    () => selectedPost && latestSnapshot ? { ...selectedPost, snapshotId: latestSnapshot.id } : null,
+    [selectedPost, latestSnapshot],
+  );
+
+  // ------ Channels (left=channels, middle=messages, right=replies) ------
+  const channelMessages = useMemo(
+    () => items.filter(i => (i.itemType || '').toUpperCase() === 'TEAMS_MESSAGE'),
+    [items],
+  );
+  const channelReplies = useMemo(
+    () => items.filter(i => (i.itemType || '').toUpperCase() === 'TEAMS_MESSAGE_REPLY'),
+    [items],
+  );
+  const channels = useMemo(() => {
+    const names = new Set<string>();
+    // Prefer TEAMS_CHANNEL_INFO rows (they're always persisted, even when
+    // /messages is blocked by protected-API permissions).
+    for (const it of items) {
+      if ((it.itemType || '').toUpperCase() === 'TEAMS_CHANNEL_INFO') {
+        const n = it.metadata?.channelName || it.name;
+        if (n) names.add(n);
+      }
+    }
+    // Fallback: derive from captured messages if channel-info rows are
+    // missing (older snapshots).
+    for (const m of channelMessages) {
+      const n = m.metadata?.channelName || (m.folderPath || '').split('/').pop();
+      if (n) names.add(n);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [items, channelMessages]);
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'channels') return;
+    if (!selectedChannel && channels.length) setSelectedChannel(channels[0]);
+  }, [activeTab, channels, selectedChannel]);
+
+  const messagesInChannel = useMemo(() => {
+    if (!selectedChannel) return [];
+    return channelMessages
+      .filter(m => (m.metadata?.channelName || (m.folderPath || '').split('/').pop()) === selectedChannel)
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.metadata?.raw?.createdDateTime || a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.metadata?.raw?.createdDateTime || b.createdAt)?.getTime() ?? 0;
+        return tb - ta;
+      });
+  }, [channelMessages, selectedChannel]);
+
+  useEffect(() => {
+    if (activeTab !== 'channels') return;
+    if (!selectedMessageId && messagesInChannel.length) setSelectedMessageId(messagesInChannel[0].id);
+  }, [activeTab, messagesInChannel, selectedMessageId]);
+
+  const selectedMessage = useMemo(
+    () => messagesInChannel.find(m => m.id === selectedMessageId) || null,
+    [messagesInChannel, selectedMessageId],
+  );
+
+  const repliesForSelected = useMemo(() => {
+    if (!selectedMessage) return [];
+    const parentId = selectedMessage.externalId || selectedMessage.metadata?.raw?.id;
+    return channelReplies
+      .filter(r => {
+        // Graph replies carry a replyToId pointing at the parent message.
+        const replyTo = r.metadata?.raw?.replyToId || r.metadata?.raw?.parentMessageId;
+        return replyTo === parentId;
+      })
+      .sort((a, b) => {
+        const ta = parseAsUtc(a.metadata?.raw?.createdDateTime || a.createdAt)?.getTime() ?? 0;
+        const tb = parseAsUtc(b.metadata?.raw?.createdDateTime || b.createdAt)?.getTime() ?? 0;
+        return ta - tb;
+      });
+  }, [channelReplies, selectedMessage]);
+
+  return (
+    <>
+      <div className="content-type-tabs">
+        {(['site', 'mail', 'channels'] as GroupTab[]).map(tab => {
+          const count = tabCounts[tab];
+          return (
+            <button
+              key={tab}
+              className={`content-tab ${activeTab === tab ? 'active' : ''}${count ? '' : ' content-tab-empty'}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {GROUP_TAB_LABELS[tab]}
+              {count > 0 && <span className="content-tab-count">{count.toLocaleString()}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === 'site' ? (
+        <div className="three-panel-layout od-layout-mode">
+          <SharePointView
+            resourceId={resourceId}
+            snapshots={snapshots}
+            selectedItems={selectedItems}
+            onToggleItem={onToggleItem}
+            onSelectAll={onSelectAll}
+          />
+        </div>
+      ) : activeTab === 'mail' ? (
+        /* Three-panel layout — structurally identical to the users' mail
+           view. Left: folder list (thread topics). Middle: header +
+           EmailItemRow list. Right: EmailPreview (or empty state).
+           Uses the same .folder-list / .folder-item / .item-list-header
+           / .item-list / .panel-right / .empty-preview classes so the
+           styling matches 1:1. */
+        <div className="three-panel-layout">
+          <div className="panel-left">
+            <div className="folder-list">
+              {mailThreads.length === 0 ? (
+                <div className="folder-empty"><p>No threads found</p></div>
+              ) : (
+                mailThreads.map(th => {
+                  const topic = th.metadata?.raw?.topic || th.name || '(no subject)';
+                  const postCount = mailPosts.filter(p => (p.metadata?.threadId || '') === th.externalId).length;
+                  return (
+                    <button
+                      key={th.externalId}
+                      className={`folder-item ${selectedThreadId === th.externalId ? 'active' : ''}`}
+                      onClick={() => setSelectedThreadId(th.externalId)}
+                      title={topic}
+                    >
+                      <span className="folder-name">{topic}</span>
+                      {postCount > 0 && <span className="folder-count">{postCount}</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="panel-middle">
+            <div className="item-list-header">
+              <label className="select-all-wrap" title="Select all">
+                <input
+                  type="checkbox"
+                  checked={postsInThread.length > 0 && postsInThread.every(p => selectedItems.has(p.id))}
+                  onChange={e => {
+                    if (e.target.checked) onSelectAll(postsInThread.map(p => p.id), true);
+                    else onSelectAll(postsInThread.map(p => p.id), false);
+                  }}
+                />
+              </label>
+              <span className="item-count">
+                {selectedItems.size > 0
+                  ? `${selectedItems.size} / ${postsInThread.length} selected`
+                  : postsInThread.length === 0
+                    ? 'No items'
+                    : `Showing ${postsInThread.length} of ${postsInThread.length}`}
+              </span>
+            </div>
+            <div className="item-list">
+              {loading ? (
+                <div className="loading-container"><div className="spinner" /><p>Loading items...</p></div>
+              ) : !latestSnapshot ? (
+                <div className="empty-state"><p>No completed backup for this resource yet.</p></div>
+              ) : postsInThread.length === 0 ? (
+                <div className="empty-state"><p>No items found</p></div>
+              ) : (
+                postsInThread.map((p: any) => (
+                  <EmailItemRow
+                    key={p.id}
+                    item={p}
+                    selected={selectedPostId === p.id}
+                    checked={selectedItems.has(p.id)}
+                    onSelect={() => setSelectedPostId(p.id)}
+                    onCheck={(e) => { e.stopPropagation(); onToggleItem(p.id); }}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="panel-right">
+            {selectedPostForPreview
+              ? <EmailPreview item={selectedPostForPreview} />
+              : <div className="empty-preview"><p>Select an item to preview</p></div>
+            }
+          </div>
+        </div>
+      ) : (
+        /* Team Channels: 3-panel layout. */
+        <div className="three-panel-layout">
+          <div className="panel-left">
+            <div className="folder-tree-header">Channels</div>
+            {channels.length === 0 ? (
+              <div className="folder-tree-empty">No channels captured.</div>
+            ) : (
+              <div className="folder-tree">
+                {channels.map(name => (
+                  <button
+                    key={name}
+                    className={`folder-tree-item${selectedChannel === name ? ' selected' : ''}`}
+                    onClick={() => { setSelectedChannel(name); setSelectedMessageId(null); }}
+                  >
+                    <span className="folder-tree-name">{name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="panel-middle">
+            {loading ? (
+              <div className="loading-container"><div className="spinner" /><p>Loading messages...</p></div>
+            ) : messagesInChannel.length === 0 ? (
+              <div className="pbi-empty"><p>No messages in this channel.</p></div>
+            ) : (
+              <div className="items-list">
+                {messagesInChannel.map((m: any) => {
+                  const raw = m.metadata?.raw || {};
+                  const when = raw.createdDateTime || m.createdAt;
+                  // Teams system events (member added, role updated, meeting
+                  // started, channel renamed, …) arrive with from: null and
+                  // body "<systemEventMessage/>". Render them as labeled
+                  // system rows instead of "Unknown".
+                  const isSystem =
+                    !raw.from ||
+                    String(raw.body?.content || '').includes('<systemEventMessage/>') ||
+                    !!raw.eventDetail;
+                  const sysLabel = String(raw.eventDetail?.['@odata.type'] || '')
+                    .replace('#microsoft.graph.', '')
+                    .replace(/EventMessageDetail$/, '')
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/^./, (c) => c.toUpperCase());
+                  const author =
+                    raw.from?.user?.displayName ||
+                    raw.from?.application?.displayName ||
+                    (isSystem ? 'System event' : 'Unknown');
+                  const preview = isSystem
+                    ? (sysLabel || 'System event')
+                    : String(raw.body?.content || '').replace(/<[^>]+>/g, '').slice(0, 140);
+                  return (
+                    <div
+                      key={m.id}
+                      className={`item-row${selectedMessageId === m.id ? ' selected' : ''}`}
+                      onClick={() => setSelectedMessageId(m.id)}
+                    >
+                      <div className="item-row-check" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(m.id)}
+                          onChange={() => onToggleItem(m.id)}
+                        />
+                      </div>
+                      <div className="item-row-body">
+                        <div className="item-row-title">{author}</div>
+                        <div className="item-row-meta">
+                          {when ? fmtLocal(when, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+                        </div>
+                        <div className="item-row-preview">{preview}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="panel-right">
+            {selectedMessage ? (
+              <div className="chat-preview">
+                {/* Parent chat on top */}
+                <div className="chat-preview-parent">
+                  <div className="chat-preview-header">
+                    <strong>{selectedMessage.metadata?.raw?.from?.user?.displayName || selectedMessage.metadata?.raw?.from?.application?.displayName || 'Unknown'}</strong>
+                    <span className="chat-preview-date">
+                      {fmtLocal(selectedMessage.metadata?.raw?.createdDateTime || selectedMessage.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div
+                    className="chat-preview-body"
+                    dangerouslySetInnerHTML={{ __html: sanitizeMessageHtml(selectedMessage.metadata?.raw) }}
+                  />
+                </div>
+                {/* Replies below */}
+                {repliesForSelected.length > 0 ? (
+                  <div className="chat-preview-replies">
+                    <div className="chat-preview-replies-header">
+                      {repliesForSelected.length} {repliesForSelected.length === 1 ? 'reply' : 'replies'}
+                    </div>
+                    {repliesForSelected.map((r: any) => (
+                      <div key={r.id} className="chat-preview-reply">
+                        <div className="chat-preview-header">
+                          <strong>{r.metadata?.raw?.from?.user?.displayName || r.metadata?.raw?.from?.application?.displayName || 'Unknown'}</strong>
+                          <span className="chat-preview-date">
+                            {fmtLocal(r.metadata?.raw?.createdDateTime || r.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div
+                          className="chat-preview-body"
+                          dangerouslySetInnerHTML={{ __html: sanitizeMessageHtml(r.metadata?.raw) }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="chat-preview-noreplies">No replies on this chat.</div>
+                )}
+              </div>
+            ) : (
+              <div className="pbi-empty"><p>Select a message to see replies.</p></div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+  // allChecked is no longer used directly at component root — kept for
+  // future per-tab "select all" wiring. Suppress the unused-var warning
+  // by exporting it from a noop closure.
+  void allChecked;
+}
+
 export default function Recovery() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2973,6 +3412,22 @@ export default function Recovery() {
                    the whole content area for a single Files panel pulled
                    from the generic /snapshots/{id}/files endpoint. */
                 <PowerBiFilesView
+                  resourceId={selectedResource.id}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                />
+              ) : (selectedResource.kind === 'm365_group' || selectedResource.kind === 'teams_channel' || selectedResource.kind === 'entra_group') ? (
+                /* Microsoft 365 Groups + Teams + Entra groups: three content
+                   surfaces — Site (SharePoint-backing site items), Mail
+                   (group mailbox threads/posts), Team Channels (channel
+                   messages). Items filtered client-side from the latest
+                   snapshot by item_type prefix. */
+                <GroupTeamsView
                   resourceId={selectedResource.id}
                   snapshots={snapshots}
                   selectedItems={selectedItems}
