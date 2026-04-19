@@ -493,8 +493,8 @@ export default function Protection() {
     if (refreshing || !tenantId) return;
     try {
       setRefreshing(true);
-      // Trigger discovery
-      await triggerDiscovery(tenantId);
+      // Trigger discovery — serviceType picks azure vs m365 queue.
+      await triggerDiscovery(tenantId, serviceType);
       
       // Wait for discovery to complete by polling
       const pollDiscovery = async (attempts = 0) => {

@@ -2248,7 +2248,12 @@ function AzureDbConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshotI
           <h4 className="az-db-section-title" style={{ marginTop: 16 }}>Backup</h4>
           <div className="az-db-grid">
             <Row label="Retention period" value={String(raw.backup?.backupRetentionDays ?? raw.backup_retention_days ?? '')} />
-            <Row label="Maintenance" value={raw.maintenance?.customWindow || raw.maintenance || 'System-managed schedule'} />
+            <Row label="Maintenance" value={
+              raw.maintenance?.customWindow
+              || raw.maintenance?.configurationName
+              || (typeof raw.maintenance === 'string' ? raw.maintenance : '')
+              || 'System-managed schedule'
+            } />
           </div>
         </section>
 
@@ -2268,6 +2273,128 @@ function AzureDbConfiguration({ raw, snapshotId, itemId }: { raw: any; snapshotI
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Azure SQL Configuration card — distinct from the Postgres one because
+ * SQL exposes a different field set (Pricing tier / Compute+storage /
+ * Availability / Backups / Networking / Connections / Authentication /
+ * Security). Server-type branching happens in AzureDbView.
+ */
+function AzureSqlConfiguration({ raw }: { raw: any }) {
+  const copy = (v: string) => navigator.clipboard?.writeText(v);
+  const Row = ({ label, value, copyable }: { label: string; value: React.ReactNode; copyable?: string }) => (
+    <div className="az-db-field">
+      <span className="az-db-field-label">{label}</span>
+      <span className="az-db-field-val">
+        {value || <span className="az-db-muted">—</span>}
+        {copyable && (
+          <button className="az-db-copy" onClick={() => copy(copyable)} title="Copy">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ width: 12, height: 12 }}>
+              <rect x="4" y="4" width="9" height="9" rx="1.2" />
+              <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2h7" />
+            </svg>
+          </button>
+        )}
+      </span>
+    </div>
+  );
+
+  const sku = raw.sku || {};
+  const tier = sku.tier || '';
+  const skuName = sku.name || '';
+  const capacity = sku.capacity;
+  const pricingTier = tier && skuName
+    ? `${tier} - ${skuName}${capacity ? `, ${capacity} vCore` : ''}`
+    : '';
+  const maxGb = raw.storage?.storageSizeGB != null ? `${raw.storage.storageSizeGB} GB` : '';
+  const identity = raw.identity || {};
+  const auth = raw.authentication || {};
+  const ledger = raw.ledger || {};
+  const replication = raw.replication || {};
+  const fwCount = raw.firewallRuleCount ?? (Array.isArray(raw.firewall_rules) ? raw.firewall_rules.length : null);
+  const fwLabel = fwCount != null ? `${fwCount} firewall rule${fwCount === 1 ? '' : 's'}` : '';
+  const peCount = raw.network?.privateEndpointCount ?? 0;
+  const uaidCount = identity.user_assigned_count ?? 0;
+
+  return (
+    <div className="az-db-config-card">
+      <section>
+        <h4 className="az-db-section-title">Essential</h4>
+        <div className="az-db-grid">
+          <Row label="Subscription ID" value={raw.subscription_id || ''} copyable={raw.subscription_id} />
+          <Row label="Resource Group" value={raw.resource_group || ''} />
+          <Row label="Location" value={raw.location || ''} />
+          <Row label="Server name" value={raw.fully_qualified_domain_name || raw.server_name || ''} copyable={raw.fully_qualified_domain_name} />
+          <Row label="Pricing tier" value={pricingTier} />
+          <Row label="Auto-pause delay" value={raw.auto_pause_delay || 'Disabled'} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Compute + storage</h4>
+        <div className="az-db-grid">
+          <Row label="Service tier" value={tier} />
+          <Row label="Compute tier" value={skuName} />
+          <Row label="vCores" value={capacity != null ? `${capacity} vCore` : ''} />
+          <Row label="Max storage" value={maxGb} />
+          <Row label="Auto-pause delay" value={raw.auto_pause_delay || 'Disabled'} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Availability</h4>
+        <div className="az-db-grid">
+          <Row label="Replication" value={String(replication.replica_count ?? 0)} />
+          <Row label="Availability Zone" value={raw.availability_zone || ''} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Backups</h4>
+        <div className="az-db-grid">
+          <Row label="Storage redundancy" value={raw.backup_storage_redundancy || ''} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Networking</h4>
+        <div className="az-db-grid">
+          <Row label="Public access" value={raw.network?.publicNetworkAccess || ''} />
+          <Row label="Firewall rules" value={fwLabel} />
+          <Row label="Private access" value={`${peCount} private endpoint connection${peCount === 1 ? '' : 's'}`} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Connections</h4>
+        <div className="az-db-grid">
+          <Row label="Primary endpoint" value={raw.fully_qualified_domain_name || ''} copyable={raw.fully_qualified_domain_name} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Authentication</h4>
+        <div className="az-db-grid">
+          <Row label="Authentication method" value={auth.method || ''} />
+          <Row label="SQL admin" value={auth.sql_admin || ''} />
+          <Row label="Entra ID admin" value={auth.entra_admin || ''} />
+        </div>
+      </section>
+
+      <section>
+        <h4 className="az-db-section-title">Security</h4>
+        <div className="az-db-grid">
+          <Row label="System-assigned identity" value={identity.system_assigned || 'Disabled'} />
+          <Row label="User-assigned identities" value={`${uaidCount} identit${uaidCount === 1 ? 'y' : 'ies'}`} />
+          <Row label="Primary identity" value={identity.primary_user_assigned || 'Not configured'} />
+          <Row label="Ledger database" value={ledger.enabled || 'Disabled'} />
+          <Row label="Ledger automatic digest storage" value={ledger.digest_storage || 'Not configured'} />
+          <Row label="Always encrypted with secure enclaves" value={raw.secure_enclaves || 'Disabled'} />
+        </div>
+      </section>
     </div>
   );
 }
@@ -2835,6 +2962,10 @@ function AzureDbView({
           <div className="loading-container"><div className="spinner" /><p>Loading configuration…</p></div>
         ) : !configItem ? (
           <div className="pbi-empty"><p>No configuration captured in this snapshot.</p></div>
+        ) : (configItem.metadata?.server_type === 'AZURE_SQL' || configItem.metadata?.raw?.server_type === 'AZURE_SQL') ? (
+          <AzureSqlConfiguration
+            raw={configItem.metadata?.raw || configItem.metadata || {}}
+          />
         ) : (
           <AzureDbConfiguration
             raw={configItem.metadata?.raw || configItem.metadata || {}}
