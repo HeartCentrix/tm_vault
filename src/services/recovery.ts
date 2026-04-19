@@ -159,4 +159,100 @@ export const RecoveryService = {
     if (!res.ok) throw new Error('Failed to search');
     return res.json();
   },
+
+  async triggerChatExport(req: {
+    resourceId: string;
+    snapshotIds: string[];
+    threadPath?: string;
+    itemIds: string[];
+    exportFormat: 'HTML' | 'JSON' | 'PDF';
+    includeAttachments: boolean;
+    force?: boolean;
+    idempotencyKey?: string;
+  }) {
+    const headers: Record<string, string> = {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json',
+    };
+    if (req.idempotencyKey) headers['Idempotency-Key'] = req.idempotencyKey;
+    const res = await fetch(API.EXPORT.CHAT.TRIGGER, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (res.status === 409) throw { status: 409, body: await res.json() };
+    if (res.status === 429) throw { status: 429, body: await res.json() };
+    if (!res.ok) throw new Error(`Trigger failed: ${res.status}`);
+    return (await res.json()) as {
+      jobId: string;
+      estimatedMessages: number;
+      estimatedBytes: number;
+      softCapWarning: boolean;
+    };
+  },
+
+  async estimateChatExport(req: {
+    resourceId: string;
+    snapshotIds: string[];
+    threadPath?: string;
+    itemIds: string[];
+    exportFormat: 'HTML' | 'JSON' | 'PDF';
+    includeAttachments: boolean;
+  }) {
+    const res = await fetch(API.EXPORT.CHAT.ESTIMATE, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) throw new Error(`Estimate failed: ${res.status}`);
+    return (await res.json()) as {
+      messages: number;
+      attachmentBytes: number;
+      estimatedZipBytes: number;
+      layoutMode: 'single_thread' | 'per_message';
+      softCapExceeded: boolean;
+      hardCapExceeded: boolean;
+    };
+  },
+
+  subscribeChatExportStatus(jobId: string, cb: {
+    onProgress: (p: any) => void;
+    onComplete: (c: { url: string; sizeBytes: number; sha256: string }) => void;
+    onError:    (e: any) => void;
+  }): () => void {
+    const url = API.EXPORT.CHAT.STATUS(jobId);
+    const token = localStorage.getItem('access_token');
+    const es = new EventSource(`${url}?access_token=${token ?? ''}`, { withCredentials: true });
+    let fallback: number | null = null;
+
+    es.addEventListener('progress', (e: MessageEvent) => {
+      try { cb.onProgress(JSON.parse(e.data)); } catch { /* ignore */ }
+    });
+    es.addEventListener('complete', (e: MessageEvent) => {
+      try { cb.onComplete(JSON.parse(e.data)); } catch { cb.onComplete({ url: '', sizeBytes: 0, sha256: '' }); }
+      es.close();
+    });
+    es.addEventListener('error', async () => {
+      es.close();
+      fallback = window.setInterval(async () => {
+        const r = await fetch(url, { headers: getAuthHeaders() });
+        if (!r.ok) return;
+        const body = await r.json();
+        if (body.status === 'COMPLETED') {
+          cb.onComplete(body.download);
+          if (fallback) { window.clearInterval(fallback); fallback = null; }
+        } else if (body.status === 'FAILED' || body.status === 'CANCELLED') {
+          cb.onError(body.error ?? { code: body.status });
+          if (fallback) { window.clearInterval(fallback); fallback = null; }
+        } else {
+          cb.onProgress(body);
+        }
+      }, 2000);
+    });
+
+    return () => {
+      es.close();
+      if (fallback) { window.clearInterval(fallback); fallback = null; }
+    };
+  },
 };

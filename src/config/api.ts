@@ -121,6 +121,12 @@ export const API = {
     TRIGGER: `${API_URL}/jobs/export`,
     STATUS: (jobId: string) => `${API_URL}/jobs/export/${jobId}/status`,
     DOWNLOAD: (jobId: string) => `${API_URL}/jobs/export/${jobId}/download`,
+    CHAT: {
+      TRIGGER:  `${API_URL}/exports/chat`,
+      ESTIMATE: `${API_URL}/exports/chat/estimate`,
+      STATUS:   (id: string) => `${API_URL}/exports/chat/${id}`,
+      CANCEL:   (id: string) => `${API_URL}/exports/chat/${id}/cancel`,
+    },
   },
 
   // Search (full-text search service on port 8013, proxied via API gateway)
