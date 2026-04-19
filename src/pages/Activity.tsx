@@ -4,6 +4,7 @@ import { getActivities, downloadActivityCSV, cancelJob, type ActivityItem as Act
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocal } from '../utils/datetime';
+import { API } from '../config/api';
 import './Activity.css';
 
 type ViewType = 'tasks' | 'audit' | 'risk';
@@ -76,15 +77,52 @@ export default function Activity() {
     }
   }
 
-  const effectiveTenantId = routeTenantId || selectedSourceTenantId;
-  const effectiveServiceType: 'm365' | 'azure' | undefined =
-    routeServiceType === 'm365' || routeServiceType === 'azure'
-      ? routeServiceType
-      : selectedSourceType;
+  // Activity is intentionally tenant-agnostic — a single global feed
+  // across every tenant the user can see. Route params + persisted
+  // source are ignored so jobs/audit/risk rows don't disappear just
+  // because the user is browsing a different tenant's Protection page.
+  const effectiveTenantId: string | undefined = undefined;
+  const effectiveServiceType: 'm365' | 'azure' | undefined = undefined;
+  // Reference the would-be params so TS doesn't complain about unused
+  // vars, and keep the lookups intact for any future per-tenant toggle.
+  void routeTenantId; void routeServiceType; void selectedSourceTenantId; void selectedSourceType;
 
   useEffect(() => {
     fetchData();
   }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage]);
+
+  // Silent polling — every 8s while the current list contains any
+  // in-flight backup/restore (In Progress). Auto-stops the moment every
+  // row settles on a terminal state, so the browser isn't hammering the
+  // endpoint 24/7. Keyed to `activities` so it re-arms whenever the
+  // list changes. The tick uses a direct fetch with `_silent=1` so the
+  // gateway's uvicorn access-log filter suppresses the noise.
+  useEffect(() => {
+    if (viewType !== 'tasks') return;
+    const anyLive = activities.some(a => a.status === 'In Progress');
+    if (!anyLive) return;
+    const token = localStorage.getItem('access_token');
+    const t = setInterval(async () => {
+      try {
+        const params = new URLSearchParams({
+          page: String(taskPage), size: String(pageSize), _silent: '1',
+        });
+        if (startDate) params.set('start_date', startDate);
+        if (endDate) params.set('end_date', endDate);
+        if (taskOperation) params.set('operation', taskOperation);
+        if (taskStatus) params.set('status', taskStatus);
+        const res = await fetch(`${API.ACTIVITY.LIST}?${params}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setActivities(data.items || []);
+        if (typeof data.total === 'number') setTaskTotal(data.total);
+      } catch { /* ignore transient errors */ }
+    }, 8000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities, viewType]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
