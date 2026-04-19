@@ -5026,11 +5026,10 @@ export default function Recovery() {
           || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
           || undefined
         }
-        // T20: resourceId + threadPath are forwarded so the modal can
-        // scope the per-thread chat export hitting /download/chat-thread.
-        // DownloadModalProps doesn't declare these yet (T21 wires them
-        // up), so we cast to any for now — remove when T21 lands.
-        {...({ resourceId: selectedResource?.id, threadPath } as any)}
+        // resourceId + threadPath are forwarded so the modal can scope
+        // the per-thread chat export hitting /exports/chat.
+        resourceId={selectedResource?.id}
+        threadPath={threadPath}
       />
     </>
   );

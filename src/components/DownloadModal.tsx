@@ -23,6 +23,8 @@ interface DownloadModalProps {
   // individual file rows). Forces the backend to zip even a 1-item
   // expansion so the folder path is preserved.
   preserveTree?: boolean;
+  resourceId?: string;
+  threadPath?: string | null;
 }
 
 type Scope = 'selected' | 'all';
@@ -36,10 +38,12 @@ export function DownloadModal({
   contentType,
   snapshotDate,
   preserveTree = false,
+  resourceId,
+  threadPath,
 }: DownloadModalProps) {
   const [scope, setScope] = useState<Scope>('selected');
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
-    new Set(['Mail', 'Contacts', 'Calendar', 'Chats']),
+    new Set(['Mail', 'Contacts', 'Calendar']),
   );
   const [exportFormat, setExportFormat] = useState<string>(DEFAULT_FORMAT[contentType]);
   const [includeAttachments, setIncludeAttachments] = useState<boolean>(true);
@@ -49,6 +53,11 @@ export function DownloadModal({
   // progress instead of a frozen "Preparing..." button. Updates every
   // second while downloading=true.
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [estimate, setEstimate] = useState<{
+    messages: number; estimatedZipBytes: number;
+    layoutMode: string; softCapExceeded: boolean;
+  } | null>(null);
+  const [progressPct, setProgressPct] = useState<number>(0);
 
   // Tick the elapsed counter while a download is in flight so users
   // see movement and don't assume the modal is stuck.
@@ -60,6 +69,26 @@ export function DownloadModal({
     const t = setInterval(() => setElapsedSec(s => s + 1), 1000);
     return () => clearInterval(t);
   }, [downloading]);
+
+  useEffect(() => {
+    if (!isOpen || contentType !== 'chats' || !resourceId) return;
+    const t = setTimeout(async () => {
+      try {
+        const est = await RecoveryService.estimateChatExport({
+          resourceId,
+          snapshotIds,
+          threadPath: threadPath ?? undefined,
+          itemIds: threadPath ? [] : itemIds,
+          exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
+          includeAttachments,
+        });
+        setEstimate(est);
+      } catch {
+        setEstimate(null);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [isOpen, contentType, resourceId, threadPath, itemIds, exportFormat, includeAttachments, snapshotIds]);
 
   if (!isOpen) return null;
 
@@ -92,6 +121,55 @@ export function DownloadModal({
     : '';
 
   const handleDownload = async () => {
+    if (contentType === 'chats' && resourceId) {
+      if (!threadPath && itemIds.length === 0) {
+        setError('Select messages from one thread, or tick one thread.');
+        return;
+      }
+      setDownloading(true); setError(null); setProgressPct(0);
+      try {
+        const { jobId } = await RecoveryService.triggerChatExport({
+          resourceId,
+          snapshotIds,
+          threadPath: threadPath ?? undefined,
+          itemIds: threadPath ? [] : itemIds,
+          exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
+          includeAttachments,
+        });
+        RecoveryService.subscribeChatExportStatus(jobId, {
+          onProgress: (p) => { if (typeof p.percent === 'number') setProgressPct(p.percent); },
+          onComplete: async (c) => {
+            try {
+              const token = localStorage.getItem('access_token');
+              const dlRes = await fetch(c.url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+              const blob = await dlRes.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `teams-chat-${jobId.slice(0, 8)}.zip`;
+              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            } finally {
+              setDownloading(false); onClose();
+            }
+          },
+          onError: (e) => { setError(e?.code ?? 'Export failed'); setDownloading(false); },
+        });
+      } catch (e: any) {
+        if (e?.status === 409) {
+          setError(e.body?.detail?.error === 'SIZE_SOFT_CAP_EXCEEDED' || e.body?.error === 'SIZE_SOFT_CAP_EXCEEDED'
+            ? 'Export is larger than 20 GB. Narrow scope or contact admin.'
+            : 'Size cap exceeded.');
+        } else if (e?.status === 429) {
+          setError('Too many exports. Try again in a minute.');
+        } else {
+          setError(e?.message ?? 'Export failed');
+        }
+        setDownloading(false);
+      }
+      return;
+    }
+
     if (scope === 'selected' && itemIds.length === 0) {
       setError('No items selected.');
       return;
@@ -236,6 +314,15 @@ export function DownloadModal({
                   <span className="info-icon" title="Uncheck for metadata-only export (smaller, faster)">ℹ</span>
                 </span>
               </label>
+            )}
+            {contentType === 'chats' && estimate && (
+              <div className="modal-size-chip">
+                {estimate.messages.toLocaleString()} messages · {(estimate.estimatedZipBytes / 1048576).toFixed(1)} MB
+                {estimate.softCapExceeded && <span className="warn"> — large, will take time</span>}
+              </div>
+            )}
+            {contentType === 'chats' && downloading && (
+              <div className="modal-progress-bar"><div style={{ width: `${progressPct}%` }} /></div>
             )}
           </div>
         </div>

@@ -42,5 +42,7 @@ export const DEFAULT_FORMAT: Record<ContentTab, string> = {
 };
 
 // Workload checkboxes shown when "Download all" is selected. Matches afi.ai layout.
-export const DOWNLOAD_ALL_WORKLOADS = ['Mail', 'Contacts', 'Calendar', 'Chats', 'OneDrive'] as const;
+// v1 of chat export supports single-thread / per-message only.
+// 'Chats' returns in v2 with multi-thread bulk export.
+export const DOWNLOAD_ALL_WORKLOADS = ['Mail', 'Contacts', 'Calendar', 'OneDrive'] as const;
 export type DownloadWorkload = typeof DOWNLOAD_ALL_WORKLOADS[number];
