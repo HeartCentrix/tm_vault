@@ -380,10 +380,16 @@ export async function triggerDatasourceBackup(
 }
 
 export async function triggerDiscovery(
-  tenantId: string
+  tenantId: string,
+  serviceType?: string,
 ): Promise<{ discoveryId: string; resourcesFound: number }> {
   const token = localStorage.getItem('access_token');
-  const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/discover-m365`, {
+  // Route by service type — AZURE tenants publish to discovery.azure
+  // queue (VMs, SQL DBs, Postgres); M365 tenants publish to
+  // discovery.m365 (users, groups, OneDrive, etc.). Sending every tenant
+  // through /discover-m365 meant Azure refreshes were a no-op.
+  const path = serviceType === 'azure' ? 'discover-azure' : 'discover-m365';
+  const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
