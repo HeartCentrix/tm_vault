@@ -4,6 +4,7 @@ import './RestoreModal.css';
 import { RestoreService, type RestoreType } from '../services/restore';
 import { getResourcesByType, type ResourceItem } from '../services/resource';
 import { fmtLocalDate } from '../utils/datetime';
+import { EntraRestoreForm, type EntraRestoreSelection } from './EntraRestoreForm';
 
 interface RestoreModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [entraSelection, setEntraSelection] = useState<EntraRestoreSelection | null>(null);
 
   const isPowerBiItem = Boolean(itemType?.startsWith('POWER_BI'));
   // Power Platform coverage: canvas/model-driven apps, flows, and DLP policies.
@@ -206,6 +208,21 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     setLoading(true);
     setError(null);
     try {
+      // Entra directory restore — delegated entirely to EntraRestoreForm selection
+      if (resourceKind === 'entra_directory' && entraSelection) {
+        const response = await RestoreService.triggerRestore({
+          restoreType: 'IN_PLACE',
+          snapshotIds,
+          itemIds: entraSelection.recoverMode === 'selected' ? itemIds : [],
+          recoverMode: entraSelection.recoverMode,
+          entraSections: entraSelection.recoverMode === 'directory' ? entraSelection.sections : undefined,
+          includeGroupMembership: entraSelection.includeGroupMembership,
+          includeAuMembership: entraSelection.includeAuMembership,
+        });
+        setSuccess(response.jobId);
+        return;
+      }
+
       let restoreType: RestoreType;
       if (isPowerBiItem || isPowerAppItem || isPowerFlowItem) {
         restoreType = 'IN_PLACE';  // Power Platform uses IN_PLACE + targetEnvironmentId for cross-env
@@ -283,6 +300,11 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
           </div>
         )}
 
+        {resourceKind === 'entra_directory' ? (
+          <div className="modal-columns">
+            <EntraRestoreForm onChange={setEntraSelection} />
+          </div>
+        ) : (
         <div className="modal-columns">
           {/* Left: Scope (non-Power BI only) */}
           {!isPowerBiItem && (
@@ -485,6 +507,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             )}
           </div>
         </div>
+        )}
 
         {error && <div className="modal-error">{error}</div>}
 
