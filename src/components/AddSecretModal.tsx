@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { API } from '../config/api';
+import RoundedSelect from './RoundedSelect';
 import './AddSecretModal.css';
 
 /**
@@ -138,9 +139,11 @@ export default function AddSecretModal({
             <>
               <div className="add-sec-row">
                 <label>Type:</label>
-                <select value={loginType} onChange={e => setLoginType(e.target.value)}>
-                  {LOGIN_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <RoundedSelect
+                  value={loginType}
+                  onChange={setLoginType}
+                  options={LOGIN_TYPES.map(t => ({ value: t.value, label: t.label }))}
+                />
               </div>
               <div className="add-sec-row">
                 <label>Name:</label>
@@ -189,9 +192,12 @@ export default function AddSecretModal({
             <>
               <div className="add-sec-row">
                 <label>Type:</label>
-                <select value="AES_256_KEY" disabled>
-                  <option value="AES_256_KEY">AES-256 Key</option>
-                </select>
+                <RoundedSelect
+                  value="AES_256_KEY"
+                  onChange={() => { /* locked */ }}
+                  disabled
+                  options={[{ value: 'AES_256_KEY', label: 'AES-256 Key' }]}
+                />
               </div>
               <div className="add-sec-row">
                 <label>Description:</label>
@@ -205,9 +211,11 @@ export default function AddSecretModal({
               </div>
               <div className="add-sec-row">
                 <label>KMS Key Provider:</label>
-                <select value={kmsProvider} onChange={e => setKmsProvider(e.target.value)}>
-                  {KMS_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
+                <RoundedSelect
+                  value={kmsProvider}
+                  onChange={setKmsProvider}
+                  options={KMS_PROVIDERS.map(p => ({ value: p.value, label: p.label }))}
+                />
               </div>
               <div className="add-sec-row">
                 <label>{kmsProvider} KMS Key ID:</label>

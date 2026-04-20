@@ -99,12 +99,13 @@ export default function AzureDbRecoverModal({
   // `subscriptions` + `locations` carry a displayName separate from
   // the value (subscription GUID, region code) so the dropdown shows
   // user-friendly labels like "Azure subscription 1" / "Central India"
-  // while we submit the underlying IDs.
+  // while we submit the underlying IDs. `servers` now carry their RG
+  // and location so picking a server can auto-fill the RG field.
   const [opts, setOpts] = useState<{
     subscriptions: Array<{ id: string; displayName: string }>;
     resourceGroups: string[];
     locations: Array<{ name: string; displayName: string }>;
-    servers: string[];
+    servers: Array<{ name: string; resourceGroup: string; location: string }>;
   }>({ subscriptions: [], resourceGroups: [], locations: [], servers: [] });
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [optsLoading, setOptsLoading] = useState(false);
@@ -154,12 +155,22 @@ export default function AzureDbRecoverModal({
   // Reset the cascade state to the source resource's values whenever
   // the chosen tenant changes. The fetch effect below then runs with
   // those seeds so the modal opens pre-filled with the source's
-  // sub/RG/location/server.
+  // sub/RG/location/server. Resource discovery stores location
+  // inconsistently (display name for PG, region code on the
+  // `azure_region` column for SQL) so we coerce to the canonical
+  // lowercase-no-spaces form before matching against AZURE_REGIONS.
+  const sourceLocationRaw =
+    meta.location || meta.azure_region ||
+    (resource as any).azure_region || '';
+  const sourceLocation = String(sourceLocationRaw).toLowerCase().replace(/\s+/g, '');
+  const sourceSubscription = meta.subscription_id || meta.azure_subscription_id || '';
+  const sourceResourceGroup = meta.resource_group || meta.azure_resource_group || '';
+
   useEffect(() => {
     if (!open || !destTenant) return;
-    setSubscription(meta.subscription_id || '');
-    setResourceGroup(meta.resource_group || '');
-    setLocation(meta.location || meta.azure_region || '');
+    setSubscription(sourceSubscription);
+    setResourceGroup(sourceResourceGroup);
+    setLocation(sourceLocation);
     setServer(meta.server_name || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, destTenant]);
@@ -195,14 +206,29 @@ export default function AzureDbRecoverModal({
         const subIds: string[] = (o.subscriptions || []).map((s: any) => s.id);
         const locNames: string[] = (o.locations || []).map((l: any) => l.name);
         const rgList: string[] = o.resourceGroups || [];
-        const srvList: string[] = o.servers || [];
+        const srvObjs: Array<{ name: string; resourceGroup: string; location: string }> = o.servers || [];
+        const srvNames: string[] = srvObjs.map(s => s.name);
         if (!subIds.includes(subscription)) setSubscription(subIds[0] || '');
-        if (resourceGroup && !rgList.includes(resourceGroup)) setResourceGroup(rgList[0] || '');
-        else if (!resourceGroup && rgList.length) setResourceGroup(rgList[0]);
         if (location && !locNames.includes(location)) setLocation(locNames[0] || '');
         else if (!location && locNames.length) setLocation(locNames[0]);
-        if (server && !srvList.includes(server)) setServer(srvList[0] || '');
-        else if (!server && srvList.length) setServer(srvList[0]);
+        // Server picks from location-filtered list. When the chosen
+        // server changes, snap the RG to the server's actual RG so
+        // the "new DB lands here" value matches reality.
+        const nextServerName = server && srvNames.includes(server)
+          ? server
+          : (srvNames[0] || '');
+        if (nextServerName !== server) setServer(nextServerName);
+        const chosenServer = srvObjs.find(s => s.name === nextServerName);
+        const serverRg = chosenServer?.resourceGroup || '';
+        // Prefer server's RG; fall back to preserving user's pick if
+        // it's still valid in the sub's RG list, else first entry.
+        if (serverRg) {
+          if (resourceGroup !== serverRg) setResourceGroup(serverRg);
+        } else if (resourceGroup && !rgList.includes(resourceGroup)) {
+          setResourceGroup(rgList[0] || '');
+        } else if (!resourceGroup && rgList.length) {
+          setResourceGroup(rgList[0]);
+        }
       } catch { /* ignore */ }
       finally { if (!cancelled) setOptsLoading(false); }
     })();
@@ -366,7 +392,7 @@ export default function AzureDbRecoverModal({
             <RoundedSelect
               value={server}
               onChange={setServer}
-              options={opts.servers.map(sv => ({ value: sv, label: sv }))}
+              options={opts.servers.map(sv => ({ value: sv.name, label: sv.name }))}
               placeholder={optsLoading ? 'Loading…' : '—'}
               disabled={optsLoading}
             />
