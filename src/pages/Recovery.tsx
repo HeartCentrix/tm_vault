@@ -5010,6 +5010,15 @@ export default function Recovery() {
   // don't click Download too early and hit "No items selected".
   const [oneDriveFolderSelected, setOneDriveFolderSelected] = useState<Set<string>>(new Set());
 
+  // Mirror of oneDriveFolder* for non-OneDrive folder lists (mail /
+  // contacts / calendar). Lets the user bulk-select every item under a
+  // folder for Download / Recover. Kept separate from the OneDrive set
+  // because the two fetch paths use different endpoints and their
+  // selected state should not cross-contaminate when the user switches
+  // content-type tabs.
+  const [genericFolderBusy, setGenericFolderBusy] = useState<Set<string>>(new Set());
+  const [genericFolderSelected, setGenericFolderSelected] = useState<Set<string>>(new Set());
+
   // Merge current searchParams with a partial patch and push a new history
   // entry so the browser back/forward buttons walk back/forward through state
   // transitions (folder drill, tab switch, My Drive ↔ Recent) instead of
@@ -5594,6 +5603,72 @@ export default function Recovery() {
       });
     }
   }, [selectedSnapshotId, oneDriveFolderBusy, oneDriveFolderSelected]);
+
+  // Generic folder check — used by Mail / Contacts / Calendar folder
+  // rows. Toggles "every item in this folder" into/out of selectedItems
+  // via SnapshotService.searchItems with folder_path=<folder> and a
+  // page size large enough that a single call covers typical folders.
+  // Chats + OneDrive have their own handlers (different semantics).
+  const handleGenericFolderCheck = useCallback(async (folderPath: string) => {
+    if (!selectedSnapshotId || !selectedResource) return;
+    if (genericFolderBusy.has(folderPath)) return;
+    const alreadySelected = genericFolderSelected.has(folderPath);
+    setGenericFolderSelected(prev => {
+      const next = new Set(prev);
+      if (alreadySelected) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+    setGenericFolderBusy(prev => new Set(prev).add(folderPath));
+    try {
+      // Walk pages until we've collected every id under this folder.
+      const allIds: string[] = [];
+      let page = 1;
+      while (true) {
+        const resp = await SnapshotService.searchItems(selectedResource.id, {
+          folderPath,
+          snapshotId: selectedSnapshotId,
+          page,
+          size: 2000,
+        });
+        const content = (resp as any).content || (resp as any).items || [];
+        if (!content.length) break;
+        for (const it of content) allIds.push(it.id);
+        if (content.length < 2000) break;
+        page += 1;
+      }
+      if (allIds.length === 0) {
+        setGenericFolderSelected(prev => {
+          const next = new Set(prev);
+          next.delete(folderPath);
+          return next;
+        });
+        return;
+      }
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        if (alreadySelected) {
+          for (const id of allIds) next.delete(id);
+        } else {
+          for (const id of allIds) next.add(id);
+        }
+        return next;
+      });
+    } catch (e) {
+      console.error('Folder-select fetch failed:', e);
+      setGenericFolderSelected(prev => {
+        const next = new Set(prev);
+        next.delete(folderPath);
+        return next;
+      });
+    } finally {
+      setGenericFolderBusy(prev => {
+        const next = new Set(prev);
+        next.delete(folderPath);
+        return next;
+      });
+    }
+  }, [selectedSnapshotId, selectedResource, genericFolderBusy, genericFolderSelected]);
 
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
@@ -6365,7 +6440,7 @@ export default function Recovery() {
                               key={folder.path}
                               className={`folder-item has-check ${selectedFolder === folder.path ? 'active' : ''}`}
                             >
-                              {activeContentType === 'chats' && (
+                              {activeContentType === 'chats' ? (
                                 <input
                                   type="checkbox"
                                   className="folder-check"
@@ -6373,6 +6448,16 @@ export default function Recovery() {
                                   onClick={(e) => e.stopPropagation()}
                                   onChange={(e) => setThreadPath(e.target.checked ? folder.path : null)}
                                   title="Select this thread for export"
+                                />
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  className="folder-check"
+                                  checked={genericFolderSelected.has(folder.path)}
+                                  disabled={genericFolderBusy.has(folder.path)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={() => handleGenericFolderCheck(folder.path)}
+                                  title="Select every item in this folder"
                                 />
                               )}
                               <button
@@ -6590,6 +6675,7 @@ export default function Recovery() {
         // resourceId + threadPath are forwarded so the modal can scope
         // the per-thread chat export hitting /exports/chat.
         resourceId={selectedResource?.id}
+        resourceKind={selectedResource?.kind}
         threadPath={threadPath}
       />
     </>

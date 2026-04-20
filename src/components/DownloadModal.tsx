@@ -11,6 +11,7 @@ import {
   DOWNLOAD_ALL_WORKLOADS,
   type DownloadWorkload,
 } from '../config/exportFormats';
+import { EntraDownloadForm, type EntraDownloadSelection } from './EntraDownloadForm';
 
 interface DownloadModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ interface DownloadModalProps {
   preserveTree?: boolean;
   resourceId?: string;
   threadPath?: string | null;
+  resourceKind?: string;
 }
 
 type Scope = 'selected' | 'all';
@@ -41,6 +43,7 @@ export function DownloadModal({
   preserveTree = false,
   resourceId,
   threadPath,
+  resourceKind,
 }: DownloadModalProps) {
   const [scope, setScope] = useState<Scope>('selected');
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
@@ -59,6 +62,7 @@ export function DownloadModal({
     layoutMode: string; softCapExceeded: boolean;
   } | null>(null);
   const [progressPct, setProgressPct] = useState<number>(0);
+  const [entraSelection, setEntraSelection] = useState<EntraDownloadSelection | null>(null);
 
   // Contact folder subgroup state. Populated only when Contacts is checked
   // and scope === 'all' for a single-snapshot export. Default = all checked
@@ -120,6 +124,19 @@ export function DownloadModal({
       setSelectedContactFolders(new Set());
     }
   }, [isOpen, workloads, scope, snapshotIds]);
+
+  // Reset per-submission state on each open — component stays mounted
+  // across close/open cycles, so error / downloading / progress / the
+  // Entra selection would otherwise leak from the previous run.
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setDownloading(false);
+      setProgressPct(0);
+      setElapsedSec(0);
+      setEntraSelection(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -199,6 +216,58 @@ export function DownloadModal({
         } else {
           setError(e?.message ?? 'Export failed');
         }
+        setDownloading(false);
+      }
+      return;
+    }
+
+    if (resourceKind === 'entra_directory' && entraSelection) {
+      setDownloading(true);
+      setError(null);
+      try {
+        const response = await RecoveryService.triggerExport({
+          restoreType: 'EXPORT_ZIP',
+          snapshotIds,
+          itemIds: [],
+          entraSections: entraSelection.sections,
+          format: entraSelection.format,
+          includeNestedDetail: entraSelection.includeNestedDetail,
+        });
+        const jobId = response.jobId;
+        const token = localStorage.getItem('access_token');
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        for (let i = 0; i < 600; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
+          if (!statusRes.ok) continue;
+          const job = await statusRes.json();
+          if (job.status === 'COMPLETED') {
+            const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
+            if (!dlRes.ok) throw new Error('Download failed');
+            const blob = await dlRes.blob();
+            const cd = dlRes.headers.get('Content-Disposition') || '';
+            const m = cd.match(/filename="?([^"]+)"?/i);
+            const fallback = `entra-export-${jobId.slice(0, 8)}.zip`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = m ? m[1] : fallback;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            onClose();
+            return;
+          }
+          if (job.status === 'FAILED') {
+            setError('Export failed. Please try again.');
+            return;
+          }
+        }
+        setError('Export timed out. Try again later.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Download failed');
+      } finally {
         setDownloading(false);
       }
       return;
@@ -297,6 +366,11 @@ export function DownloadModal({
           Download from the backup version{dateLabel ? <> <strong>{dateLabel}</strong></> : ''}
         </div>
 
+        {resourceKind === 'entra_directory' ? (
+          <div className="modal-columns">
+            <EntraDownloadForm onChange={setEntraSelection} />
+          </div>
+        ) : (
         <div className="modal-columns">
           <div className="modal-col">
             <label className="radio-row">
@@ -397,6 +471,7 @@ export function DownloadModal({
             )}
           </div>
         </div>
+        )}
 
         {error && <div className="modal-error">{error}</div>}
 

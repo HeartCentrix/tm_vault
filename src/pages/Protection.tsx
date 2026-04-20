@@ -109,6 +109,15 @@ const POLICY_COVERAGE_RULES: Record<string, PolicyCoverageRule> = {
   azure_sql: { workloadLabel: 'Azure SQL database backups', covers: (policy) => !!policy.backupAzureSql },
   azure_postgresql: { workloadLabel: 'Azure PostgreSQL backups', covers: (policy) => !!policy.backupAzurePostgresql },
   azure_postgresql_single: { workloadLabel: 'Azure PostgreSQL backups', covers: (policy) => !!policy.backupAzurePostgresql },
+  // Tier 2 per-content-category children under an ENTRA_USER parent.
+  // Default listings hide these (see UI_HIDDEN_TYPES in resource-service);
+  // the rules below keep admins who opt into includeHidden=true from
+  // seeing a spurious "workload not mapped" warning.
+  user_mail: { workloadLabel: 'Exchange mailbox backups', covers: (policy) => !!policy.backupExchange },
+  user_onedrive: { workloadLabel: 'OneDrive backups', covers: (policy) => !!policy.backupOneDrive },
+  user_contacts: { workloadLabel: 'Contact backups', covers: (policy) => !!(policy.contacts || policy.backupEntraId) },
+  user_calendar: { workloadLabel: 'Calendar backups', covers: (policy) => !!(policy.calendars || policy.backupEntraId) },
+  user_chats: { workloadLabel: 'Teams chat backups', covers: (policy) => !!policy.backupTeamsChats },
 };
 
 function getPolicyCoverageWarning(resource: ResourceItem, policy?: SlaPolicy): string | null {

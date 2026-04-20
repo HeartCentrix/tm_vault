@@ -4,6 +4,7 @@ import './RestoreModal.css';
 import { RestoreService, type RestoreType } from '../services/restore';
 import { getResourcesByType, type ResourceItem } from '../services/resource';
 import { fmtLocalDate } from '../utils/datetime';
+import { EntraRestoreForm, type EntraRestoreSelection } from './EntraRestoreForm';
 
 interface RestoreModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [entraSelection, setEntraSelection] = useState<EntraRestoreSelection | null>(null);
 
   const isPowerBiItem = Boolean(itemType?.startsWith('POWER_BI'));
   // Power Platform coverage: canvas/model-driven apps, flows, and DLP policies.
@@ -136,17 +138,22 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     const isMailSource = resourceKind === 'mailbox'
       || resourceKind === 'shared_mailbox'
       || resourceKind === 'room_mailbox';
-    if (!isMailSource) return;
+    const isOneDriveSource = resourceKind === 'onedrive';
+    if (!isMailSource && !isOneDriveSource) return;
 
     let cancelled = false;
     setMailboxTargetsLoading(true);
     setMailboxTargetsError(null);
 
-    Promise.all([
-      getResourcesByType(tenantId, 'MAILBOX', 1, 500, undefined, 'active'),
-      getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 500, undefined, 'active'),
-      getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 500, undefined, 'active'),
-    ])
+    const loaders = isMailSource
+      ? [
+          getResourcesByType(tenantId, 'MAILBOX', 1, 500, undefined, 'active'),
+          getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 500, undefined, 'active'),
+          getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 500, undefined, 'active'),
+        ]
+      : [getResourcesByType(tenantId, 'ONEDRIVE', 1, 500, undefined, 'active')];
+
+    Promise.all(loaders)
       .then((results) => {
         if (cancelled) return;
         const merged: ResourceItem[] = [];
@@ -156,7 +163,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
       .catch((err) => {
         if (cancelled) return;
         setMailboxTargets([]);
-        setMailboxTargetsError(err instanceof Error ? err.message : 'Failed to load mailboxes');
+        setMailboxTargetsError(err instanceof Error ? err.message : 'Failed to load resources');
       })
       .finally(() => {
         if (!cancelled) setMailboxTargetsLoading(false);
@@ -166,6 +173,20 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
       cancelled = true;
     };
   }, [isOpen, tenantId, destination, resourceKind]);
+
+  // Reset per-submission state each time the modal opens. The component
+  // stays mounted across close/open cycles (we render null when closed),
+  // so success / error / loading / entraSelection would otherwise leak
+  // from the previous restore and show the "Restore job queued" screen
+  // on re-open instead of a fresh form.
+  useEffect(() => {
+    if (isOpen) {
+      setSuccess(null);
+      setError(null);
+      setLoading(false);
+      setEntraSelection(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -206,6 +227,21 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     setLoading(true);
     setError(null);
     try {
+      // Entra directory restore — delegated entirely to EntraRestoreForm selection
+      if (resourceKind === 'entra_directory' && entraSelection) {
+        const response = await RestoreService.triggerRestore({
+          restoreType: 'IN_PLACE',
+          snapshotIds,
+          itemIds: entraSelection.recoverMode === 'selected' ? itemIds : [],
+          recoverMode: entraSelection.recoverMode,
+          entraSections: entraSelection.recoverMode === 'directory' ? entraSelection.sections : undefined,
+          includeGroupMembership: entraSelection.includeGroupMembership,
+          includeAuMembership: entraSelection.includeAuMembership,
+        });
+        setSuccess(response.jobId);
+        return;
+      }
+
       let restoreType: RestoreType;
       if (isPowerBiItem || isPowerAppItem || isPowerFlowItem) {
         restoreType = 'IN_PLACE';  // Power Platform uses IN_PLACE + targetEnvironmentId for cross-env
@@ -222,8 +258,14 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         targetUserId: !isPowerBiItem && !isPowerPlatformItem && destination === 'another' ? targetUserId : undefined,
         targetResourceId: isPowerBiItem && destination === 'another' ? targetResourceId : undefined,
         targetEnvironmentId: (isPowerAppItem || isPowerFlowItem) && destination === 'another' ? targetEnvironmentId : undefined,
-        targetFolder: !isPowerBiItem && !isPowerPlatformItem && destination === 'original' && originalSub === 'separate_folder' ? folderName : undefined,
-        overwrite: !isPowerBiItem && !isPowerPlatformItem && destination === 'original' && originalSub === 'overwrite',
+        targetFolder: !isPowerBiItem && !isPowerPlatformItem
+          && ((destination === 'original')
+            || (destination === 'another' && resourceKind === 'onedrive'))
+          && originalSub === 'separate_folder' ? folderName : undefined,
+        overwrite: !isPowerBiItem && !isPowerPlatformItem
+          && ((destination === 'original')
+            || (destination === 'another' && resourceKind === 'onedrive'))
+          && originalSub === 'overwrite',
         workloads: !isPowerBiItem && !isPowerPlatformItem && scope === 'full' ? Array.from(workloads) : undefined,
       });
       setSuccess(response.jobId);
@@ -283,6 +325,11 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
           </div>
         )}
 
+        {resourceKind === 'entra_directory' ? (
+          <div className="modal-columns">
+            <EntraRestoreForm onChange={setEntraSelection} />
+          </div>
+        ) : (
         <div className="modal-columns">
           {/* Left: Scope (non-Power BI only) */}
           {!isPowerBiItem && (
@@ -388,7 +435,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             )}
 
             {destination === 'another' && !isPowerBiItem && !isPowerPlatformItem && (
-              (resourceKind === 'mailbox' || resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox') ? (
+              (resourceKind === 'mailbox' || resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox' || resourceKind === 'onedrive') ? (
                 <>
                   <select
                     value={targetUserId}
@@ -396,7 +443,9 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                     className="folder-input"
                     disabled={mailboxTargetsLoading}
                   >
-                    <option value="">Select target mailbox</option>
+                    <option value="">
+                      {resourceKind === 'onedrive' ? 'Select target OneDrive' : 'Select target mailbox'}
+                    </option>
                     {mailboxTargets.map((resource) => {
                       const kindLabel = resource.kind === 'shared_mailbox'
                         ? ' (shared)'
@@ -406,18 +455,42 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                       const label = resource.email
                         ? `${resource.name} <${resource.email}>${kindLabel}`
                         : `${resource.name}${kindLabel}`;
+                      // Value is the resource row id (DB UUID), not the
+                      // Graph external_id — the worker resolves UUID →
+                      // target resource → Graph user id at dispatch.
                       return (
-                        <option key={resource.id} value={resource.external_id || resource.id}>
+                        <option key={resource.id} value={resource.id}>
                           {label}
                         </option>
                       );
                     })}
                   </select>
                   {mailboxTargetsLoading && (
-                    <div className="restore-item-info">Loading mailboxes…</div>
+                    <div className="restore-item-info">
+                      {resourceKind === 'onedrive' ? 'Loading OneDrives…' : 'Loading mailboxes…'}
+                    </div>
                   )}
                   {mailboxTargetsError && (
                     <div className="modal-error">{mailboxTargetsError}</div>
+                  )}
+                  {resourceKind === 'onedrive' && targetUserId && (
+                    <div className="sub-options">
+                      <label className="radio-row">
+                        <input type="radio" checked={originalSub === 'separate_folder'} onChange={() => setOriginalSub('separate_folder')} />
+                        <span>Recover to a separate folder <span className="info-icon" title="Files land under this folder with the original tree preserved">ℹ</span></span>
+                      </label>
+                      {originalSub === 'separate_folder' && (
+                        <input
+                          className="folder-input"
+                          value={folderName}
+                          onChange={e => setFolderName(e.target.value)}
+                        />
+                      )}
+                      <label className="radio-row">
+                        <input type="radio" checked={originalSub === 'overwrite'} onChange={() => setOriginalSub('overwrite')} />
+                        <span>Overwrite existing content</span>
+                      </label>
+                    </div>
                   )}
                 </>
               ) : (
@@ -480,6 +553,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             )}
           </div>
         </div>
+        )}
 
         {error && <div className="modal-error">{error}</div>}
 
