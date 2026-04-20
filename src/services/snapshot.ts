@@ -220,10 +220,13 @@ export const SnapshotService = {
     return data;
   },
 
-  /** Return every ONEDRIVE_FILE item id in this snapshot whose folder_path
-   *  starts with `folderPrefix`. Used by the Recovery UI's folder-row
-   *  checkbox to bulk-select everything under a folder, including files
-   *  in nested subfolders. Pass '/' to grab the entire drive. */
+  /** @deprecated Use the Files folder-select v2 flow (see
+   *  `useFolderSelection` hook + `RecoveryService.exportOrRestore`).
+   *  The new flow sends `folderPaths` in the payload so the server
+   *  resolves descendants server-side instead of materialising
+   *  potentially-huge id lists in the browser. Kept for back-compat
+   *  with the legacy OneDrive branch until FILES_FOLDER_SELECT_V2
+   *  reaches GA. */
   async getOneDriveIdsByPrefix(snapshotId: string, folderPrefix: string): Promise<string[]> {
     const url = `${API.SNAPSHOTS.ONEDRIVE(snapshotId)}/ids?folder_prefix=${encodeURIComponent(folderPrefix)}`;
     const res = await fetch(url, { headers: getAuthHeaders() });

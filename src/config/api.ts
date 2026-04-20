@@ -66,6 +66,11 @@ export const API = {
     ARCHIVE: (id: string) => `${API_URL}/resources/${id}/archive`,
     UNARCHIVE: (id: string) => `${API_URL}/resources/${id}/unarchive`,
     DELETE: (id: string) => `${API_URL}/resources/${id}`,
+    // Files folder-select v2 — unified download+restore entry for
+    // OneDrive / SharePoint / Teams Files / Groups Files. Accepts
+    // `folderPaths` so the server resolves descendants via the
+    // folder_path index instead of the UI materialising item ids.
+    EXPORT_OR_RESTORE: (id: string) => `${API_URL}/resources/${id}/export-or-restore`,
   },
 
   // Jobs
