@@ -33,6 +33,10 @@ export interface RecoveryToolbarProps {
    *  Used on content types that have a single implicit target (e.g.
    *  Azure DB Configuration = one config file). */
   allowEmptyDownload?: boolean;
+  /** When true, Recover stays enabled with zero selected items — e.g.
+   *  Azure DB where Restore rebuilds the whole database and no item
+   *  selection is needed. */
+  allowEmptyRecover?: boolean;
   /** Optional search wiring. Omit to hide the search box (e.g. for
    *  resource kinds where search isn't supported yet). */
   searchValue?: string;
@@ -132,6 +136,7 @@ export default function RecoveryToolbar({
   recoverDisabled,
   downloadDisabled,
   allowEmptyDownload,
+  allowEmptyRecover,
   searchValue,
   onSearchChange,
   onSearchSubmit,
@@ -164,7 +169,9 @@ export default function RecoveryToolbar({
   const disableDownload = !hasSnapshot
     || !!downloadDisabled
     || (selectedCount === 0 && !allowEmptyDownload);
-  const disableRecover = !hasSnapshot || selectedCount === 0 || !!recoverDisabled;
+  const disableRecover = !hasSnapshot
+    || !!recoverDisabled
+    || (selectedCount === 0 && !allowEmptyRecover);
 
   const showSearch = typeof onSearchChange === 'function';
 

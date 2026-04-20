@@ -8,6 +8,7 @@ import {
 import { type RecoveryItem } from '../services/recovery';
 import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
+import AzureDbRecoverModal from '../components/AzureDbRecoverModal';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import RecoveryToolbar from '../components/RecoveryToolbar';
@@ -5511,9 +5512,19 @@ export default function Recovery() {
   };
 
   const handleRecover = () => {
-    if (!selectedSnapshotId || selectedItems.size === 0) return;
+    if (!selectedSnapshotId) return;
+    // Azure DB resources open a dedicated modal — restoring rebuilds
+    // the whole database, so content-type selection (Config/Database/
+    // Schema) doesn't matter and we don't require items to be ticked.
+    const kind = selectedResource?.kind;
+    if (kind === 'azure_sql' || kind === 'azure_postgresql' || kind === 'azure_postgresql_single') {
+      setAzureDbRecoverOpen(true);
+      return;
+    }
+    if (selectedItems.size === 0) return;
     setRestoreModalOpen(true);
   };
+  const [azureDbRecoverOpen, setAzureDbRecoverOpen] = useState(false);
 
   // Calendar sidebar's currently-filtered event IDs. Empty filter =
   // every event; otherwise only the event types the user ticked.
@@ -5895,6 +5906,9 @@ export default function Recovery() {
                 // user ticking anything. Everywhere else the user has
                 // to select first.
                 const allowEmptyDownload = isAzureDb && azureDbTab === 'configuration';
+                // Azure DB Recover always rebuilds the whole database,
+                // so no checkbox selection is needed regardless of tab.
+                const allowEmptyRecover = isAzureDb;
                 return (
                   <RecoveryToolbar
                     snapshots={snapshots}
@@ -5905,6 +5919,7 @@ export default function Recovery() {
                     selectedCount={selectedItems.size}
                     downloadError={downloadError}
                     allowEmptyDownload={allowEmptyDownload}
+                    allowEmptyRecover={allowEmptyRecover}
                     searchValue={showSearch ? searchQuery : undefined}
                     onSearchChange={showSearch ? setSearchQuery : undefined}
                     onSearchSubmit={showSearch ? () => { /* debounced via searchQuery */ } : undefined}
@@ -6351,6 +6366,18 @@ export default function Recovery() {
         itemType={restoreItemType}
         snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
       />
+      {selectedResource && (() => {
+        const snap = snapshots.find(s => s.id === selectedSnapshotId);
+        if (!snap) return null;
+        return (
+          <AzureDbRecoverModal
+            open={azureDbRecoverOpen}
+            onClose={() => setAzureDbRecoverOpen(false)}
+            resource={selectedResource}
+            snapshot={snap}
+          />
+        );
+      })()}
       <DownloadModal
         isOpen={downloadModalOpen}
         onClose={() => setDownloadModalOpen(false)}

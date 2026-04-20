@@ -1,0 +1,57 @@
+/* Lightweight custom select: borderless trigger that feels inline with
+   the form row, plus a rounded-corner popup panel (which native
+   <select> popups can't have). z-index:1400 so it floats above modal
+   stacks (Azure DB Recover lives at 1100). */
+
+.rsel-wrap { position: relative; display: inline-flex; width: 100%; }
+.rsel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #0f172a;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #cbd5e1;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+}
+.rsel-btn:hover:not(:disabled) { border-bottom-color: #0f172a; }
+.rsel-btn:focus-visible { border-bottom-color: #0f172a; }
+.rsel-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.rsel-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rsel-caret { color: #64748b; display: inline-flex; align-items: center; margin-left: 8px; }
+
+.rsel-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 200px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2);
+  z-index: 1400;
+}
+.rsel-opt {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rsel-opt:hover { background: #f1f5f9; }
+.rsel-opt.active { background: #e2e8f0; font-weight: 500; }
+.rsel-empty { padding: 8px 10px; font-size: 12px; color: #94a3b8; }
