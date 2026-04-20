@@ -138,17 +138,22 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     const isMailSource = resourceKind === 'mailbox'
       || resourceKind === 'shared_mailbox'
       || resourceKind === 'room_mailbox';
-    if (!isMailSource) return;
+    const isOneDriveSource = resourceKind === 'onedrive';
+    if (!isMailSource && !isOneDriveSource) return;
 
     let cancelled = false;
     setMailboxTargetsLoading(true);
     setMailboxTargetsError(null);
 
-    Promise.all([
-      getResourcesByType(tenantId, 'MAILBOX', 1, 500, undefined, 'active'),
-      getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 500, undefined, 'active'),
-      getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 500, undefined, 'active'),
-    ])
+    const loaders = isMailSource
+      ? [
+          getResourcesByType(tenantId, 'MAILBOX', 1, 500, undefined, 'active'),
+          getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 500, undefined, 'active'),
+          getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 500, undefined, 'active'),
+        ]
+      : [getResourcesByType(tenantId, 'ONEDRIVE', 1, 500, undefined, 'active')];
+
+    Promise.all(loaders)
       .then((results) => {
         if (cancelled) return;
         const merged: ResourceItem[] = [];
@@ -158,7 +163,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
       .catch((err) => {
         if (cancelled) return;
         setMailboxTargets([]);
-        setMailboxTargetsError(err instanceof Error ? err.message : 'Failed to load mailboxes');
+        setMailboxTargetsError(err instanceof Error ? err.message : 'Failed to load resources');
       })
       .finally(() => {
         if (!cancelled) setMailboxTargetsLoading(false);
@@ -253,8 +258,14 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         targetUserId: !isPowerBiItem && !isPowerPlatformItem && destination === 'another' ? targetUserId : undefined,
         targetResourceId: isPowerBiItem && destination === 'another' ? targetResourceId : undefined,
         targetEnvironmentId: (isPowerAppItem || isPowerFlowItem) && destination === 'another' ? targetEnvironmentId : undefined,
-        targetFolder: !isPowerBiItem && !isPowerPlatformItem && destination === 'original' && originalSub === 'separate_folder' ? folderName : undefined,
-        overwrite: !isPowerBiItem && !isPowerPlatformItem && destination === 'original' && originalSub === 'overwrite',
+        targetFolder: !isPowerBiItem && !isPowerPlatformItem
+          && ((destination === 'original')
+            || (destination === 'another' && resourceKind === 'onedrive'))
+          && originalSub === 'separate_folder' ? folderName : undefined,
+        overwrite: !isPowerBiItem && !isPowerPlatformItem
+          && ((destination === 'original')
+            || (destination === 'another' && resourceKind === 'onedrive'))
+          && originalSub === 'overwrite',
         workloads: !isPowerBiItem && !isPowerPlatformItem && scope === 'full' ? Array.from(workloads) : undefined,
       });
       setSuccess(response.jobId);
@@ -424,7 +435,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             )}
 
             {destination === 'another' && !isPowerBiItem && !isPowerPlatformItem && (
-              (resourceKind === 'mailbox' || resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox') ? (
+              (resourceKind === 'mailbox' || resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox' || resourceKind === 'onedrive') ? (
                 <>
                   <select
                     value={targetUserId}
@@ -432,7 +443,9 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                     className="folder-input"
                     disabled={mailboxTargetsLoading}
                   >
-                    <option value="">Select target mailbox</option>
+                    <option value="">
+                      {resourceKind === 'onedrive' ? 'Select target OneDrive' : 'Select target mailbox'}
+                    </option>
                     {mailboxTargets.map((resource) => {
                       const kindLabel = resource.kind === 'shared_mailbox'
                         ? ' (shared)'
@@ -443,10 +456,8 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                         ? `${resource.name} <${resource.email}>${kindLabel}`
                         : `${resource.name}${kindLabel}`;
                       // Value is the resource row id (DB UUID), not the
-                      // Graph external_id — a single external_id can be
-                      // shared across MAILBOX / ENTRA_USER / CHAT_EXPORT
-                      // rows for the same person, and the restore worker
-                      // needs to know which flavor to target.
+                      // Graph external_id — the worker resolves UUID →
+                      // target resource → Graph user id at dispatch.
                       return (
                         <option key={resource.id} value={resource.id}>
                           {label}
@@ -455,10 +466,31 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                     })}
                   </select>
                   {mailboxTargetsLoading && (
-                    <div className="restore-item-info">Loading mailboxes…</div>
+                    <div className="restore-item-info">
+                      {resourceKind === 'onedrive' ? 'Loading OneDrives…' : 'Loading mailboxes…'}
+                    </div>
                   )}
                   {mailboxTargetsError && (
                     <div className="modal-error">{mailboxTargetsError}</div>
+                  )}
+                  {resourceKind === 'onedrive' && targetUserId && (
+                    <div className="sub-options">
+                      <label className="radio-row">
+                        <input type="radio" checked={originalSub === 'separate_folder'} onChange={() => setOriginalSub('separate_folder')} />
+                        <span>Recover to a separate folder <span className="info-icon" title="Files land under this folder with the original tree preserved">ℹ</span></span>
+                      </label>
+                      {originalSub === 'separate_folder' && (
+                        <input
+                          className="folder-input"
+                          value={folderName}
+                          onChange={e => setFolderName(e.target.value)}
+                        />
+                      )}
+                      <label className="radio-row">
+                        <input type="radio" checked={originalSub === 'overwrite'} onChange={() => setOriginalSub('overwrite')} />
+                        <span>Overwrite existing content</span>
+                      </label>
+                    </div>
                   )}
                 </>
               ) : (
