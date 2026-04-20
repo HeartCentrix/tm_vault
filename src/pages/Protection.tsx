@@ -80,8 +80,24 @@ const POLICY_COVERAGE_RULES: Record<string, PolicyCoverageRule> = {
     workloadLabel: 'Entra group or group mailbox backups',
     covers: (policy) => !!(policy.backupEntraId || policy.groupMailbox),
   },
+  // M365 unified groups are the parent container for Teams + SharePoint +
+  // shared mailbox + Planner — any one of those backup flags covers them.
+  m365_group: {
+    workloadLabel: 'Entra, Teams, SharePoint or group mailbox backups',
+    covers: (policy) => !!(
+      policy.backupEntraId || policy.backupTeams || policy.backupSharepoint || policy.groupMailbox
+    ),
+  },
   entra_app: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
   entra_device: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_directory: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_service_principal: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_role: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_admin_unit: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_conditional_access: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  entra_bitlocker_key: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  intune_managed_device: { workloadLabel: 'Entra ID backups', covers: (policy) => !!policy.backupEntraId },
+  teams_chat_export: { workloadLabel: 'Teams chat backups', covers: (policy) => !!policy.backupTeamsChats },
   power_bi: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
   power_apps: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
   power_automate: { workloadLabel: 'Power Platform backups', covers: (policy) => !!policy.backupPowerPlatform },
@@ -92,6 +108,7 @@ const POLICY_COVERAGE_RULES: Record<string, PolicyCoverageRule> = {
   azure_vm: { workloadLabel: 'Azure virtual machine backups', covers: (policy) => !!policy.backupAzureVm },
   azure_sql: { workloadLabel: 'Azure SQL database backups', covers: (policy) => !!policy.backupAzureSql },
   azure_postgresql: { workloadLabel: 'Azure PostgreSQL backups', covers: (policy) => !!policy.backupAzurePostgresql },
+  azure_postgresql_single: { workloadLabel: 'Azure PostgreSQL backups', covers: (policy) => !!policy.backupAzurePostgresql },
 };
 
 function getPolicyCoverageWarning(resource: ResourceItem, policy?: SlaPolicy): string | null {

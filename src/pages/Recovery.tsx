@@ -52,6 +52,53 @@ function getKindLabel(kind: string): string {
   return labels[kind] || kind;
 }
 
+// ==================== Teams chat helpers ====================
+
+type QuotedMessage = { messageId: string; preview: string; senderName: string };
+
+const MESSAGE_REF_TYPES = new Set(['messageReference', 'forwardedMessageReference']);
+
+function isMessageReferenceAttachment(att: any): boolean {
+  return MESSAGE_REF_TYPES.has((att?.contentType || '').trim());
+}
+
+/** Extract Teams quoted-reply metadata from `attachments`. Graph stores
+ *  the quoted message as a JSON string in `attachment.content` with
+ *  shape `{ messageId, messagePreview, messageSender: { user: { displayName } } }`. */
+function parseMessageReferences(attachments: any[]): QuotedMessage[] {
+  const out: QuotedMessage[] = [];
+  for (const att of attachments || []) {
+    if (!isMessageReferenceAttachment(att)) continue;
+    let parsed: any = null;
+    const c = att?.content;
+    if (typeof c === 'string') {
+      try { parsed = JSON.parse(c); } catch { parsed = null; }
+    } else if (c && typeof c === 'object') {
+      parsed = c;
+    }
+    const messageId = String(parsed?.messageId || att?.id || '');
+    const rawPreview = parsed?.messagePreview || '';
+    // Preview is plain text already; collapse any stray whitespace.
+    const preview = String(rawPreview).replace(/\s+/g, ' ').trim();
+    const senderName = parsed?.messageSender?.user?.displayName
+      || parsed?.messageSender?.application?.displayName
+      || '';
+    if (messageId || preview) {
+      out.push({ messageId, preview, senderName });
+    }
+  }
+  return out;
+}
+
+/** Remove `<attachment id="..."></attachment>` placeholders from a chat
+ *  body's HTML for ids we've already rendered as a quote block.
+ *  Teams inlines these empty custom elements as a marker; without
+ *  handling, the id can surface as visible text in certain renderers. */
+function stripAttachmentPlaceholders(html: string, ids: Set<string>): string {
+  if (!ids.size) return html;
+  return html.replace(/<attachment[^>]*\sid=["']([^"']+)["'][^>]*>\s*<\/attachment>/gi, (m, id) => ids.has(id) ? '' : m);
+}
+
 // ==================== Specialized Preview Components ====================
 
 export function EmailPreview({ item }: { item: any }) {
@@ -175,12 +222,25 @@ export function ChatPreview({ item }: { item: any }) {
   const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || (item as any).sender || 'Unknown';
   const senderInitials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
   const rawBody = raw.body?.content || (item as any).body || item.body || item.preview || '';
-  // Strip <img> tags pointing at Graph's hostedContents — they require
-  // an auth'd request and otherwise fire 401s in the browser console.
-  const bodyContent = typeof rawBody === 'string' ? rawBody.replace(/<img[^>]*>/gi, '') : rawBody;
+  const attachments: any[] = raw.attachments || [];
+  // Teams replies reference the quoted message via a messageReference
+  // attachment. The `content` field is JSON with messageId + messagePreview
+  // + messageSender. Extract those so we can render a quote block and
+  // strip the <attachment id="..."> placeholders Graph inlines in the
+  // body HTML (otherwise the empty custom element leaves the raw id
+  // visible in the rendered message).
+  const quotedRefs = parseMessageReferences(attachments);
+  const quotedIds = new Set(quotedRefs.map(q => q.messageId));
+  // Strip <img> (Graph hostedContents → 401s) and inline reply
+  // placeholders we've already surfaced as a quote block.
+  const bodyContent = typeof rawBody === 'string'
+    ? stripAttachmentPlaceholders(rawBody.replace(/<img[^>]*>/gi, ''), quotedIds)
+    : rawBody;
   const isHtml = (raw.body?.contentType || (item as any).bodyContentType) === 'html';
   const sentAt = raw.createdDateTime || (item as any).date || item.date;
-  const attachments: any[] = raw.attachments || [];
+  // Real file/card attachments — excludes messageReference pointers which
+  // render as the quote block above the body.
+  const realAttachments = attachments.filter(a => !isMessageReferenceAttachment(a));
   const mentions: any[] = raw.mentions || [];
   const isDeleted = raw.deletedDateTime != null;
   const context = item.metadata?.chatTopic || item.metadata?.channelName
@@ -197,15 +257,27 @@ export function ChatPreview({ item }: { item: any }) {
             {sentAt && <span className="chat-time">{fmtLocal(sentAt)}</span>}
             {item.itemType === 'TEAMS_MESSAGE_REPLY' && <span className="chat-reply-badge">Reply</span>}
           </div>
+          {quotedRefs.length > 0 && (
+            <div className="chat-quote-stack">
+              {quotedRefs.map((q, i) => (
+                <div key={i} className="chat-quote">
+                  <div className="chat-quote-sender">
+                    {q.senderName ? `${q.senderName} wrote:` : 'In reply to:'}
+                  </div>
+                  <div className="chat-quote-body">{q.preview || <em>(quoted message)</em>}</div>
+                </div>
+              ))}
+            </div>
+          )}
           {isDeleted
             ? <div className="chat-deleted">This message was deleted</div>
             : isHtml
               ? <div className="chat-body" dangerouslySetInnerHTML={{ __html: bodyContent }} />
               : <div className="chat-body">{bodyContent || <em>No content</em>}</div>
           }
-          {attachments.length > 0 && (
+          {realAttachments.length > 0 && (
             <div className="chat-attachments">
-              {attachments.map((a: any, i: number) => (
+              {realAttachments.map((a: any, i: number) => (
                 <div key={i} className="chat-attachment-chip">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 12, height: 12 }}>
                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
@@ -941,10 +1013,23 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
-  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName || item.name || 'Unknown';
+  const sender = raw.from?.user?.displayName || raw.from?.application?.displayName
+    // item.name for chat messages is the first 100 chars of body.content,
+    // or the message id when body.content is empty (reply-only messages).
+    // A numeric-looking id masquerading as a sender is worse than 'Unknown'.
+    || (/^\d{10,}$/.test(String(item.name || '')) ? '' : item.name)
+    || 'Unknown';
   const senderEmail = item.metadata?.senderEmail || raw.from?.user?.email || raw.from?.user?.userPrincipalName || '';
   const initials = sender.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const body = raw.body?.content || item.preview || item.body || '';
+  const rawAttachmentsForQuote: any[] = Array.isArray(raw.attachments) ? raw.attachments : [];
+  const quotedRefs = parseMessageReferences(rawAttachmentsForQuote);
+  const quotedIds = new Set(quotedRefs.map(q => q.messageId));
+  const rawBodyField = raw.body?.content || item.preview || item.body || '';
+  // Strip <attachment id="..."> placeholders for quotes we render below,
+  // so the visible text isn't an empty residue / visible ID.
+  const body = typeof rawBodyField === 'string'
+    ? stripAttachmentPlaceholders(rawBodyField, quotedIds)
+    : rawBodyField;
   const isHtml = raw.body?.contentType === 'html';
   const sentAt = raw.createdDateTime || item.date;
   // HTML → plain text with structure + entity preservation. Regex-strip
@@ -1022,8 +1107,18 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
             </span>
           )}
         </div>
-        <div className="chat-item-text">{displayBody || '\u00a0'}</div>
-        {rawAttachments.length > 0 && (
+        {quotedRefs.length > 0 && (
+          <div className="chat-item-quote-stack">
+            {quotedRefs.map((q, i) => (
+              <div key={i} className="chat-item-quote">
+                {q.senderName && <span className="chat-item-quote-sender">{q.senderName}: </span>}
+                <span className="chat-item-quote-preview">{q.preview || '(quoted message)'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="chat-item-text">{displayBody || (quotedRefs.length > 0 ? '' : '\u00a0')}</div>
+        {rawAttachments.filter(a => !isMessageReferenceAttachment(a)).length > 0 && (
           <div className="chat-item-attachments" onClick={(e) => e.stopPropagation()}>
             {chatAttachments.length === 0
               ? <span className="email-ol-attach-chip">Attachment{rawAttachments.length === 1 ? '' : 's'} (capturing…)</span>
@@ -4933,7 +5028,12 @@ export default function Recovery() {
   // closes the loop URL → state on history navigation.
   useEffect(() => {
     const t = searchParams.get('tab');
-    const currentTab = t && (CONTENT_TABS as string[]).includes(t) ? (t as ContentType) : activeContentType;
+    let currentTab = t && (CONTENT_TABS as string[]).includes(t) ? (t as ContentType) : activeContentType;
+    // Shared + room mailboxes have no OneDrive — redirect deep-links to Mail.
+    const kind = selectedResource?.kind;
+    if (currentTab === 'onedrive' && (kind === 'shared_mailbox' || kind === 'room_mailbox')) {
+      currentTab = 'mail';
+    }
     if (currentTab && currentTab !== activeContentType) {
       setActiveContentType(currentTab);
     }
@@ -6042,7 +6142,15 @@ export default function Recovery() {
                   snapshots resolver; tabs with no snapshot yet stay clickable
                   but render an empty state on click. */}
               <div className="content-type-tabs">
-                {contentTypes.map(type => {
+                {contentTypes
+                  .filter(type => {
+                    // Shared + room mailboxes are Exchange-only — no OneDrive
+                    // provisioning in M365, so hide the tab.
+                    const kind = selectedResource.kind;
+                    if (type === 'onedrive' && (kind === 'shared_mailbox' || kind === 'room_mailbox')) return false;
+                    return true;
+                  })
+                  .map(type => {
                   const entry = contentSnapshots?.byContent[type] || null;
                   const count = entry?.itemCount ?? 0;
                   const hasBackup = !!entry;
@@ -6386,6 +6494,7 @@ export default function Recovery() {
         snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
         itemName={restoreItemName}
         itemType={restoreItemType}
+        resourceKind={selectedResource?.kind}
         snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
       />
       {selectedResource && (() => {

@@ -13,6 +13,7 @@ interface RestoreModalProps {
   itemName?: string;
   itemType?: string;
   snapshotDate?: string;
+  resourceKind?: string;
 }
 
 const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
@@ -22,10 +23,18 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
-  const [workloads, setWorkloads] = useState<Set<Workload>>(new Set(['Mail', 'OneDrive', 'Contacts', 'Calendar']));
+  // Shared + room mailboxes have no OneDrive in M365 — hide it so users
+  // can't pick a workload the backend will silently drop.
+  const isMailOnlyResource = resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox';
+  const availableWorkloads = isMailOnlyResource
+    ? WORKLOADS.filter((w) => w !== 'OneDrive')
+    : WORKLOADS;
+  const [workloads, setWorkloads] = useState<Set<Workload>>(
+    new Set(isMailOnlyResource ? ['Mail', 'Contacts', 'Calendar'] : ['Mail', 'OneDrive', 'Contacts', 'Calendar']),
+  );
   const [destination, setDestination] = useState<Destination>('original');
   const [originalSub, setOriginalSub] = useState<OriginalSubOption>('separate_folder');
   const [folderName, setFolderName] = useState(
@@ -39,6 +48,9 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   const [pPlatformEnvs, setPPlatformEnvs] = useState<ResourceItem[]>([]);
   const [pPlatformEnvsLoading, setPPlatformEnvsLoading] = useState(false);
   const [pPlatformEnvsError, setPPlatformEnvsError] = useState<string | null>(null);
+  const [mailboxTargets, setMailboxTargets] = useState<ResourceItem[]>([]);
+  const [mailboxTargetsLoading, setMailboxTargetsLoading] = useState(false);
+  const [mailboxTargetsError, setMailboxTargetsError] = useState<string | null>(null);
   const [targetEnvironmentId, setTargetEnvironmentId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +127,46 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     };
   }, [isOpen, isPowerAppItem, isPowerFlowItem, tenantId]);
 
+  // Mail restore — load candidate target mailboxes (user/shared/room)
+  // when the user picks "Recover to another resource". Concatenate the
+  // three mailbox types so the dropdown covers all AFI-parity targets.
+  useEffect(() => {
+    if (!isOpen || !tenantId) return;
+    if (destination !== 'another') return;
+    const isMailSource = resourceKind === 'mailbox'
+      || resourceKind === 'shared_mailbox'
+      || resourceKind === 'room_mailbox';
+    if (!isMailSource) return;
+
+    let cancelled = false;
+    setMailboxTargetsLoading(true);
+    setMailboxTargetsError(null);
+
+    Promise.all([
+      getResourcesByType(tenantId, 'MAILBOX', 1, 500, undefined, 'active'),
+      getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 500, undefined, 'active'),
+      getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 500, undefined, 'active'),
+    ])
+      .then((results) => {
+        if (cancelled) return;
+        const merged: ResourceItem[] = [];
+        for (const r of results) merged.push(...(r.items || []));
+        setMailboxTargets(merged);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setMailboxTargets([]);
+        setMailboxTargetsError(err instanceof Error ? err.message : 'Failed to load mailboxes');
+      })
+      .finally(() => {
+        if (!cancelled) setMailboxTargetsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, tenantId, destination, resourceKind]);
+
   if (!isOpen) return null;
 
   const toggleWorkload = (w: Workload) => {
@@ -131,7 +183,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     // skips every item. The error surfaces the misconfiguration before
     // the restore job gets created.
     if (scope === 'full' && !isPowerBiItem && !isPowerAppItem && !isPowerFlowItem && !isPowerDlpItem && workloads.size === 0) {
-      setError('Select at least one workload to restore (Mail, OneDrive, Contacts, Calendar, or Chats).');
+      setError(`Select at least one workload to restore (${availableWorkloads.join(', ')}).`);
       return;
     }
     if (isPowerBiItem) {
@@ -250,7 +302,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
 
               {scope === 'full' && (
                 <div className="workload-list">
-                  {WORKLOADS.map(w => (
+                  {availableWorkloads.map(w => (
                     <label key={w} className="checkbox-row">
                       <input
                         type="checkbox"
@@ -336,12 +388,46 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
             )}
 
             {destination === 'another' && !isPowerBiItem && !isPowerPlatformItem && (
-              <input
-                className="folder-input"
-                placeholder="Target resource ID"
-                value={targetUserId}
-                onChange={e => setTargetUserId(e.target.value)}
-              />
+              (resourceKind === 'mailbox' || resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox') ? (
+                <>
+                  <select
+                    value={targetUserId}
+                    onChange={(e) => setTargetUserId(e.target.value)}
+                    className="folder-input"
+                    disabled={mailboxTargetsLoading}
+                  >
+                    <option value="">Select target mailbox</option>
+                    {mailboxTargets.map((resource) => {
+                      const kindLabel = resource.kind === 'shared_mailbox'
+                        ? ' (shared)'
+                        : resource.kind === 'room_mailbox'
+                          ? ' (room)'
+                          : '';
+                      const label = resource.email
+                        ? `${resource.name} <${resource.email}>${kindLabel}`
+                        : `${resource.name}${kindLabel}`;
+                      return (
+                        <option key={resource.id} value={resource.external_id || resource.id}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {mailboxTargetsLoading && (
+                    <div className="restore-item-info">Loading mailboxes…</div>
+                  )}
+                  {mailboxTargetsError && (
+                    <div className="modal-error">{mailboxTargetsError}</div>
+                  )}
+                </>
+              ) : (
+                <input
+                  className="folder-input"
+                  placeholder="Target resource ID"
+                  value={targetUserId}
+                  onChange={e => setTargetUserId(e.target.value)}
+                />
+              )
             )}
 
             {destination === 'another' && (isPowerAppItem || isPowerFlowItem) && (

@@ -170,6 +170,18 @@ export const SnapshotService = {
     return res.json();
   },
 
+  /** Distinct contact folder names present in a snapshot. Sorted with
+   *  well-known folders (Contacts, Recipient Cache, Deleted Items,
+   *  Recoverable Items) first, then custom folders alphabetically.
+   *  Powers the folder-grain checkbox subgroup in DownloadModal. */
+  async listContactFolders(snapshotId: string): Promise<string[]> {
+    const url = API.SNAPSHOTS.CONTACT_FOLDERS(snapshotId);
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch contact folders');
+    const data = await res.json();
+    return Array.isArray(data?.folders) ? data.folders : [];
+  },
+
   async getItemAttachments(snapshotId: string, itemId: string): Promise<Array<{
     id: string;
     name: string;

@@ -4,6 +4,7 @@ import './DownloadModal.css';
 import { RecoveryService } from '../services/recovery';
 import { API } from '../config/api';
 import type { ContentTab } from '../services/snapshot';
+import { SnapshotService } from '../services/snapshot';
 import {
   EXPORT_FORMATS,
   DEFAULT_FORMAT,
@@ -59,6 +60,12 @@ export function DownloadModal({
   } | null>(null);
   const [progressPct, setProgressPct] = useState<number>(0);
 
+  // Contact folder subgroup state. Populated only when Contacts is checked
+  // and scope === 'all' for a single-snapshot export. Default = all checked
+  // (so omitting unmodified selection means "include all" — no payload field).
+  const [contactFolders, setContactFolders] = useState<string[]>([]);
+  const [selectedContactFolders, setSelectedContactFolders] = useState<Set<string>>(new Set());
+
   // Tick the elapsed counter while a download is in flight so users
   // see movement and don't assume the modal is stuck.
   useEffect(() => {
@@ -89,6 +96,30 @@ export function DownloadModal({
     }, 300);
     return () => clearTimeout(t);
   }, [isOpen, contentType, resourceId, threadPath, itemIds, exportFormat, includeAttachments, snapshotIds]);
+
+  // Fetch the per-snapshot contact folder list when Contacts is selected
+  // for a Download-all export. Re-fetch on workload toggle / scope change.
+  useEffect(() => {
+    if (
+      isOpen
+      && workloads.has('Contacts')
+      && scope === 'all'
+      && snapshotIds.length === 1
+    ) {
+      SnapshotService.listContactFolders(snapshotIds[0])
+        .then(folders => {
+          setContactFolders(folders);
+          setSelectedContactFolders(new Set(folders));
+        })
+        .catch(() => {
+          setContactFolders([]);
+          setSelectedContactFolders(new Set());
+        });
+    } else {
+      setContactFolders([]);
+      setSelectedContactFolders(new Set());
+    }
+  }, [isOpen, workloads, scope, snapshotIds]);
 
   if (!isOpen) return null;
 
@@ -185,6 +216,20 @@ export function DownloadModal({
     setDownloading(true);
     setError(null);
     try {
+      // Only forward contactFolders when the user actually unticked at
+      // least one folder. Backend treats omitted/empty as "include all"
+      // — preserves backward compatibility for the common case.
+      const allFoldersSelected =
+        contactFolders.length > 0
+        && contactFolders.every(f => selectedContactFolders.has(f));
+      const contactFoldersPayload =
+        workloads.has('Contacts')
+        && scope === 'all'
+        && contactFolders.length > 0
+        && !allFoldersSelected
+          ? Array.from(selectedContactFolders)
+          : undefined;
+
       const response = await RecoveryService.triggerExport({
         restoreType: 'EXPORT_ZIP',
         snapshotIds,
@@ -193,6 +238,7 @@ export function DownloadModal({
         workloads: scope === 'all' ? Array.from(workloads) : undefined,
         includeAttachments,
         preserveTree: scope === 'all' || preserveTree,
+        contactFolders: contactFoldersPayload,
       });
       const jobId = response.jobId;
 
@@ -280,6 +326,28 @@ export function DownloadModal({
                       onChange={() => toggleWorkload(w)}
                     />
                     <span>{w}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {scope === 'all' && workloads.has('Contacts') && contactFolders.length > 0 && (
+              <div className="contact-folder-subgroup" style={{ marginLeft: 24, marginTop: 8 }}>
+                <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 4 }}>
+                  Contact folders
+                </div>
+                {contactFolders.map(f => (
+                  <label key={f} className="checkbox-row" style={{ display: 'block' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedContactFolders.has(f)}
+                      aria-label={f}
+                      onChange={e => {
+                        const next = new Set(selectedContactFolders);
+                        if (e.target.checked) next.add(f); else next.delete(f);
+                        setSelectedContactFolders(next);
+                      }}
+                    />
+                    <span>{f}</span>
                   </label>
                 ))}
               </div>
