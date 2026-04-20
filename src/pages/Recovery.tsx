@@ -9,6 +9,7 @@ import { type RecoveryItem } from '../services/recovery';
 import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import AzureDbRecoverModal from '../components/AzureDbRecoverModal';
+import AzurePgRecoverModal from '../components/AzurePgRecoverModal';
 import AzureVmView from '../components/AzureVmView';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
@@ -6500,7 +6501,18 @@ export default function Recovery() {
       {selectedResource && (() => {
         const snap = snapshots.find(s => s.id === selectedSnapshotId);
         if (!snap) return null;
-        return (
+        // PostgreSQL gets its own simpler modal (Source DB / Tenant /
+        // Server / Destination DB name). SQL keeps the full cascading
+        // sub→RG→loc→server flow with the secret picker.
+        const isPg = selectedResource.kind === 'azure_postgresql' || selectedResource.kind === 'azure_postgresql_single';
+        return isPg ? (
+          <AzurePgRecoverModal
+            open={azureDbRecoverOpen}
+            onClose={() => setAzureDbRecoverOpen(false)}
+            resource={selectedResource}
+            snapshot={snap}
+          />
+        ) : (
           <AzureDbRecoverModal
             open={azureDbRecoverOpen}
             onClose={() => setAzureDbRecoverOpen(false)}

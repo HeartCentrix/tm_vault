@@ -151,39 +151,64 @@ export default function AzureDbRecoverModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Whenever the chosen tenant changes, run live discovery against
-  // Azure ARM to enumerate subscriptions / RGs / locations / servers.
-  // Until the call returns we keep the dropdowns disabled so the user
-  // can't pick from an empty list and submit half-formed input.
+  // Reset the cascade state to the source resource's values whenever
+  // the chosen tenant changes. The fetch effect below then runs with
+  // those seeds so the modal opens pre-filled with the source's
+  // sub/RG/location/server.
   useEffect(() => {
     if (!open || !destTenant) return;
+    setSubscription(meta.subscription_id || '');
+    setResourceGroup(meta.resource_group || '');
+    setLocation(meta.location || meta.azure_region || '');
+    setServer(meta.server_name || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, destTenant]);
+
+  // Cascading discovery — re-runs whenever any narrower filter
+  // changes. Subscriptions are always full (visible to the SP);
+  // RGs are filtered by sub; servers are filtered by sub + RG +
+  // location; locations are the static Azure-region catalogue. After
+  // each fetch we re-validate the user's current picks against the
+  // new options and snap to the first entry when invalid.
+  useEffect(() => {
+    if (!open || !destTenant) return;
+    let cancelled = false;
     setOptsLoading(true);
-    setOpts({ subscriptions: [], resourceGroups: [], locations: [], servers: [] });
-    setSubscription(''); setResourceGroup(''); setLocation(''); setServer('');
     (async () => {
       try {
         const token = localStorage.getItem('access_token');
         const dbType = resource.kind === 'azure_sql' ? 'sql' : 'postgresql';
+        const params = new URLSearchParams({ dbType });
+        if (subscription)  params.set('subscription', subscription);
+        if (resourceGroup) params.set('resourceGroup', resourceGroup);
+        if (location)      params.set('location', location);
         const res = await fetch(
-          `${API.BASE_URL}/azure/tenants/${destTenant}/options?dbType=${dbType}`,
+          `${API.BASE_URL}/azure/tenants/${destTenant}/options?${params}`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {} },
         );
         if (!res.ok) return;
         const o = await res.json();
+        if (cancelled) return;
         setOpts(o);
-        const pickStr = (list: string[], preferred: string) =>
-          (preferred && list.includes(preferred)) ? preferred : (list[0] || '');
-        const pickObj = <T extends { [k: string]: string }>(list: T[], key: keyof T, preferred: string) =>
-          (preferred && list.find(x => x[key] === preferred)?.[key]) || (list[0]?.[key] || '');
-        setSubscription(pickObj(o.subscriptions || [], 'id', meta.subscription_id || ''));
-        setResourceGroup(pickStr(o.resourceGroups || [], meta.resource_group || ''));
-        setLocation(pickObj(o.locations || [], 'name', meta.location || meta.azure_region || ''));
-        setServer(pickStr(o.servers || [], meta.server_name || ''));
+        // Snap each pick to the first available option when the
+        // current value isn't in the (possibly-narrower) new list.
+        const subIds: string[] = (o.subscriptions || []).map((s: any) => s.id);
+        const locNames: string[] = (o.locations || []).map((l: any) => l.name);
+        const rgList: string[] = o.resourceGroups || [];
+        const srvList: string[] = o.servers || [];
+        if (!subIds.includes(subscription)) setSubscription(subIds[0] || '');
+        if (resourceGroup && !rgList.includes(resourceGroup)) setResourceGroup(rgList[0] || '');
+        else if (!resourceGroup && rgList.length) setResourceGroup(rgList[0]);
+        if (location && !locNames.includes(location)) setLocation(locNames[0] || '');
+        else if (!location && locNames.length) setLocation(locNames[0]);
+        if (server && !srvList.includes(server)) setServer(srvList[0] || '');
+        else if (!server && srvList.length) setServer(srvList[0]);
       } catch { /* ignore */ }
-      finally { setOptsLoading(false); }
+      finally { if (!cancelled) setOptsLoading(false); }
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destTenant, open]);
+  }, [open, destTenant, subscription, resourceGroup, location]);
 
   // Secret dropdown sources its options from tenant secrets filtered by
   // the login flavor matching the resource kind. Refreshed when the
@@ -245,14 +270,17 @@ export default function AzureDbRecoverModal({
           restoreType: 'OUT_OF_PLACE',
           snapshotIds: [snapshot.id],
           azureRestoreMode: 'FULL',
+          // Snake-case keys to match the sql_restore_handler contract
+          // (target_server_name, target_database_name, target_resource_group,
+          // target_subscription_id, target_region, secret_id, ...).
           azureRestoreParams: {
-            targetDatabaseName: dbName.trim(),
-            destinationTenantId: destTenant,
-            subscription,
-            resourceGroup,
-            location,
-            server,
-            secretId: secret,
+            destination_tenant_id: destTenant,
+            target_subscription_id: subscription,
+            target_resource_group: resourceGroup,
+            target_region: location,
+            target_server_name: server,
+            target_database_name: dbName.trim(),
+            secret_id: secret,
           },
         }),
       });
