@@ -406,8 +406,13 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                       const label = resource.email
                         ? `${resource.name} <${resource.email}>${kindLabel}`
                         : `${resource.name}${kindLabel}`;
+                      // Value is the resource row id (DB UUID), not the
+                      // Graph external_id — a single external_id can be
+                      // shared across MAILBOX / ENTRA_USER / CHAT_EXPORT
+                      // rows for the same person, and the restore worker
+                      // needs to know which flavor to target.
                       return (
-                        <option key={resource.id} value={resource.external_id || resource.id}>
+                        <option key={resource.id} value={resource.id}>
                           {label}
                         </option>
                       );
