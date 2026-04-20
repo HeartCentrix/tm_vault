@@ -1,0 +1,191 @@
+/* Azure SQL / Postgres "Recover from backup version" modal.
+   Matches azure/azure_recover.png — two free-text fields at the top,
+   a Basic section with destination-env fields, and a SQL/Postgres
+   Server section whose last row (Secret) actually enables submit. */
+
+.azdb-rec-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1100;
+}
+.azdb-rec-modal {
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: 85vh;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.azdb-rec-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.azdb-rec-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.azdb-rec-x {
+  background: none; border: 0; font-size: 22px; color: #64748b;
+  cursor: pointer; line-height: 1; padding: 2px 6px;
+}
+.azdb-rec-x:hover { color: #0f172a; }
+
+.azdb-rec-body {
+  padding: 16px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+.azdb-rec-section {
+  margin: 20px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* Each field = 160px label column + flex input column, matching the
+   Azure-portal aesthetic. Inputs with readOnly still render inline. */
+.azdb-rec-field {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.azdb-rec-field label {
+  font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Info icon + floating tooltip. Click target + keyboard focus both
+   reveal the tip so the user can tab through fields and still read
+   the hint without needing a mouse. */
+.azdb-rec-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px; height: 13px;
+  color: #1c274c;
+  cursor: help;
+  outline: none;
+}
+.azdb-rec-info svg { width: 13px; height: 13px; display: block; }
+.azdb-rec-info-tip {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 200px;
+  max-width: 280px;
+  padding: 8px 10px;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  white-space: normal;
+  z-index: 1200;
+}
+/* Little arrow pointing back at the icon. */
+.azdb-rec-info-tip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: #0f172a;
+}
+.azdb-rec-info:hover .azdb-rec-info-tip,
+.azdb-rec-info:focus .azdb-rec-info-tip,
+.azdb-rec-info:focus-visible .azdb-rec-info-tip {
+  opacity: 1;
+}
+.azdb-rec-field input {
+  border: 0;
+  border-bottom: 1px solid transparent;
+  padding: 4px 0;
+  font-size: 13px;
+  color: #0f172a;
+  outline: none;
+  background: transparent;
+}
+.azdb-rec-field input:focus { border-bottom-color: #0f172a; }
+.azdb-rec-field input[readonly] { color: #475569; }
+.azdb-rec-field input::placeholder { color: #94a3b8; }
+.azdb-rec-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 24px 6px 0;
+  font-size: 13px;
+  color: #0f172a;
+  border: 0;
+  border-bottom: 1px solid #cbd5e1;
+  outline: none;
+  background: transparent url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") right 0 center / 14px no-repeat;
+}
+.azdb-rec-select:focus { border-bottom-color: #0f172a; }
+
+.azdb-rec-hint {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+}
+.azdb-rec-hint a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.azdb-rec-error {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.azdb-rec-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 22px 16px;
+  border-top: 1px solid #f1f5f9;
+}
+.azdb-rec-cancel,
+.azdb-rec-submit {
+  padding: 8px 22px;
+  border-radius: 18px;
+  font-size: 13px;
+  cursor: pointer;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.azdb-rec-cancel:hover { background: #f8fafc; }
+.azdb-rec-submit {
+  border-color: #0f172a;
+}
+.azdb-rec-submit:hover:not(:disabled) { background: #f1f5f9; }
+.azdb-rec-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

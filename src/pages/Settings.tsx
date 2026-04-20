@@ -5,10 +5,11 @@ import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services
 import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../services/auth';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import SlaWizard from '../components/SlaWizard';
+import SecretsTab from '../components/SecretsTab';
 import { fmtLocalDate } from '../utils/datetime';
 import './Settings.css';
 
-type SettingsTab = 'sla' | 'info' | 'admin-consent';
+type SettingsTab = 'sla' | 'info' | 'admin-consent' | 'secrets';
 
 interface BackupItem {
   formKey: string;
@@ -49,7 +50,7 @@ const AZURE_BACKUP_ITEMS_RIGHT: BackupItem[] = [
 export default function Settings() {
   const { tenantId, serviceType } = useParams<{ tenantId: string; serviceType: string }>();
   const effectiveServiceType: 'm365' | 'azure' = serviceType === 'azure' ? 'azure' : 'm365';
-  const settingsTabKeys = ['sla', 'info', 'admin-consent'] as const;
+  const settingsTabKeys = ['sla', 'info', 'admin-consent', 'secrets'] as const;
   const subRouteKey = tenantId ? '/protection/settings' : '/settings';
   const tenantSettingsPath = tenantId && serviceType
     ? `/tenants/${tenantId}/${serviceType}/protection/settings`
@@ -76,6 +77,7 @@ export default function Settings() {
     { key: 'sla', label: 'SLA' },
     { key: 'info', label: 'Info' },
     { key: 'admin-consent', label: 'Admin Consent' },
+    { key: 'secrets', label: 'Secrets' },
   ];
 
   // Wizard state — opens for new or edit
@@ -559,6 +561,14 @@ export default function Settings() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Secrets tab — lists the tenant's KMS keys + login secrets and
+          lets the user add / inspect / delete them. Shared with the
+          Azure DB Recover "new secret" flow (both write the same
+          tenant_secrets row set). */}
+      {tenantId && activeTab === 'secrets' && (
+        <SecretsTab tenantId={tenantId} />
       )}
 
 
