@@ -1,10 +1,36 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SnapshotService } from '../services/snapshot';
 import { parseAsUtc, fmtLocal } from '../utils/datetime';
 import { API } from '../config/api';
 import type { SnapshotItem as SnapshotVersion } from '../services/snapshot';
 import './AzureVmView.css';
+
+/** Imperative handle exposed to the parent Recovery page so its
+ *  toolbar Download button can trigger the right action depending
+ *  on which VM tab is active and what (if anything) is selected. */
+export interface AzureVmViewHandle {
+  download: () => Promise<void>;
+  canDownload: () => boolean;
+}
+
+/** Kick off a browser download from a Blob response, using the
+ *  Content-Disposition filename the server sent. */
+function _triggerBlobDownload(blob: Blob, fallbackName: string, cd: string | null) {
+  let filename = fallbackName;
+  if (cd) {
+    const m = /filename\*?=(?:UTF-8''|")?([^";]+)"?/i.exec(cd);
+    if (m) filename = decodeURIComponent(m[1]);
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 // ── Module-level cache for snapshot-item listings ──────────────────
 // A completed snapshot is immutable once written, so once we've
@@ -138,6 +164,12 @@ interface Props {
   onToggleItem: (id: string) => void;
   onSelectAll: (ids: string[], checked: boolean) => void;
   overrideSnapshotId?: string;
+  /** Fires whenever the VM view's own selection state changes (the
+   *  Volumes tab's right-pane file checkboxes, and the active tab).
+   *  The parent uses the count to enable / disable the toolbar
+   *  Download button for Volumes — the global `selectedItems` Set
+   *  can't track file paths since those aren't SnapshotItems. */
+  onSelectionInfoChange?: (info: { tab: string; count: number }) => void;
 }
 
 /** Compact label/value row reused by every detail panel. */
@@ -174,6 +206,33 @@ const VmFileIcon = (
     <path d="M10.5 0.5L10.8536 0.146447L10.7071 0H10.5V0.5ZM13.5 3.5H14V3.29289L13.8536 3.14645L13.5 3.5ZM12.5 14H2.5V15H12.5V14ZM2 13.5V1.5H1V13.5H2ZM2.5 1H10.5V0H2.5V1ZM13 3.5V13.5H14V3.5H13ZM10.1464 0.853553L13.1464 3.85355L13.8536 3.14645L10.8536 0.146447L10.1464 0.853553ZM2.5 14C2.22386 14 2 13.7761 2 13.5H1C1 14.3284 1.67157 15 2.5 15V14ZM12.5 15C13.3284 15 14 14.3284 14 13.5H13C13 13.7761 12.7761 14 12.5 14V15ZM2 1.5C2 1.22386 2.22386 1 2.5 1V0C1.67157 0 1 0.671574 1 1.5H2Z" />
   </svg>
 );
+
+/** Map a volume SnapshotItem to its display name + file system, the way
+ *  Azure Portal labels them. Handles three row shapes:
+ *    1. New raw row      — metadata.volume_kind === 'raw'
+ *    2. New filesystem   — metadata.volume_kind === 'filesystem'
+ *    3. Legacy row       — no volume_kind; infer from os_type / disk_type
+ *  Returns a `{ name, fs }` tuple so the left rail shows e.g.
+ *  "Windows (C:) / NTFS" instead of the raw disk SnapshotItem name. */
+function volumeDisplayName(v: any): { name: string; fs: string } {
+  const m = v?.metadata || {};
+  const kind = (m.volume_kind || '').toLowerCase();
+  const osType = (m.os_type || '').toLowerCase();
+
+  if (kind === 'filesystem') {
+    const fs = (m.file_system || '').toUpperCase();
+    const mount = m.mount_point || (fs === 'NTFS' ? 'C:\\' : '/');
+    return { name: fs === 'NTFS' ? 'Windows (C:)' : '/ (root)', fs: fs || (mount === '/' ? 'ext4' : '') };
+  }
+  if (kind === 'raw') {
+    return { name: 'Raw block device', fs: '' };
+  }
+  // Legacy row — infer. OS disks get the filesystem label; data disks
+  // fall through to raw since we don't know their mount point.
+  if (osType === 'windows') return { name: 'Windows (C:)', fs: 'NTFS' };
+  if (osType === 'linux')   return { name: '/ (root)', fs: 'ext4' };
+  return { name: 'Raw block device', fs: '' };
+}
 
 function boolLabel(v: any): string {
   if (v === true || v === 'Enabled' || v === 'enabled') return 'Enabled';
@@ -280,7 +339,7 @@ function VirtualMachinePane({ item, cfg }: { item: any; cfg: any }) {
 
 /** ——— Shared two-panel layout for Volumes / Disks / NICs / Public IPs ——— */
 function TwoPane({
-  items, selectedItems, onToggleItem, renderRow, renderDetail, leftHeader,
+  items, selectedItems, onToggleItem, renderRow, renderDetail, leftHeader, showCheckbox = true,
 }: {
   items: any[];
   selectedItems: Set<string>;
@@ -288,6 +347,11 @@ function TwoPane({
   renderRow: (item: any) => React.ReactNode;
   renderDetail: (item: any) => React.ReactNode;
   leftHeader?: React.ReactNode;
+  /** When false, the left rail renders as a plain selector list —
+   *  no per-row checkbox. Volumes uses this because the actual
+   *  selection happens inside the right-hand file browser, not on
+   *  the volume itself. */
+  showCheckbox?: boolean;
 }) {
   const [activeId, setActiveId] = useState<string | null>(items[0]?.id || null);
   useEffect(() => { if (items.length && !items.find(i => i.id === activeId)) setActiveId(items[0]?.id || null); }, [items, activeId]);
@@ -306,12 +370,14 @@ function TwoPane({
               className={`vm-left-row ${it.id === activeId ? 'active' : ''}`}
               onClick={() => setActiveId(it.id)}
             >
-              <input
-                type="checkbox"
-                checked={selectedItems.has(it.id)}
-                onClick={e => e.stopPropagation()}
-                onChange={() => onToggleItem(it.id)}
-              />
+              {showCheckbox && (
+                <input
+                  type="checkbox"
+                  checked={selectedItems.has(it.id)}
+                  onClick={e => e.stopPropagation()}
+                  onChange={() => onToggleItem(it.id)}
+                />
+              )}
               <div className="vm-left-row-body">{renderRow(it)}</div>
             </div>
           ))
@@ -497,7 +563,27 @@ function PublicIpDetail({ item, cfg }: { item: any; cfg: any }) {
  *  Get-ChildItem / ls on the source VM via Azure Run Command and
  *  returns the entries at `path`. Clicking a folder re-fetches with
  *  the new path; the search box filters the current folder. */
-function VolumeDetail({ item }: { item: any }) {
+/** Everything the top-level download() handler needs to know about
+ *  what the user has selected in the Volumes file browser. VolumeDetail
+ *  writes to this ref whenever path / entries / selection changes. */
+interface VolumeSelectionState {
+  volumeItemId: string;
+  path: string;
+  isWindows: boolean;
+  selected: Array<{ name: string; isDirectory: boolean }>;
+}
+
+function VolumeDetail({
+  item, selectionRef, onSelectionCountChange,
+}: {
+  item: any;
+  selectionRef: React.MutableRefObject<VolumeSelectionState | null>;
+  /** Reactive counterpart to selectionRef — fires on every change so
+   *  the parent can re-render components (like the toolbar Download
+   *  button) whose enablement depends on the current file-selection
+   *  count. Refs alone can't drive re-renders. */
+  onSelectionCountChange?: (count: number) => void;
+}) {
   const meta = item?.metadata || {};
   const os = (meta.os_type || '').toLowerCase();
   // Legacy volume rows (captured before the backup handler emitted
@@ -517,6 +603,7 @@ function VolumeDetail({ item }: { item: any }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [q, setQ] = useState('');
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const isWindows = fsType === 'NTFS';
 
   // Reset state when the user picks a different volume so we don't
@@ -526,7 +613,35 @@ function VolumeDetail({ item }: { item: any }) {
     setEntries([]);
     setError('');
     setQ('');
+    setChecked(new Set());
   }, [item?.id, defaultPath]);
+
+  // Clear selection when the user navigates to a different folder —
+  // the names only mean anything inside the folder that's currently
+  // displayed, so carrying them across folder boundaries is wrong.
+  useEffect(() => { setChecked(new Set()); }, [path]);
+
+  // Keep the parent's ref in sync so its download() can build the
+  // right payload without re-deriving any of this state, and emit
+  // the count so parent state (toolbar enablement) can re-render.
+  useEffect(() => {
+    if (!item?.id || isRaw) {
+      selectionRef.current = null;
+      onSelectionCountChange?.(0);
+      return;
+    }
+    const sel = Array.from(checked)
+      .map(name => entries.find(e => e.name === name))
+      .filter(Boolean)
+      .map(e => ({ name: e!.name, isDirectory: !!e!.isDirectory }));
+    selectionRef.current = {
+      volumeItemId: item.id,
+      path,
+      isWindows,
+      selected: sel,
+    };
+    onSelectionCountChange?.(sel.length);
+  }, [item?.id, path, isRaw, isWindows, checked, entries, selectionRef, onSelectionCountChange]);
 
   useEffect(() => {
     if (isRaw || !item?.id) return;
@@ -610,7 +725,19 @@ function VolumeDetail({ item }: { item: any }) {
               onClick={() => e.isDirectory && openFolder(e.name)}
               style={{ cursor: e.isDirectory ? 'pointer' : 'default' }}
             >
-              <input type="checkbox" onClick={ev => ev.stopPropagation()} />
+              <input
+                type="checkbox"
+                checked={checked.has(e.name)}
+                onClick={ev => ev.stopPropagation()}
+                onChange={() => {
+                  setChecked(prev => {
+                    const next = new Set(prev);
+                    if (next.has(e.name)) next.delete(e.name);
+                    else next.add(e.name);
+                    return next;
+                  });
+                }}
+              />
               <span className={`vm-vol-ico ${e.isDirectory ? 'vm-vol-ico-folder' : 'vm-vol-ico-file'}`}>
                 {e.isDirectory ? VmFolderIcon : VmFileIcon}
               </span>
@@ -623,9 +750,10 @@ function VolumeDetail({ item }: { item: any }) {
   );
 }
 
-export default function AzureVmView({
+const AzureVmView = forwardRef<AzureVmViewHandle, Props>(function AzureVmView({
   resourceId, snapshots, selectedItems, onToggleItem, onSelectAll, overrideSnapshotId,
-}: Props) {
+  onSelectionInfoChange,
+}, ref) {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTab = (searchParams.get('tab') || '') as VmTab;
   const activeTab: VmTab = (['virtual_machine','volumes','disks','network_interfaces','public_ips'] as VmTab[])
@@ -635,6 +763,19 @@ export default function AzureVmView({
     next.set('tab', tab);
     setSearchParams(next, { replace: true });
   };
+
+  // Populated by VolumeDetail whenever the Volumes-tab state (path
+  // / entries / checked) changes. The imperative download() handle
+  // below reads from it so the parent's toolbar Download button
+  // works without lifting this state all the way up the tree.
+  const volumeSelectionRef = useRef<VolumeSelectionState | null>(null);
+  // Stash the active VM config item so download() can snapshot it
+  // as JSON without re-running the items query.
+  const configItemRef = useRef<any>(null);
+  // Count of files / folders ticked in the right-pane file browser.
+  // Stored in state (not just a ref) so the parent gets re-rendered
+  // when it changes — drives the toolbar Download button enablement.
+  const [volSelectionCount, setVolSelectionCount] = useState(0);
 
   const latestSnapshot = useMemo(() => {
     const completed = snapshots
@@ -685,6 +826,96 @@ export default function AzureVmView({
   const allChecked = activeList.length > 0 && activeList.every(i => selectedItems.has(i.id));
   const toggleAll = () => onSelectAll(activeList.map(i => i.id), !allChecked);
 
+  useEffect(() => { configItemRef.current = configItem; }, [configItem]);
+
+  // Tell the parent how many "items" are logically selected on the
+  // current tab so it can enable the toolbar Download button. On the
+  // Volumes tab that's the file-browser checkbox count; everywhere
+  // else the implicit target is the active row (count = 1) so the
+  // button stays enabled.
+  useEffect(() => {
+    if (!onSelectionInfoChange) return;
+    const count = activeTab === 'volumes' ? volSelectionCount : 1;
+    onSelectionInfoChange({ tab: activeTab, count });
+  }, [activeTab, volSelectionCount, onSelectionInfoChange]);
+
+  // Imperative download handler — the parent Recovery page's toolbar
+  // Download button calls this. Behaviour depends on the active tab:
+  //   virtual_machine  → download the live VM config as JSON
+  //   volumes          → POST {paths} to the backend, browser saves
+  //                     the returned file (single) or ZIP (multi/dir)
+  //   disks/nics/pips  → download the live ARM payload of the active
+  //                     row as JSON (parity with the VM tab).
+  useImperativeHandle(ref, () => ({
+    canDownload: () => {
+      if (activeTab === 'virtual_machine') return !!configItem;
+      if (activeTab === 'volumes') {
+        const s = volumeSelectionRef.current;
+        return !!(s && s.selected.length > 0);
+      }
+      return activeList.length > 0;
+    },
+    download: async () => {
+      if (activeTab === 'virtual_machine') {
+        if (!configItem) return;
+        // Pull the live ARM snapshot so the JSON matches what the
+        // Virtual machine tab is rendering (same endpoint the pane
+        // uses for its fields).
+        const token = localStorage.getItem('access_token');
+        const res = await fetch(`${API.BASE_URL}/snapshot-items/${configItem.id}/azure-vm-detail`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const payload = res.ok ? await res.json() : (configItem.metadata || {});
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        _triggerBlobDownload(blob, `${configItem.name || 'vm'}-config.json`, null);
+        return;
+      }
+      if (activeTab === 'volumes') {
+        const s = volumeSelectionRef.current;
+        if (!s || s.selected.length === 0) return;
+        const sep = s.isWindows ? '\\' : '/';
+        const base = s.path.endsWith(sep) ? s.path : `${s.path}${sep}`;
+        const paths = s.selected.map(x => `${base}${x.name}`);
+        const token = localStorage.getItem('access_token');
+        const res = await fetch(
+          `${API.BASE_URL}/snapshot-items/${s.volumeItemId}/vm-volume-download`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ paths }),
+          },
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        const fallback = s.selected.length === 1 && !s.selected[0].isDirectory
+          ? s.selected[0].name
+          : 'volume-files.zip';
+        _triggerBlobDownload(blob, fallback, res.headers.get('content-disposition'));
+        return;
+      }
+      // disks / network_interfaces / public_ips — dump the active
+      // row's live ARM JSON. Uses the activeId cookie via TwoPane's
+      // local state, so we just grab the first checkbox-selected
+      // item (same semantic the backup-item list uses).
+      const checkedIds = activeList.filter(i => selectedItems.has(i.id));
+      const first = checkedIds[0] || activeList[0];
+      if (!first) return;
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`${API.BASE_URL}/snapshot-items/${first.id}/azure-vm-detail`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const payload = res.ok ? await res.json() : (first.metadata || {});
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      _triggerBlobDownload(blob, `${first.name || activeTab}.json`, null);
+    },
+  }), [activeTab, configItem, activeList, selectedItems]);
+
   return (
     <>
       <div className="content-type-tabs">
@@ -726,14 +957,24 @@ export default function AzureVmView({
           items={volumes}
           selectedItems={selectedItems}
           onToggleItem={onToggleItem}
+          showCheckbox={false}
           leftHeader={<div className="vm-left-cols"><span>Name</span><span>File System</span></div>}
-          renderRow={v => (
-            <div className="vm-left-row-inline">
-              <span className="vm-left-row-title">{v.name}</span>
-              <span className="vm-left-row-fs">{v.metadata?.file_system || ''}</span>
-            </div>
+          renderRow={v => {
+            const d = volumeDisplayName(v);
+            return (
+              <div className="vm-left-row-inline">
+                <span className="vm-left-row-title">{d.name}</span>
+                <span className="vm-left-row-fs">{d.fs}</span>
+              </div>
+            );
+          }}
+          renderDetail={v => (
+            <VolumeDetail
+              item={v}
+              selectionRef={volumeSelectionRef}
+              onSelectionCountChange={setVolSelectionCount}
+            />
           )}
-          renderDetail={v => <VolumeDetail item={v} />}
         />
       ) : activeTab === 'network_interfaces' ? (
         <TwoPane
@@ -761,4 +1002,6 @@ export default function AzureVmView({
       )}
     </>
   );
-}
+});
+
+export default AzureVmView;

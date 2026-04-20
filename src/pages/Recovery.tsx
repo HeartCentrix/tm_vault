@@ -10,7 +10,7 @@ import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import AzureDbRecoverModal from '../components/AzureDbRecoverModal';
 import AzurePgRecoverModal from '../components/AzurePgRecoverModal';
-import AzureVmView from '../components/AzureVmView';
+import AzureVmView, { type AzureVmViewHandle } from '../components/AzureVmView';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import RecoveryToolbar from '../components/RecoveryToolbar';
@@ -5597,6 +5597,20 @@ export default function Recovery() {
 
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  // Imperative handle to the Azure VM view so the toolbar Download
+  // button can dispatch to its per-tab download logic (config JSON
+  // on the Virtual machine tab, file/ZIP on Volumes, etc).
+  const vmViewRef = useRef<AzureVmViewHandle | null>(null);
+  // Selection info reported by the VM view — the Volumes tab tracks
+  // file-browser checkbox counts here since those aren't
+  // SnapshotItems and can't live in `selectedItems`.
+  const [vmSelectionInfo, setVmSelectionInfo] = useState<{ tab: string; count: number } | null>(null);
+  // True while a non-modal download (VM content) is in flight so we
+  // can gray out the toolbar Download button. Downloads that go
+  // through DownloadModal don't need this — the modal itself owns
+  // the click-once-per-download contract.
+  const [inlineDownloadRunning, setInlineDownloadRunning] = useState(false);
+  const [inlineDownloadError, setInlineDownloadError] = useState<string | null>(null);
 
   const handleItemSelect = async (item: RecoveryItem) => {
     setSelectedItem(item);
@@ -5680,6 +5694,29 @@ export default function Recovery() {
     // narrows what lands in the export.
     if (activeContentType === 'calendar' && selectedItems.size === 0 && filteredCalendarIds.length > 0) {
       setSelectedItems(new Set(filteredCalendarIds));
+    }
+    // Reset any previous inline error so the user gets a clean slate
+    // for each new click.
+    setInlineDownloadError(null);
+    // Azure VM downloads don't go through the standard export modal
+    // — the VM view has a per-tab handler that either serialises the
+    // live ARM JSON or zips up Volume files via Run Command. The
+    // toolbar button stays disabled via `inlineDownloadRunning`
+    // while the promise is in-flight so the user can't double-click
+    // and kick off the same read twice.
+    if (selectedResource?.kind === 'azure_vm' && vmViewRef.current) {
+      if (inlineDownloadRunning) return;
+      setInlineDownloadRunning(true);
+      setInlineDownloadError(null);
+      vmViewRef.current.download()
+        .catch(e => {
+          console.error('VM download failed:', e);
+          setInlineDownloadError(String(e?.message || e).slice(0, 200));
+        })
+        .finally(() => {
+          setInlineDownloadRunning(false);
+        });
+      return;
     }
     setDownloadModalOpen(true);
   };
@@ -6011,9 +6048,18 @@ export default function Recovery() {
                 // user ticking anything. Same rationale for the VM
                 // Virtual machine tab (single config blob).
                 const vmTab = isAzureVm ? (rawTab || 'virtual_machine') : '';
+                // VM Virtual-machine / Disks / NICs / Public-IPs all
+                // have an implicit download target (the active row's
+                // ARM JSON) so the user doesn't need to tick anything
+                // in the left rail. Volumes needs an explicit file /
+                // folder pick IN THE RIGHT PANE — the AzureVmView
+                // reports that count here via onSelectionInfoChange.
+                const vmVolumesHasPick = isAzureVm && vmTab === 'volumes'
+                  && (vmSelectionInfo?.count ?? 0) > 0;
                 const allowEmptyDownload =
                   (isAzureDb && azureDbTab === 'configuration') ||
-                  (isAzureVm && vmTab === 'virtual_machine');
+                  (isAzureVm && vmTab !== 'volumes') ||
+                  vmVolumesHasPick;
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
                 const allowEmptyRecover = isAzureDb || isAzureVm;
@@ -6025,7 +6071,8 @@ export default function Recovery() {
                     onDownload={handleDownload}
                     onRecover={handleRecover}
                     selectedCount={selectedItems.size}
-                    downloadError={downloadError}
+                    downloadError={inlineDownloadError || downloadError}
+                    downloadDisabled={inlineDownloadRunning}
                     allowEmptyDownload={allowEmptyDownload}
                     allowEmptyRecover={allowEmptyRecover}
                     searchValue={showSearch ? searchQuery : undefined}
@@ -6095,6 +6142,7 @@ export default function Recovery() {
                    interfaces / Public IP addresses. Items filtered from
                    the latest snapshot by AZURE_VM_* item_type. */
                 <AzureVmView
+                  ref={vmViewRef}
                   resourceId={selectedResource.id}
                   snapshots={snapshots}
                   selectedItems={selectedItems}
@@ -6104,6 +6152,7 @@ export default function Recovery() {
                     else setSelectedItems(new Set());
                   }}
                   overrideSnapshotId={selectedSnapshotId}
+                  onSelectionInfoChange={setVmSelectionInfo}
                 />
               ) : (selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql' || selectedResource.kind === 'azure_postgresql_single') ? (
                 /* Azure SQL + PostgreSQL: Configuration / Data / Schema
