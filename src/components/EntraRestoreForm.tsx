@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Entra restore sub-form mounted inside RestoreModal. Owns the
@@ -38,6 +38,19 @@ export function EntraRestoreForm({
   );
   const [includeGroupMembership, setGroupMembers] = useState(true);
   const [includeAuMembership, setAuMembers] = useState(true);
+
+  // Emit the initial selection exactly once so the parent always has a
+  // populated payload even if the user clicks Recover without touching
+  // the form.
+  useEffect(() => {
+    onChange({
+      recoverMode: 'selected',
+      sections: RESTORABLE_SECTIONS.map((s) => s.id),
+      includeGroupMembership: true,
+      includeAuMembership: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const emit = (next: Partial<EntraRestoreSelection>) => {
     onChange({
