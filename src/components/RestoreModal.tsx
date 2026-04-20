@@ -169,6 +169,20 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
     };
   }, [isOpen, tenantId, destination, resourceKind]);
 
+  // Reset per-submission state each time the modal opens. The component
+  // stays mounted across close/open cycles (we render null when closed),
+  // so success / error / loading / entraSelection would otherwise leak
+  // from the previous restore and show the "Restore job queued" screen
+  // on re-open instead of a fresh form.
+  useEffect(() => {
+    if (isOpen) {
+      setSuccess(null);
+      setError(null);
+      setLoading(false);
+      setEntraSelection(null);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const toggleWorkload = (w: Workload) => {

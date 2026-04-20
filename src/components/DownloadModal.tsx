@@ -125,6 +125,19 @@ export function DownloadModal({
     }
   }, [isOpen, workloads, scope, snapshotIds]);
 
+  // Reset per-submission state on each open — component stays mounted
+  // across close/open cycles, so error / downloading / progress / the
+  // Entra selection would otherwise leak from the previous run.
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setDownloading(false);
+      setProgressPct(0);
+      setElapsedSec(0);
+      setEntraSelection(null);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const formats = EXPORT_FORMATS[contentType] || [];
