@@ -9,6 +9,7 @@ import { type RecoveryItem } from '../services/recovery';
 import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import AzureDbRecoverModal from '../components/AzureDbRecoverModal';
+import AzureVmView from '../components/AzureVmView';
 import { DownloadModal } from '../components/DownloadModal';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import RecoveryToolbar from '../components/RecoveryToolbar';
@@ -5900,15 +5901,21 @@ export default function Recovery() {
                 const rawTab = searchParams.get('tab') || '';
                 const azureDbTab = (rawTab === 'database' || rawTab === 'schema') ? rawTab : 'configuration';
                 const showForAzureDb = isAzureDb && azureDbTab === 'configuration';
-                const showSearch = showForM365 || showForKind || showForAzureDb;
+                // Azure VM view manages its own per-tab layouts; the
+                // global search doesn't apply anywhere inside it.
+                const isAzureVm = kind === 'azure_vm';
+                const showSearch = !isAzureVm && (showForM365 || showForKind || showForAzureDb);
                 // Azure DB Configuration has a single implicit target
                 // (the config JSON) — let Download work without the
-                // user ticking anything. Everywhere else the user has
-                // to select first.
-                const allowEmptyDownload = isAzureDb && azureDbTab === 'configuration';
-                // Azure DB Recover always rebuilds the whole database,
+                // user ticking anything. Same rationale for the VM
+                // Virtual machine tab (single config blob).
+                const vmTab = isAzureVm ? (rawTab || 'virtual_machine') : '';
+                const allowEmptyDownload =
+                  (isAzureDb && azureDbTab === 'configuration') ||
+                  (isAzureVm && vmTab === 'virtual_machine');
+                // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
-                const allowEmptyRecover = isAzureDb;
+                const allowEmptyRecover = isAzureDb || isAzureVm;
                 return (
                   <RecoveryToolbar
                     snapshots={snapshots}
@@ -5981,6 +5988,21 @@ export default function Recovery() {
                     if (checked) setSelectedItems(new Set(ids));
                     else setSelectedItems(new Set());
                   }}
+                />
+              ) : selectedResource.kind === 'azure_vm' ? (
+                /* Azure VM: Virtual machine / Volumes / Disks / Network
+                   interfaces / Public IP addresses. Items filtered from
+                   the latest snapshot by AZURE_VM_* item_type. */
+                <AzureVmView
+                  resourceId={selectedResource.id}
+                  snapshots={snapshots}
+                  selectedItems={selectedItems}
+                  onToggleItem={toggleSelectItem}
+                  onSelectAll={(ids, checked) => {
+                    if (checked) setSelectedItems(new Set(ids));
+                    else setSelectedItems(new Set());
+                  }}
+                  overrideSnapshotId={selectedSnapshotId}
                 />
               ) : (selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql' || selectedResource.kind === 'azure_postgresql_single') ? (
                 /* Azure SQL + PostgreSQL: Configuration / Data / Schema
