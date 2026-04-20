@@ -24,6 +24,12 @@ export interface RestoreRequest {
   targetFolder?: string;
   overwrite?: boolean;
   workloads?: string[];
+  entraSections?: string[];
+  format?: 'csv' | 'json';
+  includeNestedDetail?: boolean;
+  recoverMode?: 'selected' | 'directory';
+  includeGroupMembership?: boolean;
+  includeAuMembership?: boolean;
 }
 
 export interface RestoreResponse {
