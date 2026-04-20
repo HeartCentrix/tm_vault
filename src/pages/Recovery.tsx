@@ -6529,6 +6529,7 @@ export default function Recovery() {
         // resourceId + threadPath are forwarded so the modal can scope
         // the per-thread chat export hitting /exports/chat.
         resourceId={selectedResource?.id}
+        resourceKind={selectedResource?.kind}
         threadPath={threadPath}
       />
     </>
