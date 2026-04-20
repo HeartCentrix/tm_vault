@@ -57,9 +57,23 @@ export interface RecoveryItemListResponse {
 }
 
 export interface RecoveryRequest {
-  restoreType: 'IN_PLACE' | 'CROSS_USER' | 'EXPORT_ZIP' | 'DOWNLOAD';
+  restoreType: 'IN_PLACE' | 'CROSS_USER' | 'CROSS_RESOURCE' | 'EXPORT_ZIP' | 'DOWNLOAD';
   snapshotIds: string[];
   itemIds: string[];
+  // Files folder-select v2 — folders ticked by the user; server expands
+  // via shared.folder_resolver on the `folder_path` index.
+  folderPaths?: string[];
+  // Files folder-select v2 — files un-ticked inside a ticked folder;
+  // server subtracts them from the resolver output.
+  excludedItemIds?: string[];
+  // IN_PLACE restore: OVERWRITE replaces in place, SEPARATE_FOLDER
+  // lands under `Restored by TM/{date}/…`. Required when
+  // restoreType === 'IN_PLACE' via the /export-or-restore endpoint.
+  conflictMode?: 'OVERWRITE' | 'SEPARATE_FOLDER';
+  // CROSS_RESOURCE restore: target resource must be in the same
+  // workload family (ONEDRIVE / SHAREPOINT_SITE / TEAMS_CHANNEL /
+  // M365_GROUP / USER_ONEDRIVE) and same tenant.
+  targetResourceId?: string;
   targetUserId?: string;
   exportFormat?: string;
   workloads?: string[];
@@ -146,6 +160,35 @@ export const RecoveryService = {
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('Failed to trigger export');
+    return res.json();
+  },
+
+  /**
+   * Files folder-select v2 unified entry point — download or restore for
+   * OneDrive / SharePoint / Teams Files / Groups Files. Accepts
+   * `folderPaths` so the server resolves descendants via the
+   * `folder_path` index instead of the UI materialising item ids.
+   * Body is validated server-side (see files_export_or_restore in
+   * services/job-service/main.py).
+   */
+  async exportOrRestore(
+    resourceId: string,
+    request: RecoveryRequest,
+  ): Promise<{ jobId: string; status: string }> {
+    const res = await fetch(API.RESOURCES.EXPORT_OR_RESTORE(resourceId), {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) {
+      const err = new Error(`Export/Restore failed: ${res.status}`) as Error & {
+        status?: number;
+        body?: unknown;
+      };
+      err.status = res.status;
+      try { err.body = await res.json(); } catch { /* no body */ }
+      throw err;
+    }
     return res.json();
   },
 
