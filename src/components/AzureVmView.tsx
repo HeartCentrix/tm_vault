@@ -6,6 +6,38 @@ import { API } from '../config/api';
 import type { SnapshotItem as SnapshotVersion } from '../services/snapshot';
 import './AzureVmView.css';
 
+// ── Module-level cache for snapshot-item listings ──────────────────
+// A completed snapshot is immutable once written, so once we've
+// pulled its items (potentially thousands of rows on a VM with many
+// disks/NICs) we can hold them for the rest of the session without
+// re-hitting the snapshot-service. Keyed on snapshot id so switching
+// between multiple VMs still works. 10-min soft TTL as a backstop
+// against a long-running tab that drifts off a new backup landing.
+const _ITEMS_TTL_MS = 10 * 60 * 1000;
+const _itemsCache: Map<string, { items: any[]; expiresAt: number; inflight?: Promise<any[]> }> = new Map();
+
+function _cachedListItems(snapshotId: string): Promise<any[]> {
+  const now = Date.now();
+  const hit = _itemsCache.get(snapshotId);
+  if (hit && hit.expiresAt > now) return Promise.resolve(hit.items);
+  if (hit?.inflight) return hit.inflight;
+  const promise = SnapshotService.listSnapshotFiles(snapshotId, 1, 5000)
+    .then(data => {
+      const items = data.content || [];
+      _itemsCache.set(snapshotId, { items, expiresAt: Date.now() + _ITEMS_TTL_MS });
+      return items;
+    })
+    .catch(err => {
+      // Don't poison the cache on transient failures — just let the
+      // next caller retry. Drop the inflight entry so we don't leave
+      // a rejected promise behind.
+      _itemsCache.delete(snapshotId);
+      throw err;
+    });
+  _itemsCache.set(snapshotId, { items: [], expiresAt: 0, inflight: promise });
+  return promise;
+}
+
 /** Pull the live ARM payload for a given VM-flavored SnapshotItem.
  *  Returns null on any failure so callers can render a muted state
  *  without throwing. Cached for the lifetime of the component via
@@ -32,6 +64,50 @@ function useLiveDetail(itemId: string | null | undefined) {
     fetchLiveDetail(itemId).then(setData).finally(() => setLoading(false));
   }, [itemId]);
   return { data, loading };
+}
+
+// ── Module-level cache for volume file listings ────────────────────
+// Each entry is `(volumeItemId, path) → { items, error, expiresAt }`.
+// The backend already caches for 30s but every hit still costs a
+// full gateway hop; folding that into the browser saves the round
+// trip entirely when the user backs out of a folder. Inflight dedup
+// guarantees simultaneous requests share a single fetch.
+type VolEntry = { items: any[]; error: string; expiresAt: number; inflight?: Promise<VolEntry> };
+const _VOL_TTL_MS = 5 * 60 * 1000;
+const _volCache: Map<string, VolEntry> = new Map();
+const _volKey = (id: string, path: string) => `${id}::${path}`;
+
+async function _cachedVolumeFiles(itemId: string, path: string): Promise<VolEntry> {
+  const key = _volKey(itemId, path);
+  const now = Date.now();
+  const hit = _volCache.get(key);
+  if (hit && hit.expiresAt > now) return hit;
+  if (hit?.inflight) return hit.inflight;
+
+  const token = localStorage.getItem('access_token');
+  const inflight = (async (): Promise<VolEntry> => {
+    try {
+      const res = await fetch(
+        `${API.BASE_URL}/snapshot-items/${itemId}/vm-volume-files?path=${encodeURIComponent(path)}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const entry: VolEntry = {
+        items: Array.isArray(data.items) ? data.items : [],
+        error: data.error || '',
+        expiresAt: Date.now() + _VOL_TTL_MS,
+      };
+      _volCache.set(key, entry);
+      return entry;
+    } catch (e: any) {
+      _volCache.delete(key);
+      throw e;
+    }
+  })();
+
+  _volCache.set(key, { items: [], error: '', expiresAt: 0, inflight });
+  return inflight;
 }
 
 /**
@@ -455,26 +531,25 @@ function VolumeDetail({ item }: { item: any }) {
   useEffect(() => {
     if (isRaw || !item?.id) return;
     let cancelled = false;
-    setLoading(true);
-    setError('');
-    (async () => {
-      try {
-        const token = localStorage.getItem('access_token');
-        const res = await fetch(
-          `${API.BASE_URL}/snapshot-items/${item.id}/vm-volume-files?path=${encodeURIComponent(path)}`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+    // Warm-cache path: render the cached folder instantly, no spinner.
+    const hit = _volCache.get(_volKey(item.id, path));
+    const warm = hit && hit.expiresAt > Date.now() ? hit : null;
+    if (warm) {
+      setEntries(warm.items);
+      setError(warm.error);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setError('');
+    }
+    _cachedVolumeFiles(item.id, path)
+      .then(entry => {
         if (cancelled) return;
-        if (data.error) setError(data.error);
-        setEntries(Array.isArray(data.items) ? data.items : []);
-      } catch (e: any) {
-        if (!cancelled) { setError(String(e?.message || e)); setEntries([]); }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+        setEntries(entry.items);
+        setError(entry.error);
+      })
+      .catch(e => { if (!cancelled) { setError(String(e?.message || e)); setEntries([]); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [item?.id, path, isRaw]);
 
@@ -577,11 +652,21 @@ export default function AzureVmView({
 
   useEffect(() => {
     if (!latestSnapshot) { setItems([]); return; }
-    setLoading(true);
-    SnapshotService.listSnapshotFiles(latestSnapshot.id, 1, 5000)
-      .then(data => setItems(data.content || []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    // Only show the spinner for a real network fetch; a warm cache
+    // entry resolves synchronously and we'd just flash a spinner.
+    const hit = _itemsCache.get(latestSnapshot.id);
+    const cached = hit && hit.expiresAt > Date.now() ? hit.items : null;
+    if (cached) {
+      setItems(cached);
+    } else {
+      setLoading(true);
+    }
+    _cachedListItems(latestSnapshot.id)
+      .then(list => { if (!cancelled) setItems(list); })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [latestSnapshot?.id]);
 
   const byType = (suffix: string) => items.filter(i => (i.itemType || '').toUpperCase() === `AZURE_VM_${suffix}`);
