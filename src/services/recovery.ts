@@ -70,6 +70,10 @@ export interface RecoveryRequest {
   // Optional folder filter for USER_CONTACT exports. Omit (or empty) to
   // include all contact folders. Backend filters items by parentFolderName.
   contactFolders?: string[];
+  // Entra-specific export fields (entra_directory resourceKind only)
+  entraSections?: string[];
+  format?: string;
+  includeNestedDetail?: boolean;
 }
 
 export interface RecoveryResponse {
