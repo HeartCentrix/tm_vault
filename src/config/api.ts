@@ -199,4 +199,21 @@ export const API = {
     HISTORY_DETAIL: (id: string) => `${API_URL}/reports/history/${id}`,
     SEND: `${API_URL}/reports/generate`,
   },
+
+  // Admin: Storage backend + toggle. These live on the gateway itself at
+  // /api/admin/storage/* (no /v1 segment) — derive the base by stripping
+  // the trailing /v1 from API_URL so this works with custom deployments.
+  ADMIN_STORAGE: (() => {
+    const base = API_URL.replace(/\/v1\/?$/, '');
+    const root = `${base}/admin/storage`;
+    return {
+      STATUS: `${root}/status`,
+      BACKENDS: `${root}/backends`,
+      TOGGLE: `${root}/toggle`,
+      EVENTS: `${root}/events`,
+      EVENT_DETAIL: (id: string) => `${root}/events/${id}`,
+      EVENT_STREAM: (id: string) => `${root}/events/${id}/stream`,
+      ABORT: (id: string) => `${root}/toggle/${id}/abort`,
+    };
+  })(),
 };
