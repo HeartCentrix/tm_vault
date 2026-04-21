@@ -205,27 +205,57 @@ export default function Overview() {
     const token = localStorage.getItem('access_token');
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-    Promise.all([
-      fetch(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), { headers }).then(r => r.json()),
-      fetch(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), { headers }).then(r => r.json()),
-      fetch(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), { headers }).then(r => r.json()),
-      fetch(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), { headers }).then(r => r.json()),
-      getActivities({
-        tenantId,
-        serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
-        page: 1,
-        size: 10,
-      }),
-    ])
-      .then(([backupData, protectionData, data24h, data7d, activityData]) => {
-        setBackupSize(backupData);
-        setProtection(protectionData);
-        setStatus24h(data24h);
-        setStatus7d(data7d);
+    let cancelled = false;
+
+    // Initial fetch + every-N-seconds refresh for the Recent Activity
+    // table. Dashboard aggregates (backup size, protection, 24h / 7d
+    // rollups) only need to load once per mount; the activity feed is
+    // the only thing that changes second-to-second when backups run.
+    const loadAll = async (withAggregates: boolean) => {
+      try {
+        if (withAggregates) {
+          const [backupData, protectionData, data24h, data7d] = await Promise.all([
+            fetch(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), { headers }).then(r => r.json()),
+            fetch(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), { headers }).then(r => r.json()),
+            fetch(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), { headers }).then(r => r.json()),
+            fetch(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), { headers }).then(r => r.json()),
+          ]);
+          if (cancelled) return;
+          setBackupSize(backupData);
+          setProtection(protectionData);
+          setStatus24h(data24h);
+          setStatus7d(data7d);
+        }
+        const activityData = await getActivities({
+          tenantId,
+          serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
+          page: 1,
+          size: 10,
+        });
+        if (cancelled) return;
         setActivities(activityData.items || []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled && withAggregates) setLoading(false);
+      }
+    };
+
+    loadAll(true);
+    const poll = setInterval(() => loadAll(false), 15_000);
+
+    // Refresh immediately when the tab becomes visible again so the
+    // user isn't looking at stale rows after alt-tabbing.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadAll(false);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [tenantId, serviceType]);
 
   const hasFailures24h = (status24h?.failures || 0) > 0;

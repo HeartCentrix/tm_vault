@@ -1985,12 +1985,43 @@ function SharePointView({
   }, [items]);
 
   // Group by folderPath → what shows at the current drill-down level.
-  const { displayRows, displayFolders } = useMemo(() => {
+  //
+  // Rendering matches the AFI-style Site tab: the root level presents
+  // each SharePoint library/list as a folder row (appdata, appfiles,
+  // Documents, Site Pages, Style Library, ...) with a Modified date;
+  // drilling into one reveals its files and nested folders. SP list-
+  // container rows (item_type = SHAREPOINT_LIST) carry the list's
+  // name + last_modified, so we promote THEM into the folder rows
+  // at root instead of collecting folder names from deeper items.
+  //
+  // `folderMeta` carries the metadata we need to render the row
+  // (name, last_modified) so the table can show dates next to each
+  // library without a separate lookup pass.
+  const { displayRows, displayFolders, folderMeta } = useMemo(() => {
     const prefix = spPrefix + (spPath.length ? '/' + spPath.join('/') : '');
     const files: any[] = [];
     const folderSet = new Set<string>();
+    const meta: Record<string, { lastModified?: string; source?: 'list' | 'derived' }> = {};
+
+    // At the root of the Site tab, SHAREPOINT_LIST rows ARE the visible
+    // folders. Seed folderSet with their display names first so every
+    // library shows up even if it has zero captured items yet.
+    if (spPath.length === 0) {
+      for (const it of items) {
+        if ((it.itemType || '') !== 'SHAREPOINT_LIST') continue;
+        const fp: string = it.folderPath || '';
+        if (!fp.startsWith(spPrefix)) continue;
+        const listName = String(it.name || '').trim();
+        if (!listName) continue;
+        folderSet.add(listName);
+        const ed = it.metadata || {};
+        const lastModified = ed.last_modified || (ed.raw && ed.raw.lastModifiedDateTime) || it.updatedAt || undefined;
+        meta[listName] = { lastModified, source: 'list' };
+      }
+    }
 
     for (const it of items) {
+      if ((it.itemType || '') === 'SHAREPOINT_LIST') continue;  // handled above
       const fp: string = it.folderPath || '';
       if (!fp.startsWith(prefix)) continue;
       const rest = fp.slice(prefix.length).replace(/^\//, '');
@@ -1998,15 +2029,24 @@ function SharePointView({
         // Item lives directly at this level.
         files.push(it);
       } else {
-        // Deeper item — promote its first segment as a visible folder.
         const seg = rest.split('/')[0];
-        if (seg) folderSet.add(seg);
+        if (!seg) continue;
+        folderSet.add(seg);
+        // Keep the newest lastModifiedDateTime seen under each folder
+        // so the "Last modified" column shows meaningful values.
+        const ed = it.metadata || {};
+        const candidate = ed.raw && ed.raw.lastModifiedDateTime;
+        if (candidate) {
+          const prev = meta[seg]?.lastModified;
+          if (!prev || candidate > prev) meta[seg] = { lastModified: candidate, source: meta[seg]?.source || 'derived' };
+        }
       }
     }
 
     return {
       displayRows: files,
       displayFolders: Array.from(folderSet).sort((a, b) => a.localeCompare(b)),
+      folderMeta: meta,
     };
   }, [items, spPrefix, spPath]);
 
@@ -2099,7 +2139,12 @@ function SharePointView({
                     <div className="od-th od-th-size">File size</div>
                   </div>
                   <div className="od-table-body">
-                    {displayFolders.map((seg) => (
+                    {displayFolders.map((seg) => {
+                      const m = folderMeta[seg];
+                      const lastMod = m?.lastModified
+                        ? fmtLocalDate(m.lastModified, { month: 'short', day: 'numeric', year: 'numeric' })
+                        : '—';
+                      return (
                       <div
                         key={`folder-${seg}`}
                         className="od-row od-row-folder"
@@ -2112,10 +2157,11 @@ function SharePointView({
                           <span className="od-row-name">{seg}</span>
                         </div>
                         <div className="od-td od-td-owner">—</div>
-                        <div className="od-td od-td-modified">—</div>
+                        <div className="od-td od-td-modified">{lastMod}</div>
                         <div className="od-td od-td-size">—</div>
                       </div>
-                    ))}
+                      );
+                    })}
                     {displayRows.map((item: any) => {
                       const md = item.metadata || {};
                       const owner = md.created_by || md.modified_by || '—';
