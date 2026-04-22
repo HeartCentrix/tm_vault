@@ -1,16 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+
 /* Global Styles */
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #2d3748;
-  background: #f7fafc;
+  color: #231F20;
+  background: #F9F6F2;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -23,7 +28,7 @@ p {
 }
 
 a {
-  color: #0d9488;
+  color: #D31245;
   text-decoration: none;
 }
 
@@ -45,101 +50,569 @@ table {
 
 /* Scrollbar Styles */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f7fafc;
+  background: #F9F6F2;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
-  border-radius: 4px;
+  background: #E0D9D0;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0;
+  background: #D31245;
 }
 
 /* Utility Classes */
-.text-success {
-  color: #38a169;
-}
-
-.text-warning {
-  color: #d69e2e;
-}
-
-.text-danger {
-  color: #e53e3e;
-}
-
-.text-muted {
-  color: #718096;
-}
+.text-success { color: #38a169; }
+.text-warning { color: #d69e2e; }
+.text-danger  { color: #e53e3e; }
+.text-muted   { color: #6B6B6B; }
 
 /* Animations */
 @keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-
 @keyframes dropdownFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
 }
-
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
-
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .spinner {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border: 2px solid rgba(35, 31, 32, 0.15);
+  border-top-color: #D31245;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
-
 .spinner-dark {
-  border-color: rgba(13, 148, 136, 0.2);
-  border-top-color: #0d9488;
+  border-color: rgba(211, 18, 69, 0.2);
+  border-top-color: #D31245;
 }
+
+/* =========================================================================
+   TAYLOR MORRISON "MAKE MOVES" THEME
+   bg: #F9F6F2 warm white  |  surface: #F2EDE6 cream
+   accent: #D31245 red     |  border:  #E0D9D0
+   text:   #231F20 deep    |  body:    #6B6B6B
+   ========================================================================= */
+:root {
+  --tm-bg: #F9F6F2;
+  --tm-surface: #F2EDE6;
+  --tm-border: #E0D9D0;
+  --tm-accent: #D31245;
+  --tm-accent-dark: #b00f39;
+  --tm-text: #231F20;
+  --tm-body: #6B6B6B;
+  --tm-muted: #9E8E82;
+}
+
+/* Display typography — Playfair serif for headings on light surfaces */
+h1, h2, h3 { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; color: #231F20; letter-spacing: -0.02em; }
+h4, h5, h6 { font-family: 'DM Sans', sans-serif; font-weight: 600; color: #231F20; }
+
+/* Eyebrow label utility — uppercase red tag above headings */
+.eyebrow, .section-eyebrow {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #D31245;
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* App shell — all warm white, no black anywhere */
+.main-content { background: #F9F6F2 !important; color: #231F20; }
+
+/* Sidebar — warm white with dark text, red left-bar on active */
+.sidebar { background: #F9F6F2 !important; color: #231F20 !important; border-right: 1px solid #E0D9D0 !important; }
+.sidebar .logo,
+.sidebar .sidebar-footer { border-color: #E0D9D0 !important; }
+.sidebar .logo .logo-icon,
+.sidebar .logo .logo-text { color: #231F20 !important; }
+.sidebar .logo .logo-text { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; letter-spacing: -0.01em; }
+.sidebar .nav-menu .nav-item {
+  color: #6B6B6B !important;
+  border-left-color: transparent !important;
+  font-weight: 500;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.sidebar .nav-menu .nav-item:hover { background: #F2EDE6 !important; color: #231F20 !important; }
+.sidebar .nav-menu .nav-item.active {
+  background: #F2EDE6 !important;
+  color: #D31245 !important;
+  border-left-color: #D31245 !important;
+  font-weight: 600;
+}
+.sidebar .sidebar-footer .footer-link { color: #6B6B6B !important; }
+.sidebar .sidebar-footer .footer-link:hover { color: #D31245 !important; }
+
+/* Header — warm white with cream underline */
+.header {
+  background: #F9F6F2 !important;
+  border-bottom: 1px solid #E0D9D0 !important;
+  color: #231F20;
+  box-shadow: 0 1px 0 rgba(224, 217, 208, 0.4);
+}
+.header .header-left .data-source-selector .selector-btn {
+  background: #F2EDE6 !important;
+  border: 1px solid #E0D9D0 !important;
+  color: #231F20 !important;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.header .header-left .data-source-selector .selector-btn:hover {
+  background: #F9F6F2 !important;
+  border-color: #D31245 !important;
+}
+.header .header-left .data-source-selector .selector-btn .home-icon,
+.header .header-left .data-source-selector .selector-btn .source-name { color: #231F20 !important; }
+.header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: #9E8E82 !important; }
+
+.header .header-right .icon-btn svg { color: #231F20 !important; }
+.header .header-right .icon-btn:hover { background: #F2EDE6 !important; }
+.header .header-right .icon-btn:hover svg { color: #D31245 !important; }
+.header .header-right .icon-btn .badge { background: #D31245 !important; color: #ffffff !important; }
+.header .header-right .user-menu .avatar { background: #D31245 !important; color: #ffffff !important; }
+.header .header-right .user-menu .avatar:hover { background: #b00f39 !important; }
+
+/* Dropdown surfaces — cream with red border accent */
+.header .dropdown-menu,
+.header .user-dropdown {
+  background: #F9F6F2 !important;
+  border: 1px solid #E0D9D0 !important;
+  color: #231F20;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 32px rgba(35, 31, 32, 0.12) !important;
+}
+.header .dropdown-menu .dropdown-header,
+.header .dropdown-menu .dropdown-search,
+.header .dropdown-menu .dropdown-section:not(:last-child) { border-color: #E0D9D0 !important; }
+.header .dropdown-menu .dropdown-header { background: #F2EDE6 !important; }
+.header .dropdown-menu .dropdown-header .header-icon { background: #F9F6F2 !important; }
+.header .dropdown-menu .dropdown-header .header-tenant-name,
+.header .dropdown-menu .dropdown-item span,
+.header .user-dropdown .user-info .user-name { color: #231F20 !important; }
+.header .dropdown-menu .dropdown-header .collapse-btn svg,
+.header .dropdown-menu .dropdown-item .home-icon,
+.header .user-dropdown .user-info .user-email,
+.header .dropdown-menu .dropdown-section .dropdown-label { color: #6B6B6B !important; }
+.header .dropdown-menu .dropdown-search input {
+  background: #ffffff !important;
+  color: #231F20 !important;
+  border: 1px solid #E0D9D0 !important;
+}
+.header .dropdown-menu .dropdown-search input:focus {
+  border-color: #D31245 !important;
+  box-shadow: 0 0 0 2px rgba(211, 18, 69, 0.15) !important;
+}
+.header .dropdown-menu .dropdown-search input::placeholder { color: #9E8E82 !important; }
+
+/* Dropdown item hover: cream bg + dark text, native status badges stay readable */
+.header .dropdown-menu .dropdown-item:hover { background: #F2EDE6 !important; color: #231F20 !important; }
+.header .dropdown-menu .dropdown-item:hover span,
+.header .dropdown-menu .dropdown-item:hover .home-icon { color: #231F20 !important; }
+.header .user-dropdown .logout-item:hover { background: #F2EDE6 !important; }
+.header .dropdown-menu .dropdown-item.active { background: #F2EDE6 !important; }
+.header .dropdown-menu .dropdown-item.active span { color: #D31245 !important; font-weight: 600; }
+.header .dropdown-menu .dropdown-item .source-icon { background: #F9F6F2 !important; border: 1px solid #E0D9D0 !important; }
+
+/* "+ Add service" CTA — brand red */
+.header .dropdown-menu .dropdown-item.add-source,
+.header .dropdown-menu .dropdown-item.add-source span,
+.header .dropdown-menu .dropdown-item.add-source .add-icon { color: #D31245 !important; font-weight: 600; }
+.header .dropdown-menu .dropdown-item.add-source:hover { background: rgba(211, 18, 69, 0.08) !important; }
+.header .user-dropdown .dropdown-divider { background: #E0D9D0 !important; }
+.header .user-dropdown .logout-item svg,
+.header .user-dropdown .logout-item span { color: #D31245 !important; }
+
+/* Cards / panels — cream surface with subtle lift on hover (TM "Make Moves" style) */
+.status-card,
+.chart-card,
+.card,
+.panel,
+.tile,
+.widget,
+.summary-card,
+.info-card {
+  background: #F2EDE6 !important;
+  border: 1px solid #E0D9D0 !important;
+  color: #231F20 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 12px rgba(35, 31, 32, 0.06) !important;
+  transition: box-shadow 0.25s ease, transform 0.25s ease !important;
+}
+.status-card:hover,
+.chart-card:hover,
+.card:hover,
+.panel:hover,
+.summary-card:hover,
+.info-card:hover {
+  box-shadow: 0 8px 32px rgba(35, 31, 32, 0.12) !important;
+  transform: translateY(-2px);
+}
+
+.status-label, .status-detail { color: #6B6B6B !important; font-size: 11px !important; font-weight: 600 !important; letter-spacing: 0.1em !important; text-transform: uppercase !important; }
+.progress-value, .status-summary-row strong { color: #231F20 !important; }
+.progress-ring-bg { stroke: #E0D9D0 !important; }
+.progress-ring-progress { stroke: #D31245 !important; }
+
+/* Tables — warm white workspace, subtle cream hover, red left-accent on hover */
+table { color: #231F20; }
+thead, thead th {
+  background: #F2EDE6 !important;
+  color: #231F20 !important;
+  border-bottom: 1px solid #E0D9D0 !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+tbody tr { border-bottom: 1px solid #E0D9D0 !important; transition: background 0.15s ease; }
+td { color: #231F20 !important; }
+tbody tr:hover { background: #F2EDE6 !important; }
+tbody tr:hover td { color: #231F20 !important; }
+
+/* Generic row-hover — cream tint, keep text dark so chips stay readable */
+.tenant-row:hover,
+.resource-list-item:hover,
+.alert-card:hover,
+.clickable-row:hover,
+.admin-consent-card:hover,
+.folder-tree-item:hover,
+.content-tab:hover,
+.sla-modal-check:hover,
+.item-row:hover,
+.chat-item-row:hover,
+.email-item-row:hover {
+  background: #F2EDE6 !important;
+  color: #231F20 !important;
+}
+
+/* Service nav (top tabs) — warm white, red active/hover with left-slide underline */
+.service-nav {
+  background: #F9F6F2 !important;
+  border-bottom: 1px solid #E0D9D0 !important;
+  padding: 0 24px !important;
+}
+.service-nav .nav-tab {
+  color: #6B6B6B !important;
+  border-bottom: 2px solid transparent !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  transition: color 0.2s ease, border-color 0.2s ease !important;
+}
+.service-nav .nav-tab:hover { color: #231F20 !important; }
+.service-nav .nav-tab.active {
+  color: #D31245 !important;
+  border-bottom-color: #D31245 !important;
+}
+
+/* Checkboxes / radios — brand red */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #D31245 !important;
+}
+
+/* Inputs — white surface, cream border, red focus ring */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+select,
+textarea {
+  background: #ffffff !important;
+  color: #231F20 !important;
+  border: 1px solid #E0D9D0 !important;
+  border-radius: 4px !important;
+  font-family: 'DM Sans', sans-serif !important;
+}
+input::placeholder, textarea::placeholder { color: #9E8E82 !important; }
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #D31245 !important;
+  box-shadow: 0 0 0 2px rgba(211, 18, 69, 0.15) !important;
+}
+
+/* Buttons — TM "Make Moves" sharp-corner style */
+button {
+  background: #ffffff;
+  color: #231F20;
+  border: 1px solid #E0D9D0;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+button:hover:not(:disabled) { border-color: #D31245; color: #D31245; background: #ffffff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Primary / CTA — solid red, sharp corners, uppercase tracking */
+.btn-primary,
+.primary-btn,
+button.primary,
+button[type="submit"] {
+  background: #D31245 !important;
+  color: #ffffff !important;
+  border: 1px solid #D31245 !important;
+  border-radius: 0 !important;
+  padding: 12px 28px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+}
+.btn-primary:hover:not(:disabled),
+.primary-btn:hover:not(:disabled),
+button.primary:hover:not(:disabled),
+button[type="submit"]:hover:not(:disabled) {
+  background: #b00f39 !important;
+  border-color: #b00f39 !important;
+  color: #ffffff !important;
+}
+
+/* Ghost / secondary — transparent with deep-black border */
+.btn-secondary,
+.secondary-btn,
+button.secondary {
+  background: transparent !important;
+  color: #231F20 !important;
+  border: 1.5px solid #231F20 !important;
+  border-radius: 0 !important;
+  padding: 12px 28px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: #231F20 !important;
+  color: #ffffff !important;
+}
+
+/* Modals — warm white with cream header, sharp border */
+.modal-overlay { background: rgba(35, 31, 32, 0.45) !important; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.modal-overlay .modal-content {
+  background: #F9F6F2 !important;
+  color: #231F20 !important;
+  border: 1px solid #E0D9D0 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 60px rgba(35, 31, 32, 0.25) !important;
+}
+.modal-overlay .modal-content .modal-header,
+.modal-overlay .modal-content .modal-footer { border-color: #E0D9D0 !important; background: #F2EDE6 !important; }
+.modal-overlay .modal-content .modal-header .modal-title {
+  color: #231F20 !important;
+  font-family: 'Playfair Display', Georgia, serif !important;
+  font-weight: 700 !important;
+}
+.modal-overlay .modal-content .modal-close:hover { background: #F2EDE6 !important; }
+.modal-overlay .modal-content .modal-close svg { color: #231F20 !important; }
+.modal-overlay .modal-content .modal-close:hover svg { color: #D31245 !important; }
+
+.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo { background: #F2EDE6 !important; border: 1px solid #E0D9D0 !important; }
+.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-name { color: #231F20 !important; }
+.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn {
+  background: transparent !important;
+  color: #231F20 !important;
+  border: 1.5px solid #231F20 !important;
+  border-radius: 0 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
+}
+.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn:hover:not(:disabled) {
+  background: #231F20 !important;
+  color: #ffffff !important;
+}
+
+/* =========================================================================
+   READABILITY — text on each TM surface
+   on #F9F6F2 (shell/main)      → heading #231F20, body #6B6B6B, accent #D31245
+   on #F2EDE6 (card/cream)      → heading #231F20, body #6B6B6B
+   on #D31245 (CTA)             → #ffffff
+   ========================================================================= */
+.main-content h1, .main-content h2, .main-content h3 { color: #231F20 !important; }
+.main-content h4, .main-content h5, .main-content h6 { color: #231F20 !important; }
+.main-content p, .main-content label, .main-content li, .main-content dt, .main-content dd { color: #231F20; }
+.main-content small, .main-content .caption, .main-content .hint { color: #6B6B6B; }
+.main-content .text-muted { color: #6B6B6B !important; }
+
+/* Card body copy — dark on cream, muted uses TM body gray */
+.status-card, .status-card p, .status-card span:not(.status-badge):not(.status-badge *), .status-card div, .status-card strong,
+.chart-card, .chart-card p, .chart-card span, .chart-card div, .chart-card strong,
+.card, .card p, .card span:not(.status-badge):not(.status-badge *), .card div,
+.panel, .panel p, .panel span:not(.status-badge):not(.status-badge *), .panel div,
+.tile, .widget, .summary-card, .info-card { color: #231F20; }
+.status-card .status-label,
+.status-card .status-detail,
+.chart-card .status-label,
+.panel .muted,
+.card .muted,
+.chart-legend-item { color: #6B6B6B !important; font-size: 12px; }
+
+/* Modals — same warm white system */
+.modal-overlay .modal-content,
+.modal-overlay .modal-content p,
+.modal-overlay .modal-content label,
+.modal-overlay .modal-content span:not(.status-badge):not(.status-badge *) { color: #231F20; }
+
+/* Status badges — keep native semantic green/amber */
+.status-badge, .status-badge * { color: revert !important; }
+
+/* Links per surface */
+.main-content a { color: #D31245; font-weight: 500; }
+.main-content a:hover { color: #b00f39; text-decoration: underline; }
+.sidebar a, .header a, .status-card a, .chart-card a,
+.card a, .panel a, .modal-overlay .modal-content a { color: #D31245; }
+
+/* Font smoothing across warm surfaces */
+body, .sidebar, .header, .modal-content, .status-card, .chart-card {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =========================================================================
+   ROW/CHIP hover normalization — TM light-hover style. Chips keep native
+   color since row hover is cream, not red.
+   ========================================================================= */
+tbody tr.clickable-row.clickable-row:hover,
+.activity-table tbody tr:hover,
+.audit-table tbody tr:hover,
+.risk-table tbody tr:hover {
+  background: #F2EDE6 !important;
+}
+tbody tr.clickable-row.clickable-row:hover td,
+.activity-table tbody tr:hover td,
+.audit-table tbody tr:hover td,
+.risk-table tbody tr:hover td { color: #231F20 !important; }
+
+.audit-table thead,
+.activity-table thead,
+.risk-table thead { background: #F2EDE6 !important; border-bottom: 1px solid #E0D9D0 !important; }
+.audit-table thead th,
+.activity-table thead th,
+.risk-table thead th { color: #231F20 !important; }
+
+/* =========================================================================
+   Settings → Storage — friendly backend labels
+   The button/modal-title render "Switch to <backend.name>" where name is
+   raw DB text like "seaweed" / "onprem-pilot" / "azure-primary". Swap the
+   visible text with pseudo-element content keyed off data-backend-kind.
+   ========================================================================= */
+.storage-switch-btn[data-backend-kind],
+.storage-modal-title[data-backend-kind],
+.storage-state-name[data-backend-kind] {
+  font-size: 0 !important;
+  line-height: inherit;
+}
+.storage-switch-btn[data-backend-kind]::before,
+.storage-modal-title[data-backend-kind]::before,
+.storage-state-name[data-backend-kind]::before {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.storage-modal-title[data-backend-kind]::before {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.storage-state-name[data-backend-kind]::before {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #231F20;
+}
+/* seaweed / seaweedfs → on prem storage */
+.storage-switch-btn[data-backend-kind="seaweedfs"]::before,
+.storage-switch-btn[data-backend-kind="seaweed"]::before,
+.storage-switch-btn[data-backend-name="seaweed"]::before,
+.storage-switch-btn[data-backend-name="onprem-pilot"]::before,
+.storage-modal-title[data-backend-kind="seaweedfs"]::before,
+.storage-modal-title[data-backend-kind="seaweed"]::before,
+.storage-modal-title[data-backend-name="seaweed"]::before,
+.storage-modal-title[data-backend-name="onprem-pilot"]::before {
+  content: "Switch to on prem storage";
+}
+.storage-state-name[data-backend-kind="seaweedfs"]::before,
+.storage-state-name[data-backend-kind="seaweed"]::before,
+.storage-state-name[data-backend-name="seaweed"]::before,
+.storage-state-name[data-backend-name="onprem-pilot"]::before {
+  content: "on prem storage";
+}
+/* azure_blob / azure-primary → Cloud storage */
+.storage-switch-btn[data-backend-kind="azure_blob"]::before,
+.storage-switch-btn[data-backend-kind="azure"]::before,
+.storage-switch-btn[data-backend-name="azure-primary"]::before,
+.storage-modal-title[data-backend-kind="azure_blob"]::before,
+.storage-modal-title[data-backend-kind="azure"]::before,
+.storage-modal-title[data-backend-name="azure-primary"]::before {
+  content: "Switch to Cloud storage";
+}
+.storage-state-name[data-backend-kind="azure_blob"]::before,
+.storage-state-name[data-backend-kind="azure"]::before,
+.storage-state-name[data-backend-name="azure-primary"]::before {
+  content: "Cloud storage";
+}
+
+/* Switch button hover — invert: white bg, pink text, pink border.
+   Beats the generic `button:hover` rule (which flipped only the color). */
+.storage-switch-btn:hover:not(:disabled),
+button.storage-switch-btn:hover:not(:disabled) {
+  background: #ffffff !important;
+  color: #D31245 !important;
+  border-color: #D31245 !important;
+}
+.storage-switch-btn:hover:not(:disabled)::before {
+  color: #D31245 !important;
+}
+
+/* Recharts — dark labels on warm cream cards */
+.recharts-cartesian-axis-tick text,
+.recharts-text,
+.recharts-label,
+.recharts-cartesian-axis-label { fill: #231F20 !important; font-weight: 500; font-family: 'DM Sans', sans-serif !important; }
+.recharts-cartesian-grid line,
+.recharts-cartesian-axis-line { stroke: #E0D9D0 !important; }
+.recharts-legend-item-text { color: #231F20 !important; }
+.recharts-default-tooltip {
+  background: #F9F6F2 !important;
+  border: 1px solid #D31245 !important;
+  border-radius: 4px !important;
+  color: #231F20 !important;
+  box-shadow: 0 2px 8px rgba(35, 31, 32, 0.12) !important;
+}
+.recharts-tooltip-label,
+.recharts-tooltip-item,
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-value { color: #231F20 !important; }

@@ -207,10 +207,14 @@ export default function Overview() {
 
     let cancelled = false;
 
-    // Initial fetch + every-N-seconds refresh for the Recent Activity
-    // table. Dashboard aggregates (backup size, protection, 24h / 7d
-    // rollups) only need to load once per mount; the activity feed is
-    // the only thing that changes second-to-second when backups run.
+    // Initial fetch + every-N-seconds refresh. We always refresh the
+    // activity feed; dashboard aggregates (backup size, protection %,
+    // 24h / 7d rollups) get refreshed too whenever there's an
+    // in-flight backup/restore since those numbers change as jobs
+    // complete. Once everything settles, aggregate refresh backs off
+    // to every 4th tick (~1 minute) so a quiet tenant isn't hammering
+    // four endpoints just to re-confirm unchanged totals.
+    let idleTicks = 0;
     const loadAll = async (withAggregates: boolean) => {
       try {
         if (withAggregates) {
@@ -242,7 +246,33 @@ export default function Overview() {
     };
 
     loadAll(true);
-    const poll = setInterval(() => loadAll(false), 15_000);
+    const poll = setInterval(async () => {
+      // Always fetch activity first so we can decide whether
+      // aggregates need a refresh based on the latest status.
+      try {
+        const activityData = await getActivities({
+          tenantId,
+          serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
+          page: 1, size: 10,
+        });
+        if (cancelled) return;
+        setActivities(activityData.items || []);
+        const anyLive = (activityData.items || []).some(
+          (a) => a.status === 'In Progress',
+        );
+        // Aggregates change as backups complete — refresh on every
+        // tick while something is in-flight, else every 4th tick.
+        const shouldRefreshAggregates = anyLive || idleTicks >= 3;
+        if (shouldRefreshAggregates) {
+          idleTicks = 0;
+          await loadAll(true);
+        } else {
+          idleTicks += 1;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 15_000);
 
     // Refresh immediately when the tab becomes visible again so the
     // user isn't looking at stale rows after alt-tabbing.
