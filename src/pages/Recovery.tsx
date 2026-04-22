@@ -120,7 +120,8 @@ export function EmailPreview({ item }: { item: any }) {
   // items with resolved=true link to our own content endpoint.
   const [attachments, setAttachments] = useState<Array<{
     id: string; name: string; size: number; contentType: string | null;
-    isInline: boolean; resolved: boolean; sourceUrl: string | null;
+    isInline: boolean; contentId: string | null;
+    resolved: boolean; sourceUrl: string | null;
   }>>([]);
   useEffect(() => {
     if (!item.snapshotId || !item.id) return;
@@ -139,6 +140,65 @@ export function EmailPreview({ item }: { item: any }) {
   };
 
   const hasAny = attachments.length > 0 || raw.hasAttachments;
+
+  // Rewrite inline-image cid: URLs to blob: object URLs so the iframe
+  // can render embedded logos/signatures/screenshots. The iframe has
+  // sandbox="allow-same-origin" but can't attach the Bearer token when
+  // loading <img>, so a direct rewrite to our authenticated content
+  // endpoint would 401. Instead we:
+  //   1. Fetch each inline attachment's content as a blob (with token)
+  //   2. Create a URL.createObjectURL(blob) for each
+  //   3. String-replace `src="cid:<contentId>"` → `src="<blob: url>"`
+  //   4. Revoke the object URLs on unmount to avoid a memory leak
+  const [cidBlobUrls, setCidBlobUrls] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!isHtml || !item.snapshotId) {
+      setCidBlobUrls(new Map());
+      return;
+    }
+    let cancelled = false;
+    const created: string[] = [];
+    const token = localStorage.getItem('access_token');
+    const headers: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` } : {};
+    (async () => {
+      const out = new Map<string, string>();
+      for (const a of attachments) {
+        if (!a.contentId || !a.resolved) continue;
+        try {
+          const r = await fetch(
+            API.SNAPSHOTS.ITEM_CONTENT(item.snapshotId, a.id),
+            { headers },
+          );
+          if (!r.ok) continue;
+          const blob = await r.blob();
+          const url = URL.createObjectURL(blob);
+          created.push(url);
+          const cid = String(a.contentId).replace(/^<|>$/g, '').toLowerCase();
+          out.set(cid, url);
+        } catch {
+          /* skip unreachable attachment — cid will stay as broken img */
+        }
+      }
+      if (!cancelled) setCidBlobUrls(out);
+    })();
+    return () => {
+      cancelled = true;
+      for (const url of created) URL.revokeObjectURL(url);
+    };
+  }, [isHtml, item.snapshotId, attachments]);
+
+  const renderedBody = useMemo(() => {
+    if (!isHtml || !bodyContent) return bodyContent;
+    if (cidBlobUrls.size === 0) return bodyContent;
+    return String(bodyContent).replace(
+      /src=(["'])cid:<?([^"'>]+?)>?\1/gi,
+      (match, q, cid) => {
+        const url = cidBlobUrls.get(String(cid).toLowerCase());
+        return url ? `src=${q}${url}${q}` : match;
+      },
+    );
+  }, [isHtml, bodyContent, cidBlobUrls]);
 
   return (
     <div className="email-preview">
@@ -210,7 +270,7 @@ export function EmailPreview({ item }: { item: any }) {
       </div>
       <div className="email-body">
         {isHtml
-          ? <iframe srcDoc={bodyContent} sandbox="allow-same-origin" className="email-iframe" title="email-body" />
+          ? <iframe srcDoc={renderedBody} sandbox="allow-same-origin" className="email-iframe" title="email-body" />
           : <pre className="email-plain">{bodyContent || 'No content'}</pre>
         }
       </div>
