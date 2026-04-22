@@ -141,7 +141,7 @@ function StateCard({ status }: { status: ToggleStatus }) {
       </div>
       {status.cooldown_until && (
         <div style={{ marginTop: 8, color: '#666', fontSize: 13 }}>
-          Cooldown until {status.cooldown_until}
+          {formatCooldown(status.cooldown_until)}
         </div>
       )}
     </div>
@@ -180,7 +180,7 @@ function HistoryCard({ events }: { events: ToggleEvent[] }) {
         <tbody>
           {events.map((e) => (
             <tr key={e.id} style={{ borderBottom: '1px solid #eee' }}>
-              <td style={tdStyle}>{e.started_at}</td>
+              <td style={tdStyle}>{formatStamp(e.started_at)}</td>
               <td style={tdStyle}>
                 {e.from_backend_id.slice(0, 8)} → {e.to_backend_id.slice(0, 8)}
               </td>
@@ -195,7 +195,7 @@ function HistoryCard({ events }: { events: ToggleEvent[] }) {
                       : '#e67700',
                 }}
               >
-                {e.status}
+                {PHASE_LABEL[e.status] ?? e.status}
               </td>
               <td style={tdStyle}>
                 {e.drained_job_count ?? '—'} / {e.retried_job_count ?? '—'}
@@ -214,6 +214,47 @@ function HistoryCard({ events }: { events: ToggleEvent[] }) {
 const thStyle: React.CSSProperties = { textAlign: 'left', padding: '6px 10px' };
 const tdStyle: React.CSSProperties = { padding: '6px 10px' };
 
+// Human-readable names for the raw orchestrator status codes — matches
+// orchestrator.run_toggle() phases. Kept in one place so we can update
+// backend + UI labels together.
+const PHASE_LABEL: Record<string, string> = {
+  started: 'Queued',
+  drain_started: 'Draining in-flight jobs',
+  drain_completed: 'Drain complete',
+  db_promoted: 'Database promoted',
+  dns_flipped: 'DNS flipped',
+  workers_restarted: 'Workers restarted',
+  smoke_passed: 'Smoke tests passed',
+  completed: '✓ Completed',
+  aborted: '✗ Aborted',
+  failed: '✗ Failed',
+};
+
+function formatCooldown(iso: string): string {
+  const until = new Date(iso);
+  const now = Date.now();
+  const diffMs = until.getTime() - now;
+  if (diffMs <= 0) return 'Cooldown ended';
+  const secs = Math.floor(diffMs / 1000);
+  const mins = Math.floor(secs / 60);
+  const hours = Math.floor(mins / 60);
+  if (hours >= 1) {
+    return `Cooldown for ${hours}h ${mins % 60}m (until ${until.toLocaleTimeString()})`;
+  }
+  if (mins >= 1) return `Cooldown for ${mins}m ${secs % 60}s`;
+  return `Cooldown for ${secs}s`;
+}
+
+function formatStamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 function ToggleModal({
   target,
   onClose,
@@ -226,10 +267,36 @@ function ToggleModal({
   const [submitting, setSubmitting] = useState(false);
   const [phaseLog, setPhaseLog] = useState<string[]>([]);
   const [done, setDone] = useState(false);
+  const [finalStatus, setFinalStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const canSubmit =
     reason.trim().length >= 10 && confirm === 'TMVAULT-ORG' && !submitting;
+
+  const TERMINAL = new Set(['completed', 'failed', 'aborted']);
+
+  function appendPhase(status: string) {
+    const label = PHASE_LABEL[status] ?? status;
+    const time = new Date().toLocaleTimeString();
+    setPhaseLog((l) => {
+      // Dedupe — SSE + fallback poll can both deliver the same status.
+      const last = l[l.length - 1] || '';
+      const entry = `${time}  ${label}`;
+      return last.endsWith(label) ? l : [...l, entry];
+    });
+  }
+
+  function markTerminal(status: string) {
+    setDone(true);
+    setFinalStatus(status);
+    setSubmitting(false);
+    // Auto-close 3s after completion so the user sees the final phase
+    // briefly but doesn't have to dismiss the modal manually. Aborts/
+    // failures stay open so the operator can read the error.
+    if (status === 'completed') {
+      window.setTimeout(() => onClose(), 3000);
+    }
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -240,17 +307,46 @@ function ToggleModal({
         reason,
         confirmation_text: confirm,
       });
-      setPhaseLog((l) => [...l, `queued: ${r.event_id}`]);
+      setPhaseLog((l) => [...l, `${new Date().toLocaleTimeString()}  Queued`]);
+
+      let terminalSeen = false;
       const es = AdminStorageService.streamEvent(r.event_id, (data) => {
-        setPhaseLog((l) => [
-          ...l,
-          `${data.status} @ ${new Date().toISOString().split('T')[1].slice(0, 8)}`,
-        ]);
-        if (['completed', 'failed', 'aborted'].includes(String(data.status))) {
-          setDone(true);
+        const s = String(data.status || '');
+        if (!s) return;
+        appendPhase(s);
+        if (TERMINAL.has(s) && !terminalSeen) {
+          terminalSeen = true;
+          if (data.error_message) setErr(String(data.error_message));
+          markTerminal(s);
           es.close();
         }
       });
+
+      // Fallback poll — if SSE drops silently (proxy timeout, auth drift
+      // on the token query param, etc.) the modal must still settle.
+      // Polls every 3s and resolves via the /events/{id} snapshot.
+      const pollId = window.setInterval(async () => {
+        if (terminalSeen) {
+          window.clearInterval(pollId);
+          return;
+        }
+        try {
+          const evts = await AdminStorageService.events(20);
+          const match = evts.find((e) => e.id === r.event_id);
+          if (match) {
+            appendPhase(match.status);
+            if (TERMINAL.has(match.status)) {
+              terminalSeen = true;
+              if (match.error_message) setErr(match.error_message);
+              markTerminal(match.status);
+              es.close();
+              window.clearInterval(pollId);
+            }
+          }
+        } catch {
+          /* ignore transient poll errors */
+        }
+      }, 3000);
     } catch (e) {
       setErr(String(e));
       setSubmitting(false);
@@ -318,6 +414,26 @@ function ToggleModal({
           >
             {phaseLog.join('\n')}
           </pre>
+        )}
+        {done && finalStatus && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '8px 12px',
+              borderRadius: 4,
+              fontSize: 13,
+              fontWeight: 600,
+              background:
+                finalStatus === 'completed'
+                  ? '#e6f4ea'
+                  : '#fdecea',
+              color:
+                finalStatus === 'completed' ? '#1e7e34' : '#a71d2a',
+            }}
+          >
+            {PHASE_LABEL[finalStatus] ?? finalStatus}
+            {finalStatus === 'completed' && ' — closing in 3s…'}
+          </div>
         )}
         {err && <div style={{ color: 'red', marginTop: 8 }}>{err}</div>}
         <div
