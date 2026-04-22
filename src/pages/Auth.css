@@ -1,19 +1,25 @@
+/* Auth (Signin / Signup) — palette-aligned
+   bg: #000  |  card: #58595B  |  accent/border: #D31245
+   muted: #A7A9AC  |  text: #fff */
+
 .auth-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+  background: #000000;
 }
 
 .auth-card {
-  background: #fff;
+  background: #58595B;
+  border: 1px solid #D31245;
   border-radius: 16px;
   padding: 48px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
   text-align: center;
+  color: #ffffff;
 }
 
 .auth-logo {
@@ -25,16 +31,22 @@
   height: 64px;
 }
 
+/* SVG paths have inline fill; !important wins over inline without !important */
+.auth-logo .auth-logo-icon path {
+  fill: #ffffff !important;
+}
+
 .auth-title {
   font-size: 28px;
   font-weight: 700;
-  color: #2d3748;
+  color: #ffffff;
   margin: 12px 0 0;
+  letter-spacing: 0.2px;
 }
 
 .auth-subtitle {
   font-size: 16px;
-  color: #718096;
+  color: #A7A9AC;
   margin-bottom: 32px;
 }
 
@@ -45,26 +57,32 @@
   gap: 12px;
   width: 100%;
   padding: 14px 24px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: #000000;
+  border: 1px solid #D31245;
   border-radius: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #2d3748;
+  color: #ffffff;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.microsoft-btn:hover {
-  background: #f7fafc;
-  border-color: #cbd5e0;
+.microsoft-btn:hover:not(:disabled) {
+  background: #D31245;
+  border-color: #D31245;
+  color: #ffffff;
+}
+
+.microsoft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .auth-divider {
   display: flex;
   align-items: center;
   margin: 24px 0;
-  color: #a0aec0;
+  color: #A7A9AC;
   font-size: 13px;
 }
 
@@ -73,7 +91,7 @@
   content: '';
   flex: 1;
   height: 1px;
-  background: #e2e8f0;
+  background: #808285;
 }
 
 .auth-divider::before {
@@ -88,18 +106,19 @@
   width: 100%;
   padding: 14px 24px;
   background: transparent;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D31245;
   border-radius: 8px;
   font-size: 15px;
-  font-weight: 500;
-  color: #0d9488;
+  font-weight: 600;
+  color: #D31245;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .sso-btn:hover {
-  background: #e6fffa;
-  border-color: #0d9488;
+  background: #D31245;
+  border-color: #D31245;
+  color: #ffffff;
 }
 
 .sso-options {
@@ -115,17 +134,18 @@
   gap: 12px;
   width: 100%;
   padding: 14px 24px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: #000000;
+  border: 1px solid #D31245;
   border-radius: 8px;
   font-size: 15px;
   font-weight: 500;
-  color: #2d3748;
+  color: #ffffff;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .sso-option-btn:hover {
-  background: #f7fafc;
-  border-color: #cbd5e0;
+  background: #D31245;
+  border-color: #D31245;
+  color: #ffffff;
 }
