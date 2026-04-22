@@ -213,10 +213,24 @@ table {
 .header .dropdown-menu .dropdown-section .dropdown-label { color: var(--tm-muted-2) !important; }
 .header .dropdown-menu .dropdown-search input { background: #000000 !important; color: var(--tm-text) !important; border: 1px solid var(--tm-accent) !important; }
 .header .dropdown-menu .dropdown-search input::placeholder { color: var(--tm-muted) !important; }
-.header .dropdown-menu .dropdown-item:hover,
-.header .user-dropdown .logout-item:hover { background: rgba(211, 18, 69, 0.2) !important; }
-.header .dropdown-menu .dropdown-item.active { background: rgba(211, 18, 69, 0.3) !important; }
+/* Dropdown item hover: whitish bg + black text so native status badges
+   (green "active", amber "discovering") stay readable. */
+.header .dropdown-menu .dropdown-item:hover { background: #f1f2f4 !important; color: #000000 !important; }
+.header .dropdown-menu .dropdown-item:hover span,
+.header .dropdown-menu .dropdown-item:hover .home-icon { color: #000000 !important; }
+.header .user-dropdown .logout-item:hover { background: #f1f2f4 !important; }
+.header .dropdown-menu .dropdown-item.active { background: #f1f2f4 !important; }
+.header .dropdown-menu .dropdown-item.active span,
+.header .dropdown-menu .dropdown-item.active .home-icon { color: #000000 !important; }
 .header .dropdown-menu .dropdown-item .source-icon { background: #000000 !important; }
+
+/* "+ Add service" CTA — use brand red instead of teal */
+.header .dropdown-menu .dropdown-item.add-source,
+.header .dropdown-menu .dropdown-item.add-source span,
+.header .dropdown-menu .dropdown-item.add-source .add-icon { color: var(--tm-accent) !important; }
+.header .dropdown-menu .dropdown-item.add-source:hover { background: rgba(211, 18, 69, 0.12) !important; }
+.header .dropdown-menu .dropdown-item.add-source:hover span,
+.header .dropdown-menu .dropdown-item.add-source:hover .add-icon { color: var(--tm-accent) !important; }
 .header .user-dropdown .dropdown-divider { background: var(--tm-accent) !important; }
 .header .user-dropdown .logout-item svg,
 .header .user-dropdown .logout-item span { color: var(--tm-accent) !important; }
@@ -262,7 +276,6 @@ tbody tr:hover div { color: #ffffff !important; }
 .admin-consent-card:hover,
 .folder-tree-item:hover,
 .content-tab:hover,
-.dropdown-item:hover,
 .sla-modal-check:hover,
 .item-row:hover,
 .chat-item-row:hover,
@@ -270,16 +283,16 @@ tbody tr:hover div { color: #ffffff !important; }
   background: var(--tm-accent) !important;
   color: #ffffff !important;
 }
-.tenant-row:hover *,
-.resource-list-item:hover *,
-.alert-card:hover *,
-.clickable-row:hover *,
-.admin-consent-card:hover *,
+.tenant-row:hover *:not(.status-badge):not(.status-badge *),
+.resource-list-item:hover *:not(.status-badge):not(.status-badge *),
+.alert-card:hover *:not(.status-badge):not(.status-badge *),
+.clickable-row:hover *:not(.status-badge):not(.status-badge *),
+.admin-consent-card:hover *:not(.status-badge):not(.status-badge *),
 .folder-tree-item:hover *,
 .content-tab:hover *,
-.item-row:hover *,
-.chat-item-row:hover *,
-.email-item-row:hover * {
+.item-row:hover *:not(.status-badge):not(.status-badge *),
+.chat-item-row:hover *:not(.status-badge):not(.status-badge *),
+.email-item-row:hover *:not(.status-badge):not(.status-badge *) {
   color: #ffffff !important;
 }
 
@@ -363,9 +376,8 @@ button.secondary {
   border-color: var(--tm-accent) !important;
 }
 
-/* Status / badges — keep semantics, ease contrast on dark bg */
-.status-badge.active { background: rgba(211, 18, 69, 0.2) !important; color: var(--tm-text) !important; }
-.status-badge.discovering { background: rgba(128, 130, 133, 0.3) !important; color: var(--tm-text) !important; }
+/* Status badges — preserve native semantic colors (green active, amber discovering)
+   so they stay readable on both dark panels and the whitish dropdown hover. */
 
 /* Headings default to white on dark */
 h1, h2, h3, h4, h5, h6 { color: var(--tm-text); }
