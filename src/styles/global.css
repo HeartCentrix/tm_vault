@@ -1,19 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+
 /* Global Styles */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Sergoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #ffffff;
-  background: #000000;
+  color: #231F20;
+  background: #F9F6F2;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -48,17 +50,17 @@ table {
 
 /* Scrollbar Styles */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000;
+  background: #F9F6F2;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #58595B;
-  border-radius: 4px;
+  background: #E0D9D0;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -66,176 +68,185 @@ table {
 }
 
 /* Utility Classes */
-.text-success {
-  color: #38a169;
-}
-
-.text-warning {
-  color: #d69e2e;
-}
-
-.text-danger {
-  color: #e53e3e;
-}
-
-.text-muted {
-  color: #718096;
-}
+.text-success { color: #38a169; }
+.text-warning { color: #d69e2e; }
+.text-danger  { color: #e53e3e; }
+.text-muted   { color: #6B6B6B; }
 
 /* Animations */
 @keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-
 @keyframes dropdownFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
 }
-
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
-
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .spinner {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border: 2px solid rgba(35, 31, 32, 0.15);
+  border-top-color: #D31245;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
-
 .spinner-dark {
   border-color: rgba(211, 18, 69, 0.2);
   border-top-color: #D31245;
 }
 
 /* =========================================================================
-   THEME OVERRIDES — palette
-   bg: #000  |  panels: #58595B  |  accent/border: #D31245
-   muted: #808285 / #A7A9AC  |  text: #fff
+   TAYLOR MORRISON "MAKE MOVES" THEME
+   bg: #F9F6F2 warm white  |  surface: #F2EDE6 cream
+   accent: #D31245 red     |  border:  #E0D9D0
+   text:   #231F20 deep    |  body:    #6B6B6B
    ========================================================================= */
 :root {
-  --tm-bg: #000000;
-  --tm-panel: #58595B;
+  --tm-bg: #F9F6F2;
+  --tm-surface: #F2EDE6;
+  --tm-border: #E0D9D0;
   --tm-accent: #D31245;
-  --tm-muted: #808285;
-  --tm-muted-2: #A7A9AC;
-  --tm-text: #ffffff;
+  --tm-accent-dark: #b00f39;
+  --tm-text: #231F20;
+  --tm-body: #6B6B6B;
+  --tm-muted: #9E8E82;
 }
 
-/* App shell */
-.main-content { background: #ffffff !important; color: #1f2937; }
-.main-content h1,
-.main-content h2,
-.main-content h3,
-.main-content h4,
-.main-content h5,
-.main-content h6 { color: #1f2937; }
+/* Display typography — Playfair serif for headings on light surfaces */
+h1, h2, h3 { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; color: #231F20; letter-spacing: -0.02em; }
+h4, h5, h6 { font-family: 'DM Sans', sans-serif; font-weight: 600; color: #231F20; }
 
-/* Sidebar */
-.sidebar { background: #000000 !important; color: var(--tm-text) !important; border-right: 1px solid var(--tm-accent); }
+/* Eyebrow label utility — uppercase red tag above headings */
+.eyebrow, .section-eyebrow {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #D31245;
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* App shell — all warm white, no black anywhere */
+.main-content { background: #F9F6F2 !important; color: #231F20; }
+
+/* Sidebar — warm white with dark text, red left-bar on active */
+.sidebar { background: #F9F6F2 !important; color: #231F20 !important; border-right: 1px solid #E0D9D0 !important; }
 .sidebar .logo,
-.sidebar .sidebar-footer { border-color: var(--tm-accent) !important; }
+.sidebar .sidebar-footer { border-color: #E0D9D0 !important; }
 .sidebar .logo .logo-icon,
-.sidebar .logo .logo-text { color: var(--tm-text) !important; }
-.sidebar .nav-menu .nav-item { color: var(--tm-muted-2) !important; border-left-color: transparent; }
-.sidebar .nav-menu .nav-item:hover { background: var(--tm-panel) !important; color: var(--tm-text) !important; }
-.sidebar .nav-menu .nav-item.active { background: var(--tm-panel) !important; color: var(--tm-text) !important; border-left-color: var(--tm-accent) !important; }
-.sidebar .sidebar-footer .footer-link { color: var(--tm-muted) !important; }
-.sidebar .sidebar-footer .footer-link:hover { color: var(--tm-text) !important; }
+.sidebar .logo .logo-text { color: #231F20 !important; }
+.sidebar .logo .logo-text { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; letter-spacing: -0.01em; }
+.sidebar .nav-menu .nav-item {
+  color: #6B6B6B !important;
+  border-left-color: transparent !important;
+  font-weight: 500;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.sidebar .nav-menu .nav-item:hover { background: #F2EDE6 !important; color: #231F20 !important; }
+.sidebar .nav-menu .nav-item.active {
+  background: #F2EDE6 !important;
+  color: #D31245 !important;
+  border-left-color: #D31245 !important;
+  font-weight: 600;
+}
+.sidebar .sidebar-footer .footer-link { color: #6B6B6B !important; }
+.sidebar .sidebar-footer .footer-link:hover { color: #D31245 !important; }
 
-/* Header */
-.header { background: #000000 !important; border-bottom: 1px solid var(--tm-accent) !important; color: var(--tm-text); }
-.header .header-left .data-source-selector .selector-btn { background: var(--tm-panel) !important; border: 1px solid var(--tm-accent) !important; }
-.header .header-left .data-source-selector .selector-btn:hover { background: rgba(211, 18, 69, 0.2) !important; }
+/* Header — warm white with cream underline */
+.header {
+  background: #F9F6F2 !important;
+  border-bottom: 1px solid #E0D9D0 !important;
+  color: #231F20;
+  box-shadow: 0 1px 0 rgba(224, 217, 208, 0.4);
+}
+.header .header-left .data-source-selector .selector-btn {
+  background: #F2EDE6 !important;
+  border: 1px solid #E0D9D0 !important;
+  color: #231F20 !important;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.header .header-left .data-source-selector .selector-btn:hover {
+  background: #F9F6F2 !important;
+  border-color: #D31245 !important;
+}
 .header .header-left .data-source-selector .selector-btn .home-icon,
-.header .header-left .data-source-selector .selector-btn .source-name { color: var(--tm-text) !important; }
-.header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: var(--tm-muted-2) !important; }
+.header .header-left .data-source-selector .selector-btn .source-name { color: #231F20 !important; }
+.header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: #9E8E82 !important; }
 
-.header .header-right .icon-btn svg { color: var(--tm-text) !important; }
-.header .header-right .icon-btn:hover { background: var(--tm-panel) !important; }
-.header .header-right .icon-btn .badge { background: var(--tm-accent) !important; color: var(--tm-text) !important; }
-.header .header-right .user-menu .avatar { background: var(--tm-accent) !important; }
+.header .header-right .icon-btn svg { color: #231F20 !important; }
+.header .header-right .icon-btn:hover { background: #F2EDE6 !important; }
+.header .header-right .icon-btn:hover svg { color: #D31245 !important; }
+.header .header-right .icon-btn .badge { background: #D31245 !important; color: #ffffff !important; }
+.header .header-right .user-menu .avatar { background: #D31245 !important; color: #ffffff !important; }
 .header .header-right .user-menu .avatar:hover { background: #b00f39 !important; }
 
-/* Dropdown surfaces (header + generic) */
+/* Dropdown surfaces — cream with red border accent */
 .header .dropdown-menu,
-.header .user-dropdown { background: var(--tm-panel) !important; border: 1px solid var(--tm-accent) !important; color: var(--tm-text); }
+.header .user-dropdown {
+  background: #F9F6F2 !important;
+  border: 1px solid #E0D9D0 !important;
+  color: #231F20;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 32px rgba(35, 31, 32, 0.12) !important;
+}
 .header .dropdown-menu .dropdown-header,
 .header .dropdown-menu .dropdown-search,
-.header .dropdown-menu .dropdown-section:not(:last-child) { border-color: var(--tm-accent) !important; }
-.header .dropdown-menu .dropdown-header { background: #000000 !important; }
-.header .dropdown-menu .dropdown-header .header-icon { background: var(--tm-panel) !important; }
+.header .dropdown-menu .dropdown-section:not(:last-child) { border-color: #E0D9D0 !important; }
+.header .dropdown-menu .dropdown-header { background: #F2EDE6 !important; }
+.header .dropdown-menu .dropdown-header .header-icon { background: #F9F6F2 !important; }
 .header .dropdown-menu .dropdown-header .header-tenant-name,
 .header .dropdown-menu .dropdown-item span,
-.header .user-dropdown .user-info .user-name { color: var(--tm-text) !important; }
+.header .user-dropdown .user-info .user-name { color: #231F20 !important; }
 .header .dropdown-menu .dropdown-header .collapse-btn svg,
 .header .dropdown-menu .dropdown-item .home-icon,
 .header .user-dropdown .user-info .user-email,
-.header .dropdown-menu .dropdown-section .dropdown-label { color: var(--tm-muted-2) !important; }
-.header .dropdown-menu .dropdown-search input { background: #000000 !important; color: var(--tm-text) !important; border: 1px solid var(--tm-accent) !important; }
-.header .dropdown-menu .dropdown-search input::placeholder { color: var(--tm-muted) !important; }
-/* Dropdown item hover: whitish bg + black text so native status badges
-   (green "active", amber "discovering") stay readable. */
-.header .dropdown-menu .dropdown-item:hover { background: #f1f2f4 !important; color: #000000 !important; }
-.header .dropdown-menu .dropdown-item:hover span,
-.header .dropdown-menu .dropdown-item:hover .home-icon { color: #000000 !important; }
-.header .user-dropdown .logout-item:hover { background: #f1f2f4 !important; }
-.header .dropdown-menu .dropdown-item.active { background: #f1f2f4 !important; }
-.header .dropdown-menu .dropdown-item.active span,
-.header .dropdown-menu .dropdown-item.active .home-icon { color: #000000 !important; }
-.header .dropdown-menu .dropdown-item .source-icon { background: #000000 !important; }
+.header .dropdown-menu .dropdown-section .dropdown-label { color: #6B6B6B !important; }
+.header .dropdown-menu .dropdown-search input {
+  background: #ffffff !important;
+  color: #231F20 !important;
+  border: 1px solid #E0D9D0 !important;
+}
+.header .dropdown-menu .dropdown-search input:focus {
+  border-color: #D31245 !important;
+  box-shadow: 0 0 0 2px rgba(211, 18, 69, 0.15) !important;
+}
+.header .dropdown-menu .dropdown-search input::placeholder { color: #9E8E82 !important; }
 
-/* "+ Add service" CTA — use brand red instead of teal */
+/* Dropdown item hover: cream bg + dark text, native status badges stay readable */
+.header .dropdown-menu .dropdown-item:hover { background: #F2EDE6 !important; color: #231F20 !important; }
+.header .dropdown-menu .dropdown-item:hover span,
+.header .dropdown-menu .dropdown-item:hover .home-icon { color: #231F20 !important; }
+.header .user-dropdown .logout-item:hover { background: #F2EDE6 !important; }
+.header .dropdown-menu .dropdown-item.active { background: #F2EDE6 !important; }
+.header .dropdown-menu .dropdown-item.active span { color: #D31245 !important; font-weight: 600; }
+.header .dropdown-menu .dropdown-item .source-icon { background: #F9F6F2 !important; border: 1px solid #E0D9D0 !important; }
+
+/* "+ Add service" CTA — brand red */
 .header .dropdown-menu .dropdown-item.add-source,
 .header .dropdown-menu .dropdown-item.add-source span,
-.header .dropdown-menu .dropdown-item.add-source .add-icon { color: var(--tm-accent) !important; }
-.header .dropdown-menu .dropdown-item.add-source:hover { background: rgba(211, 18, 69, 0.12) !important; }
-.header .dropdown-menu .dropdown-item.add-source:hover span,
-.header .dropdown-menu .dropdown-item.add-source:hover .add-icon { color: var(--tm-accent) !important; }
-.header .user-dropdown .dropdown-divider { background: var(--tm-accent) !important; }
+.header .dropdown-menu .dropdown-item.add-source .add-icon { color: #D31245 !important; font-weight: 600; }
+.header .dropdown-menu .dropdown-item.add-source:hover { background: rgba(211, 18, 69, 0.08) !important; }
+.header .user-dropdown .dropdown-divider { background: #E0D9D0 !important; }
 .header .user-dropdown .logout-item svg,
-.header .user-dropdown .logout-item span { color: var(--tm-accent) !important; }
+.header .user-dropdown .logout-item span { color: #D31245 !important; }
 
-/* Cards / panels / tiles — whitish surface on white workspace so content stays readable */
+/* Cards / panels — cream surface with subtle lift on hover (TM "Make Moves" style) */
 .status-card,
 .chart-card,
 .card,
@@ -243,31 +254,46 @@ table {
 .tile,
 .widget,
 .summary-card,
-.info-card { background: #f1f2f4 !important; border: 1px solid #D31245 !important; color: #1f2937 !important; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important; }
+.info-card {
+  background: #F2EDE6 !important;
+  border: 1px solid #E0D9D0 !important;
+  color: #231F20 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 12px rgba(35, 31, 32, 0.06) !important;
+  transition: box-shadow 0.25s ease, transform 0.25s ease !important;
+}
+.status-card:hover,
+.chart-card:hover,
+.card:hover,
+.panel:hover,
+.summary-card:hover,
+.info-card:hover {
+  box-shadow: 0 8px 32px rgba(35, 31, 32, 0.12) !important;
+  transform: translateY(-2px);
+}
 
-.status-label,
-.status-detail { color: #6b7280 !important; }
+.status-label, .status-detail { color: #6B6B6B !important; font-size: 11px !important; font-weight: 600 !important; letter-spacing: 0.1em !important; text-transform: uppercase !important; }
+.progress-value, .status-summary-row strong { color: #231F20 !important; }
+.progress-ring-bg { stroke: #E0D9D0 !important; }
+.progress-ring-progress { stroke: #D31245 !important; }
 
-.progress-value,
-.status-summary-row strong { color: #1f2937 !important; }
-.progress-ring-bg { stroke: #e2e8f0 !important; }
-.progress-ring-progress { stroke: var(--tm-accent) !important; }
+/* Tables — warm white workspace, subtle cream hover, red left-accent on hover */
+table { color: #231F20; }
+thead, thead th {
+  background: #F2EDE6 !important;
+  color: #231F20 !important;
+  border-bottom: 1px solid #E0D9D0 !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+tbody tr { border-bottom: 1px solid #E0D9D0 !important; transition: background 0.15s ease; }
+td { color: #231F20 !important; }
+tbody tr:hover { background: #F2EDE6 !important; }
+tbody tr:hover td { color: #231F20 !important; }
 
-/* Tables (sit on white main-content → dark text, red hover row with white text) */
-table { color: #1f2937; }
-thead, thead th { background: #f7fafc !important; color: #1f2937 !important; border-bottom: 1px solid var(--tm-accent) !important; }
-tbody tr { border-bottom: 1px solid #e2e8f0 !important; }
-td { color: #1f2937 !important; }
-tbody tr:hover { background: var(--tm-accent) !important; }
-tbody tr:hover,
-tbody tr:hover td,
-tbody tr:hover th,
-tbody tr:hover a,
-tbody tr:hover span,
-tbody tr:hover strong,
-tbody tr:hover div { color: #ffffff !important; }
-
-/* Generic "name/row/item" hover patterns across pages — keep text white */
+/* Generic row-hover — cream tint, keep text dark so chips stay readable */
 .tenant-row:hover,
 .resource-list-item:hover,
 .alert-card:hover,
@@ -279,35 +305,39 @@ tbody tr:hover div { color: #ffffff !important; }
 .item-row:hover,
 .chat-item-row:hover,
 .email-item-row:hover {
-  background: var(--tm-accent) !important;
-  color: #ffffff !important;
-}
-.tenant-row:hover *:not(.status-badge):not(.status-badge *),
-.resource-list-item:hover *:not(.status-badge):not(.status-badge *),
-.alert-card:hover *:not(.status-badge):not(.status-badge *),
-.clickable-row:hover *:not(.status-badge):not(.status-badge *),
-.admin-consent-card:hover *:not(.status-badge):not(.status-badge *),
-.folder-tree-item:hover *,
-.content-tab:hover *,
-.item-row:hover *:not(.status-badge):not(.status-badge *),
-.chat-item-row:hover *:not(.status-badge):not(.status-badge *),
-.email-item-row:hover *:not(.status-badge):not(.status-badge *) {
-  color: #ffffff !important;
+  background: #F2EDE6 !important;
+  color: #231F20 !important;
 }
 
-/* Service nav (tabs bar) — force white bg, red accent for active/hover */
-.service-nav { background: #ffffff !important; border-bottom: 1px solid var(--tm-accent) !important; }
-.service-nav .nav-tab { color: #4a5568 !important; border-bottom: 2px solid transparent !important; }
-.service-nav .nav-tab:hover { color: var(--tm-accent) !important; }
-.service-nav .nav-tab.active { color: var(--tm-accent) !important; border-bottom-color: var(--tm-accent) !important; }
+/* Service nav (top tabs) — warm white, red active/hover with left-slide underline */
+.service-nav {
+  background: #F9F6F2 !important;
+  border-bottom: 1px solid #E0D9D0 !important;
+  padding: 0 24px !important;
+}
+.service-nav .nav-tab {
+  color: #6B6B6B !important;
+  border-bottom: 2px solid transparent !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  transition: color 0.2s ease, border-color 0.2s ease !important;
+}
+.service-nav .nav-tab:hover { color: #231F20 !important; }
+.service-nav .nav-tab.active {
+  color: #D31245 !important;
+  border-bottom-color: #D31245 !important;
+}
 
-/* Checkboxes — kill every teal/blue/green accent-color across the app */
+/* Checkboxes / radios — brand red */
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--tm-accent) !important;
+  accent-color: #D31245 !important;
 }
 
-/* Inputs */
+/* Inputs — white surface, cream border, red focus ring */
 input[type="text"],
 input[type="search"],
 input[type="email"],
@@ -316,213 +346,194 @@ input[type="number"],
 input[type="url"],
 select,
 textarea {
-  background: #000000 !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-accent) !important;
+  background: #ffffff !important;
+  color: #231F20 !important;
+  border: 1px solid #E0D9D0 !important;
+  border-radius: 4px !important;
+  font-family: 'DM Sans', sans-serif !important;
 }
-input::placeholder, textarea::placeholder { color: var(--tm-muted) !important; }
-input:focus, select:focus, textarea:focus { outline: none !important; border-color: var(--tm-accent) !important; box-shadow: 0 0 0 2px rgba(211, 18, 69, 0.35) !important; }
+input::placeholder, textarea::placeholder { color: #9E8E82 !important; }
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #D31245 !important;
+  box-shadow: 0 0 0 2px rgba(211, 18, 69, 0.15) !important;
+}
 
-/* Buttons — generic. Keep layout; just recolor. */
+/* Buttons — TM "Make Moves" sharp-corner style */
 button {
-  background: var(--tm-panel);
-  color: var(--tm-text);
-  border: 1px solid var(--tm-accent);
+  background: #ffffff;
+  color: #231F20;
+  border: 1px solid #E0D9D0;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
-button:hover:not(:disabled) { background: var(--tm-accent); color: var(--tm-text); }
-button:disabled { opacity: 0.5; }
+button:hover:not(:disabled) { border-color: #D31245; color: #D31245; background: #ffffff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Primary / CTA variants */
+/* Primary / CTA — solid red, sharp corners, uppercase tracking */
 .btn-primary,
 .primary-btn,
 button.primary,
 button[type="submit"] {
-  background: var(--tm-accent) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-accent) !important;
+  background: #D31245 !important;
+  color: #ffffff !important;
+  border: 1px solid #D31245 !important;
+  border-radius: 0 !important;
+  padding: 12px 28px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
 }
 .btn-primary:hover:not(:disabled),
 .primary-btn:hover:not(:disabled),
 button.primary:hover:not(:disabled),
-button[type="submit"]:hover:not(:disabled) { background: #b00f39 !important; border-color: #b00f39 !important; }
+button[type="submit"]:hover:not(:disabled) {
+  background: #b00f39 !important;
+  border-color: #b00f39 !important;
+  color: #ffffff !important;
+}
 
+/* Ghost / secondary — transparent with deep-black border */
 .btn-secondary,
 .secondary-btn,
 button.secondary {
-  background: var(--tm-panel) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-accent) !important;
+  background: transparent !important;
+  color: #231F20 !important;
+  border: 1.5px solid #231F20 !important;
+  border-radius: 0 !important;
+  padding: 12px 28px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: #231F20 !important;
+  color: #ffffff !important;
 }
 
-/* Modals */
-.modal-overlay { background: rgba(0, 0, 0, 0.75) !important; }
-.modal-overlay .modal-content { background: var(--tm-panel) !important; color: var(--tm-text) !important; border: 1px solid var(--tm-accent) !important; }
+/* Modals — warm white with cream header, sharp border */
+.modal-overlay { background: rgba(35, 31, 32, 0.45) !important; backdrop-filter: blur(3px); }
+.modal-overlay .modal-content {
+  background: #F9F6F2 !important;
+  color: #231F20 !important;
+  border: 1px solid #E0D9D0 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 24px 60px rgba(35, 31, 32, 0.25) !important;
+}
 .modal-overlay .modal-content .modal-header,
-.modal-overlay .modal-content .modal-footer { border-color: var(--tm-accent) !important; }
-.modal-overlay .modal-content .modal-header .modal-title { color: var(--tm-text) !important; }
-.modal-overlay .modal-content .modal-close:hover { background: rgba(211, 18, 69, 0.2) !important; }
-.modal-overlay .modal-content .modal-close svg { color: var(--tm-text) !important; }
+.modal-overlay .modal-content .modal-footer { border-color: #E0D9D0 !important; background: #F2EDE6 !important; }
+.modal-overlay .modal-content .modal-header .modal-title {
+  color: #231F20 !important;
+  font-family: 'Playfair Display', Georgia, serif !important;
+  font-weight: 700 !important;
+}
+.modal-overlay .modal-content .modal-close:hover { background: #F2EDE6 !important; }
+.modal-overlay .modal-content .modal-close svg { color: #231F20 !important; }
+.modal-overlay .modal-content .modal-close:hover svg { color: #D31245 !important; }
 
-.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo { background: #000000 !important; }
-.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-name { color: var(--tm-text) !important; }
+.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo { background: #F2EDE6 !important; border: 1px solid #E0D9D0 !important; }
+.modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-name { color: #231F20 !important; }
 .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn {
-  background: var(--tm-panel) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-accent) !important;
+  background: transparent !important;
+  color: #231F20 !important;
+  border: 1.5px solid #231F20 !important;
+  border-radius: 0 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase !important;
 }
 .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn:hover:not(:disabled) {
-  background: var(--tm-accent) !important;
-  border-color: var(--tm-accent) !important;
+  background: #231F20 !important;
+  color: #ffffff !important;
 }
 
-/* Status badges — preserve native semantic colors (green active, amber discovering)
-   so they stay readable on both dark panels and the whitish dropdown hover. */
-
 /* =========================================================================
-   READABILITY PASS — text color per surface
-   Rules:
-     on #000 (sidebar/header)      → body #fff, muted #A7A9AC, accent #D31245
-     on #58595B (panel/card/modal) → body #fff, muted #A7A9AC (≥13px), accent #D31245
-     on #fff (main-content)        → body #1f2937, muted #6b7280, accent #D31245
-     on #D31245 (hover row / CTA)  → body #fff
-     on #f1f2f4 (whitish hover)    → body #000
+   READABILITY — text on each TM surface
+   on #F9F6F2 (shell/main)      → heading #231F20, body #6B6B6B, accent #D31245
+   on #F2EDE6 (card/cream)      → heading #231F20, body #6B6B6B
+   on #D31245 (CTA)             → #ffffff
    ========================================================================= */
+.main-content h1, .main-content h2, .main-content h3 { color: #231F20 !important; }
+.main-content h4, .main-content h5, .main-content h6 { color: #231F20 !important; }
+.main-content p, .main-content label, .main-content li, .main-content dt, .main-content dd { color: #231F20; }
+.main-content small, .main-content .caption, .main-content .hint { color: #6B6B6B; }
+.main-content .text-muted { color: #6B6B6B !important; }
 
-/* Headings default to white; overridden to dark when inside main-content (white bg). */
-h1, h2, h3, h4, h5, h6 { color: #ffffff; font-weight: 600; }
-.main-content h1,
-.main-content h2,
-.main-content h3,
-.main-content h4,
-.main-content h5,
-.main-content h6 { color: #1f2937 !important; }
-
-/* Muted utility — picks color based on surface */
-.text-muted { color: #A7A9AC !important; }
-.main-content .text-muted { color: #6b7280 !important; }
-
-/* Body copy inside whitish cards → dark text for readability */
+/* Card body copy — dark on cream, muted uses TM body gray */
 .status-card, .status-card p, .status-card span:not(.status-badge):not(.status-badge *), .status-card div, .status-card strong,
 .chart-card, .chart-card p, .chart-card span, .chart-card div, .chart-card strong,
 .card, .card p, .card span:not(.status-badge):not(.status-badge *), .card div,
 .panel, .panel p, .panel span:not(.status-badge):not(.status-badge *), .panel div,
-.tile, .widget, .summary-card, .info-card {
-  color: #1f2937;
-}
-
-/* Modals stay dark (#58595B panel) → keep white text */
-.modal-overlay .modal-content,
-.modal-overlay .modal-content p,
-.modal-overlay .modal-content label,
-.modal-overlay .modal-content span:not(.status-badge):not(.status-badge *) {
-  color: #ffffff;
-}
-
-/* Muted labels/captions inside whitish cards */
+.tile, .widget, .summary-card, .info-card { color: #231F20; }
 .status-card .status-label,
 .status-card .status-detail,
 .chart-card .status-label,
 .panel .muted,
 .card .muted,
-.chart-legend-item { color: #6b7280 !important; font-size: 13px; }
+.chart-legend-item { color: #6B6B6B !important; font-size: 12px; }
 
-/* Native status-badge semantic text colors — never override */
-.status-badge,
-.status-badge * { color: revert !important; }
+/* Modals — same warm white system */
+.modal-overlay .modal-content,
+.modal-overlay .modal-content p,
+.modal-overlay .modal-content label,
+.modal-overlay .modal-content span:not(.status-badge):not(.status-badge *) { color: #231F20; }
 
-/* Main-content (white workspace) — readable body defaults */
-.main-content { color: #1f2937; }
-.main-content p,
-.main-content label,
-.main-content li,
-.main-content dt,
-.main-content dd { color: #1f2937; }
-.main-content small,
-.main-content .caption,
-.main-content .hint { color: #6b7280; }
+/* Status badges — keep native semantic green/amber */
+.status-badge, .status-badge * { color: revert !important; }
 
-/* Ensure link readability per surface */
+/* Links per surface */
 .main-content a { color: #D31245; font-weight: 500; }
 .main-content a:hover { color: #b00f39; text-decoration: underline; }
 .sidebar a, .header a, .status-card a, .chart-card a,
 .card a, .panel a, .modal-overlay .modal-content a { color: #D31245; }
 
-/* Hover-row text enforcement (red bg → white text) */
-tbody tr:hover, tbody tr:hover *:not(.status-badge):not(.status-badge *) { color: #ffffff !important; }
-
-/* Font smoothing — improves legibility on dark surfaces */
+/* Font smoothing across warm surfaces */
 body, .sidebar, .header, .modal-content, .status-card, .chart-card {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* =========================================================================
-   ROW HOVER — defeat page-level overrides and normalize chip readability.
-   Doubled class (.clickable-row.clickable-row) raises specificity so it
-   beats Activity.css's .clickable-row:hover { !important }.
+   ROW/CHIP hover normalization — TM light-hover style. Chips keep native
+   color since row hover is cream, not red.
    ========================================================================= */
 tbody tr.clickable-row.clickable-row:hover,
 .activity-table tbody tr:hover,
 .audit-table tbody tr:hover,
 .risk-table tbody tr:hover {
-  background: var(--tm-accent) !important;
+  background: #F2EDE6 !important;
 }
 tbody tr.clickable-row.clickable-row:hover td,
-tbody tr.clickable-row.clickable-row:hover td *,
 .activity-table tbody tr:hover td,
-.activity-table tbody tr:hover td *:not(.status-badge):not(.status-badge *):not(.risk-badge):not(.operation-badge):not(.signal-tag),
 .audit-table tbody tr:hover td,
-.audit-table tbody tr:hover td *:not(.status-badge):not(.status-badge *):not(.risk-badge):not(.operation-badge):not(.signal-tag),
-.risk-table tbody tr:hover td,
-.risk-table tbody tr:hover td *:not(.status-badge):not(.status-badge *):not(.risk-badge):not(.operation-badge):not(.signal-tag) {
-  color: #ffffff !important;
-}
+.risk-table tbody tr:hover td { color: #231F20 !important; }
 
-/* Audit/risk table heads — neutralize green/red-tinted originals */
 .audit-table thead,
 .activity-table thead,
-.risk-table thead { background: #f7fafc !important; border-bottom: 1px solid var(--tm-accent) !important; }
+.risk-table thead { background: #F2EDE6 !important; border-bottom: 1px solid #E0D9D0 !important; }
 .audit-table thead th,
 .activity-table thead th,
-.risk-table thead th { color: #1f2937 !important; }
+.risk-table thead th { color: #231F20 !important; }
 
-/* ---- Chip readability on row hover ----
-   Every chip (status / risk / operation / signal / urgency) on a hovered row
-   switches to white bg + black text so it stays readable against the red row. */
-tbody tr:hover .status-badge,
-tbody tr:hover .risk-badge,
-tbody tr:hover .operation-badge,
-tbody tr:hover .signal-tag,
-tbody tr:hover .status-done,
-tbody tr:hover .status-in-progress,
-tbody tr:hover .status-warning,
-tbody tr:hover .status-failed,
-tbody tr:hover .status-canceled,
-.clickable-row.clickable-row:hover .status-badge,
-.clickable-row.clickable-row:hover .risk-badge,
-.clickable-row.clickable-row:hover .operation-badge,
-.clickable-row.clickable-row:hover .signal-tag {
-  background: #ffffff !important;
-  color: #000000 !important;
+/* Recharts — dark labels on warm cream cards */
+.recharts-cartesian-axis-tick text,
+.recharts-text,
+.recharts-label,
+.recharts-cartesian-axis-label { fill: #231F20 !important; font-weight: 500; font-family: 'DM Sans', sans-serif !important; }
+.recharts-cartesian-grid line,
+.recharts-cartesian-axis-line { stroke: #E0D9D0 !important; }
+.recharts-legend-item-text { color: #231F20 !important; }
+.recharts-default-tooltip {
+  background: #F9F6F2 !important;
+  border: 1px solid #D31245 !important;
+  border-radius: 4px !important;
+  color: #231F20 !important;
+  box-shadow: 0 2px 8px rgba(35, 31, 32, 0.12) !important;
 }
-tbody tr:hover .status-badge svg,
-tbody tr:hover .status-badge *,
-tbody tr:hover .risk-badge *,
-tbody tr:hover .operation-badge *,
-tbody tr:hover .signal-tag *,
-.clickable-row.clickable-row:hover .status-badge *,
-.clickable-row.clickable-row:hover .risk-badge *,
-.clickable-row.clickable-row:hover .operation-badge * {
-  color: #000000 !important;
-  fill: #000000 !important;
-}
-
-/* Inline cancel button inside .status-in-progress still needs a destructive feel on hover */
-tbody tr:hover .status-badge-cancel { background: rgba(0, 0, 0, 0.08) !important; color: #000 !important; }
-tbody tr:hover .status-badge-cancel:hover:not(:disabled) { background: var(--tm-accent) !important; color: #fff !important; }
-
-/* Urgency color cells on hover — force white so they aren't red-on-red */
-tbody tr:hover .urgency-immediate,
-tbody tr:hover .urgency-urgent,
-tbody tr:hover .urgency-standard,
-tbody tr:hover .urgency-none { color: #ffffff !important; }
+.recharts-tooltip-label,
+.recharts-tooltip-item,
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-value { color: #231F20 !important; }
