@@ -5558,9 +5558,26 @@ export default function Recovery() {
     if (foldersInflightRef.current === inflightKey) return;
     foldersInflightRef.current = inflightKey;
 
+    // Pass the item_type so the backend can auto-resolve to the right
+    // Tier-2 sibling snapshot if the caller's snapshotId is for a
+    // different resource (e.g. the ENTRA_USER parent or the Calendar
+    // sibling). Without this, opening the Chats tab against the
+    // parent's snapshot id returned the parent's folders (or none) —
+    // the left-panel thread list ended up empty even though the
+    // user had thousands of chat messages under the USER_CHATS
+    // sibling. Mirrors the auto-resolve already live on /chats,
+    // /mail, /calendar and /contacts.
+    const TYPE_BY_TAB: Record<string, string | undefined> = {
+      mail: 'EMAIL',
+      chats: 'TEAMS_CHAT_MESSAGE',
+      calendar: 'CALENDAR_EVENT',
+      contacts: 'USER_CONTACT',
+    };
+    const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
+
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(snapId, undefined, 1, 50)
+    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, 50)
       .then((resp) => {
         if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
         const data = resp.content;
@@ -5598,8 +5615,18 @@ export default function Recovery() {
     const inflightKey = `${snapId}|${activeContentType}|${foldersPage}`;
     if (foldersInflightRef.current === inflightKey) return;
     foldersInflightRef.current = inflightKey;
+    // Same item_type routing as the first-page fetch above so
+    // infinite-scroll loads append the correct Tier-2 siblings.
+    const TYPE_BY_TAB_2: Record<string, string | undefined> = {
+      mail: 'EMAIL',
+      chats: 'TEAMS_CHAT_MESSAGE',
+      calendar: 'CALENDAR_EVENT',
+      contacts: 'USER_CONTACT',
+    };
+    const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
+
     setFoldersLoadingMore(true);
-    SnapshotService.getFolders(snapId, undefined, foldersPage, 50)
+    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, 50)
       .then((resp) => {
         setFolders((prev) => {
           const seen = new Set(prev.map(f => f.path));
