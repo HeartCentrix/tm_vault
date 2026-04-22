@@ -1,33 +1,24 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import './ServiceNav.css';
 
-const HIDE_ON_ROUTES = ['/alerts', '/settings', '/configuration', '/activity'];
-
 export default function ServiceNav() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isGlobalRoute = HIDE_ON_ROUTES.some(route =>
-    location.pathname === route
-  );
-  // Hide on plain /tenants (data sources list), but show on contextual routes
-  const isTenantsList = location.pathname === '/tenants';
-  const shouldShow = !isGlobalRoute && !isTenantsList;
-
-  if (!shouldShow) return null;
-
-  // Extract tenant context from URL
+  // Tabs are meaningful only inside a tenant/service context
+  // (/tenants/:tenantId/:serviceType/...). Outside that — /settings/*,
+  // /configuration, /activity, /alerts, /tenants list, auth pages —
+  // the nav has nothing valid to link to, so hide it entirely. This
+  // prevents navigating to unregistered paths like /overview, which
+  // render as blank pages.
   const match = location.pathname.match(/^\/tenants\/([^/]+)\/([^/]+)\//);
-  const tenantId = match?.[1] ?? null;
-  const serviceType = match?.[2] ?? null;
-  const isContextualRoute = !!match;
+  if (!match) return null;
 
-  const buildRoute = (basePath: string): string => {
-    if (isContextualRoute && tenantId && serviceType) {
-      return `/tenants/${tenantId}/${serviceType}${basePath}`;
-    }
-    return basePath;
-  };
+  const tenantId = match[1];
+  const serviceType = match[2];
+
+  const buildRoute = (basePath: string): string =>
+    `/tenants/${tenantId}/${serviceType}${basePath}`;
 
   const tabs = [
     { label: 'Overview', route: buildRoute('/overview') },

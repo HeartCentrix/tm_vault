@@ -415,7 +415,7 @@ button.secondary {
 }
 
 /* Modals — warm white with cream header, sharp border */
-.modal-overlay { background: rgba(35, 31, 32, 0.45) !important; backdrop-filter: blur(3px); }
+.modal-overlay { background: rgba(35, 31, 32, 0.45) !important; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 .modal-overlay .modal-content {
   background: #F9F6F2 !important;
   color: #231F20 !important;
@@ -517,6 +517,85 @@ tbody tr.clickable-row.clickable-row:hover td,
 .audit-table thead th,
 .activity-table thead th,
 .risk-table thead th { color: #231F20 !important; }
+
+/* =========================================================================
+   Settings → Storage — friendly backend labels
+   The button/modal-title render "Switch to <backend.name>" where name is
+   raw DB text like "seaweed" / "onprem-pilot" / "azure-primary". Swap the
+   visible text with pseudo-element content keyed off data-backend-kind.
+   ========================================================================= */
+.storage-switch-btn[data-backend-kind],
+.storage-modal-title[data-backend-kind],
+.storage-state-name[data-backend-kind] {
+  font-size: 0 !important;
+  line-height: inherit;
+}
+.storage-switch-btn[data-backend-kind]::before,
+.storage-modal-title[data-backend-kind]::before,
+.storage-state-name[data-backend-kind]::before {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.storage-modal-title[data-backend-kind]::before {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.storage-state-name[data-backend-kind]::before {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #231F20;
+}
+/* seaweed / seaweedfs → on prem storage */
+.storage-switch-btn[data-backend-kind="seaweedfs"]::before,
+.storage-switch-btn[data-backend-kind="seaweed"]::before,
+.storage-switch-btn[data-backend-name="seaweed"]::before,
+.storage-switch-btn[data-backend-name="onprem-pilot"]::before,
+.storage-modal-title[data-backend-kind="seaweedfs"]::before,
+.storage-modal-title[data-backend-kind="seaweed"]::before,
+.storage-modal-title[data-backend-name="seaweed"]::before,
+.storage-modal-title[data-backend-name="onprem-pilot"]::before {
+  content: "Switch to on prem storage";
+}
+.storage-state-name[data-backend-kind="seaweedfs"]::before,
+.storage-state-name[data-backend-kind="seaweed"]::before,
+.storage-state-name[data-backend-name="seaweed"]::before,
+.storage-state-name[data-backend-name="onprem-pilot"]::before {
+  content: "on prem storage";
+}
+/* azure_blob / azure-primary → Cloud storage */
+.storage-switch-btn[data-backend-kind="azure_blob"]::before,
+.storage-switch-btn[data-backend-kind="azure"]::before,
+.storage-switch-btn[data-backend-name="azure-primary"]::before,
+.storage-modal-title[data-backend-kind="azure_blob"]::before,
+.storage-modal-title[data-backend-kind="azure"]::before,
+.storage-modal-title[data-backend-name="azure-primary"]::before {
+  content: "Switch to Cloud storage";
+}
+.storage-state-name[data-backend-kind="azure_blob"]::before,
+.storage-state-name[data-backend-kind="azure"]::before,
+.storage-state-name[data-backend-name="azure-primary"]::before {
+  content: "Cloud storage";
+}
+
+/* Switch button hover — invert: white bg, pink text, pink border.
+   Beats the generic `button:hover` rule (which flipped only the color). */
+.storage-switch-btn:hover:not(:disabled),
+button.storage-switch-btn:hover:not(:disabled) {
+  background: #ffffff !important;
+  color: #D31245 !important;
+  border-color: #D31245 !important;
+}
+.storage-switch-btn:hover:not(:disabled)::before {
+  color: #D31245 !important;
+}
 
 /* Recharts — dark labels on warm cream cards */
 .recharts-cartesian-axis-tick text,
