@@ -1,5 +1,44 @@
 import { API } from '../config/api';
 
+/**
+ * Detect a "stale tenant id" 404 from the backend and self-heal the
+ * cached nav state so the next navigation picks up a fresh tenant.
+ * Triggered when a DB reset changed the tenant UUID but the frontend
+ * was still using a localStorage copy of the old one.
+ *
+ * Signals a page reload via the `tm:tenant-stale` event so the
+ * shell can present a "re-select tenant" state without a hard refresh
+ * that would lose other unsaved UI state.
+ */
+async function handleStaleTenant(res: Response): Promise<boolean> {
+  if (res.status !== 404) return false;
+  try {
+    const body = await res.clone().json();
+    const detail = String(body?.detail || '');
+    if (!/tenant.*not found|stale/i.test(detail)) return false;
+    // Clear only the tenant-scoped bits of nav state; keep auth token
+    // and sub-route so the user stays on the same page after re-select.
+    try {
+      const raw = localStorage.getItem('tm_vault_nav_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        parsed.tenantId = null;
+        localStorage.setItem(
+          'tm_vault_nav_state', JSON.stringify(parsed),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    window.dispatchEvent(new CustomEvent('tm:tenant-stale', {
+      detail: { reason: detail },
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface ResourceItem {
   id: string;
   tenant_id: string;
@@ -205,7 +244,14 @@ export async function getResourcesByType(
   if (includeHidden) url += `&includeHidden=true`;
 
   const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`Failed to fetch ${resourceType} resources: ${res.statusText}`);
+  if (!res.ok) {
+    if (await handleStaleTenant(res)) {
+      throw new Error(
+        'Cached tenant is stale — re-select your tenant and retry',
+      );
+    }
+    throw new Error(`Failed to fetch ${resourceType} resources: ${res.statusText}`);
+  }
 
   return res.json();
 }
@@ -398,6 +444,11 @@ export async function triggerDiscovery(
   });
 
   if (!res.ok) {
+    if (await handleStaleTenant(res)) {
+      throw new Error(
+        'Cached tenant is stale — re-select your tenant and retry',
+      );
+    }
     throw new Error(`Failed to trigger discovery: ${res.statusText}`);
   }
 

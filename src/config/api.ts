@@ -92,6 +92,9 @@ export const API = {
     ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
     ITEM_ATTACHMENTS: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/attachments`,
+    // Inline render (no download header) — used by EmailPreview to
+    // resolve <img src="cid:..."> inline-image references to real URLs.
+    ITEM_CONTENT: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/content`,
     ITEM_CONTENT_DOWNLOAD: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}/content?download=1`,
     AZURE_DB_EXPORT: (snapshotId: string, itemIds: string[]) =>
       `${API_URL}/resources/snapshots/${snapshotId}/azure-db/export?items=${encodeURIComponent(itemIds.join(','))}`,
