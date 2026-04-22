@@ -162,7 +162,13 @@ table {
 }
 
 /* App shell */
-.main-content { background: var(--tm-bg) !important; color: var(--tm-text); }
+.main-content { background: #ffffff !important; color: #1f2937; }
+.main-content h1,
+.main-content h2,
+.main-content h3,
+.main-content h4,
+.main-content h5,
+.main-content h6 { color: #1f2937; }
 
 /* Sidebar */
 .sidebar { background: #000000 !important; color: var(--tm-text) !important; border-right: 1px solid var(--tm-accent); }
@@ -234,12 +240,60 @@ table {
 .progress-ring-bg { stroke: var(--tm-muted) !important; }
 .progress-ring-progress { stroke: var(--tm-accent) !important; }
 
-/* Tables */
-table { color: var(--tm-text); }
-thead, thead th { background: #000000 !important; color: var(--tm-text) !important; border-bottom: 1px solid var(--tm-accent) !important; }
-tbody tr { border-bottom: 1px solid var(--tm-muted) !important; }
-tbody tr:hover { background: rgba(211, 18, 69, 0.15) !important; }
-td { color: var(--tm-text) !important; }
+/* Tables (sit on white main-content → dark text, red hover row with white text) */
+table { color: #1f2937; }
+thead, thead th { background: #f7fafc !important; color: #1f2937 !important; border-bottom: 1px solid var(--tm-accent) !important; }
+tbody tr { border-bottom: 1px solid #e2e8f0 !important; }
+td { color: #1f2937 !important; }
+tbody tr:hover { background: var(--tm-accent) !important; }
+tbody tr:hover,
+tbody tr:hover td,
+tbody tr:hover th,
+tbody tr:hover a,
+tbody tr:hover span,
+tbody tr:hover strong,
+tbody tr:hover div { color: #ffffff !important; }
+
+/* Generic "name/row/item" hover patterns across pages — keep text white */
+.tenant-row:hover,
+.resource-list-item:hover,
+.alert-card:hover,
+.clickable-row:hover,
+.admin-consent-card:hover,
+.folder-tree-item:hover,
+.content-tab:hover,
+.dropdown-item:hover,
+.sla-modal-check:hover,
+.item-row:hover,
+.chat-item-row:hover,
+.email-item-row:hover {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+.tenant-row:hover *,
+.resource-list-item:hover *,
+.alert-card:hover *,
+.clickable-row:hover *,
+.admin-consent-card:hover *,
+.folder-tree-item:hover *,
+.content-tab:hover *,
+.item-row:hover *,
+.chat-item-row:hover *,
+.email-item-row:hover * {
+  color: #ffffff !important;
+}
+
+/* Service nav (tabs bar) — force white bg, red accent for active/hover */
+.service-nav { background: #ffffff !important; border-bottom: 1px solid var(--tm-accent) !important; }
+.service-nav .nav-tab { color: #4a5568 !important; border-bottom: 2px solid transparent !important; }
+.service-nav .nav-tab:hover { color: var(--tm-accent) !important; }
+.service-nav .nav-tab.active { color: var(--tm-accent) !important; border-bottom-color: var(--tm-accent) !important; }
+
+/* Checkboxes — kill every teal/blue/green accent-color across the app */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--tm-accent) !important;
+}
 
 /* Inputs */
 input[type="text"],
