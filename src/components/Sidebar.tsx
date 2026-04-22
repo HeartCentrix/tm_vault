@@ -40,6 +40,7 @@ export default function Sidebar() {
     { label: 'Service', route: 'service' },
     { label: 'Activity', route: '/activity' },
     { label: 'Configuration', route: '/configuration' },
+    { label: 'Storage', route: '/settings/storage' },
   ];
 
   return (
