@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Signin from './pages/Signin';
@@ -37,6 +38,26 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // Global listener for the stale-tenant signal emitted by API callers
+  // when the backend 404s on a cached tenant id (common after a DB
+  // reset changed the tenant UUID). Route the user back to /tenants
+  // so they re-select a live tenant — no hard reload, no lost session.
+  useEffect(() => {
+    const onStale = () => {
+      try {
+        // Only redirect if user is authenticated — otherwise the
+        // normal /signin flow handles it.
+        if (localStorage.getItem('access_token')) {
+          window.location.assign('/tenants');
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('tm:tenant-stale', onStale);
+    return () => window.removeEventListener('tm:tenant-stale', onStale);
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
