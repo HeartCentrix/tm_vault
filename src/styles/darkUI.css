@@ -2381,7 +2381,16 @@
    ─────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] .header .dropdown-menu .status-badge.active {
   background: var(--tm-accent) !important;
-  color: #ffffff !important;
+  color: var(--tm-text) !important;
+}
+/* When the parent dropdown-item is ALSO active (pink-tint overlay),
+   red-on-red stacked awkwardly — flip to cream pill with brand-red
+   label so the badge stays legible on top of the active-row
+   background and keeps the "active = red accent" visual cue.
+   Plain rows (parent NOT active) keep the brand-red pill above. */
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.active .status-badge.active {
+  background: var(--tm-text) !important;
+  color: var(--tm-accent) !important;
 }
 [data-theme="dark"] .header .dropdown-menu .status-badge.discovering {
   background: rgba(229, 180, 88, 0.22) !important;
@@ -2768,3 +2777,36 @@
 }
 [data-theme="dark"] .entra-user-count { color: var(--tm-text) !important; }
 [data-theme="dark"] .entra-user-sort  { color: var(--tm-body) !important; }
+
+/* =========================================================================
+   Dropdown .active / .selected / aria-selected — stronger highlight
+   -------------------------------------------------------------------------
+   Hover uses a soft 22% pink tint; the SELECTED state was reading the
+   same as hover which made "which one is chosen" hard to spot. Bumps
+   the fill to 38% alpha, adds a 3 px brand-pink left accent bar, and
+   pushes the label to semibold so the current selection stands out
+   clearly from the hoverable siblings. Cream text stays for contrast.
+   Listed after the hover rule so it wins on specificity.
+   ========================================================================= */
+[data-theme="dark"] .dropdown-menu .dropdown-item.active,
+[data-theme="dark"] .rsel-opt.active,
+[data-theme="dark"] .recovery-toolbar-version-opt.active,
+[data-theme="dark"] .sla-item.selected,
+[data-theme="dark"] .sla-dropdown-item.selected,
+[data-theme="dark"] .filter-dropdown .filter-item.active,
+[data-theme="dark"] .filter-dropdown .filter-item.selected,
+[data-theme="dark"] .kind-filter-dropdown .filter-item.active,
+[data-theme="dark"] [role="listbox"] [role="option"][aria-selected="true"] {
+  background: rgba(184, 14, 56, 0.38) !important;
+  color: var(--tm-text) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+  padding-left: calc(10px - 3px) !important; /* keep label aligned */
+  font-weight: 600 !important;
+}
+[data-theme="dark"] .dropdown-menu .dropdown-item.active span,
+[data-theme="dark"] .sla-item.selected *,
+[data-theme="dark"] .sla-dropdown-item.selected *,
+[data-theme="dark"] [role="listbox"] [role="option"][aria-selected="true"] * {
+  color: var(--tm-text) !important;
+  font-weight: 600 !important;
+}
