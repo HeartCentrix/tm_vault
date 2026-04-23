@@ -6768,13 +6768,27 @@ export default function Recovery() {
                 // what the grid is showing.
                 const calendarFilterScoped =
                   activeContentType === 'calendar' && filteredCalendarIds.length > 0;
+                // Chat thread scope: when the user ticks a thread in
+                // the left rail but hasn't clicked into any individual
+                // messages, `threadPath` is set and `selectedItems` is
+                // empty. The toolbar was leaving Download greyed out
+                // in that state; handleDownload then forwards
+                // threadPath to the chat-export modal, so a click
+                // WOULD work if we let it through. Treat a ticked
+                // thread as implicit selection so Download lights up.
+                const chatThreadScoped =
+                  activeContentType === 'chats' && !!threadPath;
                 const allowEmptyDownload =
                   (isAzureDb && azureDbTab === 'configuration') ||
                   (isAzureVm && vmTab !== 'volumes') ||
                   vmVolumesHasPick ||
-                  calendarFilterScoped;
+                  calendarFilterScoped ||
+                  chatThreadScoped;
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
+                // Chat Recover stays blocked by toolbarIsChat below —
+                // Graph has no app-only chat-post API, so enabling
+                // thread scope there would just open a dead modal.
                 const allowEmptyRecover = isAzureDb || isAzureVm || calendarFilterScoped;
                 // Chat restore is a Microsoft platform limit — no
                 // app-only API to post chat/channel messages as another
