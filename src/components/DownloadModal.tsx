@@ -28,6 +28,12 @@ interface DownloadModalProps {
   resourceId?: string;
   threadPath?: string | null;
   resourceKind?: string;
+  // Mail / Contacts / generic folder checkbox selection. The user ticks
+  // a folder (e.g. `/Inbox`, `Contacts`) in the left rail and we send
+  // the paths to the backend; shared.folder_resolver expands them into
+  // item ids server-side, so we don't have to materialise the full list
+  // in the UI. Sent alongside itemIds — backend treats them as a union.
+  folderPaths?: string[];
 }
 
 type Scope = 'selected' | 'all';
@@ -44,6 +50,7 @@ export function DownloadModal({
   resourceId,
   threadPath,
   resourceKind,
+  folderPaths,
 }: DownloadModalProps) {
   const [scope, setScope] = useState<Scope>('selected');
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
@@ -273,7 +280,7 @@ export function DownloadModal({
       return;
     }
 
-    if (scope === 'selected' && itemIds.length === 0) {
+    if (scope === 'selected' && itemIds.length === 0 && !(folderPaths && folderPaths.length > 0)) {
       setError('No items selected.');
       return;
     }
@@ -308,13 +315,19 @@ export function DownloadModal({
         restoreType: 'EXPORT_ZIP',
         snapshotIds,
         itemIds: scope === 'selected' ? itemIds : [],
+        folderPaths:
+          scope === 'selected' && folderPaths && folderPaths.length > 0
+            ? folderPaths
+            : undefined,
         // File-family resources always export as ZIP with full tree;
         // no format or workload axis applies.
         exportFormat: isFilesFamily ? undefined : exportFormat,
         workloads:
           !isFilesFamily && scope === 'all' ? Array.from(workloads) : undefined,
         includeAttachments: isFilesFamily ? undefined : includeAttachments,
-        preserveTree: isFilesFamily || scope === 'all' || preserveTree,
+        preserveTree:
+          isFilesFamily || scope === 'all' || preserveTree
+          || (!!folderPaths && folderPaths.length > 0),
         contactFolders: isFilesFamily ? undefined : contactFoldersPayload,
       });
       const jobId = response.jobId;
