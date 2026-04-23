@@ -21,7 +21,7 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .search-input::placeholder {
@@ -33,7 +33,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -44,7 +44,7 @@
 }
 
 .add-source-btn:hover {
-  background: #0f766e;
+  background: #b00f39;
 }
 
 .tenants-table-container {
@@ -196,7 +196,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 24px;
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -207,5 +207,5 @@
 }
 
 .empty-tenants-btn:hover {
-  background: #0f766e;
+  background: #b00f39;
 }

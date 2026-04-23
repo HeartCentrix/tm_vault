@@ -99,8 +99,8 @@
 }
 [data-theme="dark"] .sidebar .logo,
 [data-theme="dark"] .sidebar .sidebar-footer { border-color: var(--tm-hover) !important; }
-[data-theme="dark"] .sidebar .logo .logo-icon,
-[data-theme="dark"] .sidebar .logo .logo-text { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .sidebar .logo .logo-icon { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .sidebar .logo .logo-text { color: #ffffff !important; }
 [data-theme="dark"] .sidebar .nav-menu .nav-item { color: var(--tm-body-2) !important; }
 [data-theme="dark"] .sidebar .nav-menu .nav-item:hover {
   background: transparent !important;
@@ -728,14 +728,16 @@
 /* Recover (ghost pink) + Download (solid pink) — replace the teal
  * defaults so the CTAs match the dark accent. */
 [data-theme="dark"] .modal-overlay .modal-content .btn-recover {
-  background: transparent !important;
+  background: var(--tm-accent) !important;
   border: 1.5px solid var(--tm-accent) !important;
-  color: var(--tm-accent-soft) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(184, 14, 56, 0.35) !important;
 }
 [data-theme="dark"] .modal-overlay .modal-content .btn-recover:hover:not(:disabled) {
-  background: rgba(184, 14, 56, 0.12) !important;
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
   color: #ffffff !important;
-  box-shadow: 0 6px 18px rgba(184, 14, 56, 0.25) !important;
+  box-shadow: 0 8px 24px rgba(184, 14, 56, 0.55) !important;
 }
 [data-theme="dark"] .modal-overlay .modal-content .btn-download {
   background: var(--tm-accent) !important;
@@ -888,19 +890,19 @@
 [data-theme="dark"] .recharts-cartesian-axis-line      { stroke: var(--tm-border) !important; }
 [data-theme="dark"] .recharts-legend-item-text         { color: var(--tm-body-2) !important; }
 
-[data-theme="dark"] .recharts-surface path[fill="#17838a"],
-[data-theme="dark"] .recharts-surface rect[fill="#17838a"] { fill: var(--tm-success) !important; }
+[data-theme="dark"] .recharts-surface path[fill="#D31245"],
+[data-theme="dark"] .recharts-surface rect[fill="#D31245"] { fill: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .recharts-surface path[fill="#f59e0b"],
 [data-theme="dark"] .recharts-surface rect[fill="#f59e0b"] { fill: var(--tm-warning) !important; }
 [data-theme="dark"] .recharts-surface path[fill="#ef7d73"],
 [data-theme="dark"] .recharts-surface rect[fill="#ef7d73"] { fill: var(--tm-failure) !important; }
-[data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface path[fill="#17838a"],
-[data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface rect[fill="#17838a"] {
+[data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface path[fill="#D31245"],
+[data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface rect[fill="#D31245"] {
   fill: var(--tm-accent) !important;
 }
 
 [data-theme="dark"] .protection-ring circle[stroke="#e2e8f0"] { stroke: var(--tm-border) !important; }
-[data-theme="dark"] .protection-ring circle[stroke="#0d9488"] { stroke: var(--tm-accent) !important; }
+[data-theme="dark"] .protection-ring circle[stroke="#D31245"] { stroke: var(--tm-accent) !important; }
 
 [data-theme="dark"] .chart-legend-item.success            { color: var(--tm-success) !important; }
 [data-theme="dark"] .chart-legend-item.success::before    { background: var(--tm-success) !important; }

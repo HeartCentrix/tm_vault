@@ -72,7 +72,7 @@
   width: 16px; height: 16px; border-radius: 3px; font-size: 11px;
   transition: all 0.15s; flex-shrink: 0;
 }
-.sla-check-box.checked { background: #0d9488; color: #fff; }
+.sla-check-box.checked { background: #D31245; color: #fff; }
 .sla-check-box:not(.checked) { border: 1.5px solid #cbd5e1; }
 
 .sla-schedule, .sla-retention { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex-shrink: 0; }
@@ -136,7 +136,7 @@
 
 .copy-btn:hover {
   background: #e2e8f0;
-  color: #0d9488;
+  color: #D31245;
 }
 
 .download-csv-btn {
@@ -191,7 +191,7 @@
   border: none; border-bottom: 2px solid #e2e8f0;
   font-size: 14px; color: #334155; transition: border-color 0.2s;
 }
-.sla-modal-name-input:focus { outline: none; border-bottom-color: #0d9488; }
+.sla-modal-name-input:focus { outline: none; border-bottom-color: #D31245; }
 
 /* Section */
 .sla-modal-section { margin-bottom: 20px; }
@@ -220,7 +220,7 @@
 .sla-modal-settings-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; border-radius: 4px;
-  background: transparent; border: none; color: #0d9488;
+  background: transparent; border: none; color: #D31245;
   cursor: pointer; transition: all 0.15s; flex-shrink: 0;
 }
 .sla-modal-settings-btn:hover { background: #e2e8f0; color: #0d7a6f; }
@@ -236,7 +236,7 @@
   width: 16px; height: 16px; border-radius: 3px;
   background: #e2e8f0; transition: all 0.15s; flex-shrink: 0;
 }
-.sla-modal-check-box.checked { background: #0d9488; }
+.sla-modal-check-box.checked { background: #D31245; }
 
 .sla-modal-check-box svg { width: 10px; height: 10px; }
 
@@ -253,7 +253,7 @@
   position: relative; width: 36px; height: 20px;
   background: #cbd5e1; border-radius: 10px; cursor: pointer; transition: all 0.2s;
 }
-.sla-modal-toggle.active { background: #0d9488; }
+.sla-modal-toggle.active { background: #D31245; }
 
 .sla-modal-toggle-slider {
   position: absolute; top: 2px; left: 2px;
@@ -297,7 +297,7 @@
   background-repeat: no-repeat;
   background-position: right 8px center;
 }
-.sla-modal-select:focus { outline: none; border-color: #0d9488; }
+.sla-modal-select:focus { outline: none; border-color: #D31245; }
 
 /* Day buttons */
 .sla-modal-day-btns { display: flex; gap: 4px; }
@@ -306,7 +306,7 @@
   font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
   background: #e2e8f0; color: #64748b;
 }
-.sla-modal-day-btn.active { background: #0d9488; color: #fff; }
+.sla-modal-day-btn.active { background: #D31245; color: #fff; }
 .sla-modal-day-btn:hover:not(.active) { background: #cbd5e1; }
 
 /* Time group */

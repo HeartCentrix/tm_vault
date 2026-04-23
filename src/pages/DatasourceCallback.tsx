@@ -58,7 +58,7 @@ export default function DatasourceCallback() {
           </div>
         ) : (
           <div style={{display: 'flex', justifyContent: 'center'}}>
-            <div className="spinner-large" style={{borderTopColor: '#0d9488'}}></div>
+            <div className="spinner-large" style={{borderTopColor: '#D31245'}}></div>
           </div>
         )}
       </div>

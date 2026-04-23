@@ -131,14 +131,14 @@
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   font-size: 13px;
-  color: #0d9488;
+  color: #D31245;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .resolve-btn:hover {
   background: #e6fffa;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .pagination {
