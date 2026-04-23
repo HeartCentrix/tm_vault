@@ -4163,14 +4163,25 @@ function sanitizeMessageHtml(raw: any): string {
 
 function GroupTeamsView({
   resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+  activeTab: controlledTab, onTabChange,
 }: {
   resourceId: string;
   snapshots: SnapshotItem[];
   selectedItems: Set<string>;
   onToggleItem: (id: string) => void;
   onSelectAll: (ids: string[], checked: boolean) => void;
+  // Optional controlled-tab mode — parent can drive the active tab so
+  // the Download / Recover modals can route by (resourceKind × tab).
+  // Omitting both keeps the legacy internal-state behaviour.
+  activeTab?: GroupTab;
+  onTabChange?: (next: GroupTab) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<GroupTab>('site');
+  const [internalTab, setInternalTab] = useState<GroupTab>('site');
+  const activeTab: GroupTab = controlledTab ?? internalTab;
+  const setActiveTab = (next: GroupTab) => {
+    if (controlledTab === undefined) setInternalTab(next);
+    onTabChange?.(next);
+  };
 
   const latestSnapshot = useMemo(() => {
     return snapshots
@@ -5529,6 +5540,13 @@ export default function Recovery() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
 
+  // Active tab inside GroupTeamsView (M365 Groups / Entra Groups /
+  // Teams Channels). Lifted into the parent so the Download / Recover
+  // modals can route by tab: Site → file-family UX, Channels → chat
+  // UX, Mail → mailbox UX. Legacy resources that don't use this view
+  // ignore the state entirely.
+  const [groupTeamsTab, setGroupTeamsTab] = useState<'site' | 'mail' | 'channels'>('site');
+
   // Folders (real from snapshot items)
   const [folders, setFolders] = useState<SnapshotFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>(() => {
@@ -6750,14 +6768,40 @@ export default function Recovery() {
                 // what the grid is showing.
                 const calendarFilterScoped =
                   activeContentType === 'calendar' && filteredCalendarIds.length > 0;
+                // Chat thread scope: when the user ticks a thread in
+                // the left rail but hasn't clicked into any individual
+                // messages, `threadPath` is set and `selectedItems` is
+                // empty. The toolbar was leaving Download greyed out
+                // in that state; handleDownload then forwards
+                // threadPath to the chat-export modal, so a click
+                // WOULD work if we let it through. Treat a ticked
+                // thread as implicit selection so Download lights up.
+                const chatThreadScoped =
+                  activeContentType === 'chats' && !!threadPath;
                 const allowEmptyDownload =
                   (isAzureDb && azureDbTab === 'configuration') ||
                   (isAzureVm && vmTab !== 'volumes') ||
                   vmVolumesHasPick ||
-                  calendarFilterScoped;
+                  calendarFilterScoped ||
+                  chatThreadScoped;
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
+                // Chat Recover stays blocked by toolbarIsChat below —
+                // Graph has no app-only chat-post API, so enabling
+                // thread scope there would just open a dead modal.
                 const allowEmptyRecover = isAzureDb || isAzureVm || calendarFilterScoped;
+                // Chat restore is a Microsoft platform limit — no
+                // app-only API to post chat/channel messages as another
+                // user. Grey out Recover so users don't submit a no-op
+                // job. Affects: user Chats tab AND the Channels tab
+                // inside Group / Teams Channel resources (where we
+                // remap effectiveContentType='chats' for modal routing).
+                const isGroupLikeForTb = !!selectedResource && [
+                  'm365_group', 'entra_group', 'teams_channel',
+                ].includes(selectedResource.kind);
+                const toolbarIsChat =
+                  activeContentType === 'chats'
+                  || (isGroupLikeForTb && groupTeamsTab === 'channels');
                 return (
                   <RecoveryToolbar
                     snapshots={snapshots}
@@ -6768,6 +6812,7 @@ export default function Recovery() {
                     selectedCount={selectedItems.size}
                     downloadError={inlineDownloadError || downloadError}
                     downloadDisabled={inlineDownloadRunning}
+                    recoverDisabled={toolbarIsChat}
                     allowEmptyDownload={allowEmptyDownload}
                     allowEmptyRecover={allowEmptyRecover}
                     searchValue={showSearch ? searchQuery : undefined}
@@ -6879,6 +6924,8 @@ export default function Recovery() {
                     if (checked) setSelectedItems(new Set(ids));
                     else setSelectedItems(new Set());
                   }}
+                  activeTab={groupTeamsTab}
+                  onTabChange={setGroupTeamsTab}
                 />
               ) : (
                 <>
@@ -7242,16 +7289,75 @@ export default function Recovery() {
         </div>
       </div>
       </div>
-      <RestoreModal
-        isOpen={restoreModalOpen}
-        onClose={() => setRestoreModalOpen(false)}
-        itemIds={Array.from(selectedItems)}
-        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
-        itemName={restoreItemName}
-        itemType={restoreItemType}
-        resourceKind={selectedResource?.kind}
-        snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
-      />
+      {(() => {
+        // Modal routing for M365 Group / Entra Group / Teams Channel:
+        // the GroupTeamsView has three content surfaces (Site / Mail /
+        // Channels) that each need a completely different modal UX —
+        // file-family for Site, chat for Channels, mailbox for Mail.
+        // We don't actually mutate the resource row; we override what
+        // the modals see for `resourceKind` and `contentType` so their
+        // existing type-based branches fire correctly.
+        //
+        // SharePoint Site tab     → resourceKind='sharepoint_site'
+        //                          (kicks into the file-family branch)
+        // Teams Channels tab      → contentType='chats'
+        //                          (triggers the chat-export code path
+        //                           identical to the users' Chats tab)
+        // Group Mail tab          → resourceKind='mailbox'
+        //                          (re-uses the users' mail modal UX
+        //                           so the target-picker + mailbox flow
+        //                           behaves identically)
+        const isGroupLike = !!selectedResource && [
+          'm365_group', 'entra_group', 'teams_channel',
+        ].includes(selectedResource.kind);
+        const effectiveResourceKind =
+          isGroupLike && groupTeamsTab === 'site' ? 'sharepoint_site'
+          : isGroupLike && groupTeamsTab === 'mail' ? 'mailbox'
+          : selectedResource?.kind;
+        const effectiveContentType: ContentTab =
+          isGroupLike && groupTeamsTab === 'channels' ? 'chats'
+          : isGroupLike && groupTeamsTab === 'mail' ? 'mail'
+          : (activeContentType as ContentTab);
+        // Chat restore is a Microsoft platform limit, not a TMvault
+        // limit — neither /chats/{id}/messages nor
+        // /teams/{id}/channels/{id}/messages accept an app-only
+        // token. Surface that clearly in the modal AND grey out the
+        // toolbar Recover button so the user can't even open the
+        // modal (which would just show the unsupported screen).
+        const isChatRestoreUnsupported = effectiveContentType === 'chats';
+        return (
+          <>
+            <RestoreModal
+              isOpen={restoreModalOpen}
+              onClose={() => setRestoreModalOpen(false)}
+              itemIds={Array.from(selectedItems)}
+              snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+              itemName={restoreItemName}
+              itemType={restoreItemType}
+              resourceKind={effectiveResourceKind}
+              chatRestoreUnsupported={isChatRestoreUnsupported}
+              snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
+            />
+            <DownloadModal
+              isOpen={downloadModalOpen}
+              onClose={() => setDownloadModalOpen(false)}
+              itemIds={Array.from(selectedItems)}
+              snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+              selectedCount={selectedItems.size}
+              contentType={effectiveContentType}
+              preserveTree={oneDriveFolderSelected.size > 0}
+              snapshotDate={
+                contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
+                || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
+                || undefined
+              }
+              resourceId={selectedResource?.id}
+              resourceKind={effectiveResourceKind}
+              threadPath={threadPath}
+            />
+          </>
+        );
+      })()}
       {selectedResource && (() => {
         const snap = snapshots.find(s => s.id === selectedSnapshotId);
         if (!snap) return null;
@@ -7275,29 +7381,6 @@ export default function Recovery() {
           />
         );
       })()}
-      <DownloadModal
-        isOpen={downloadModalOpen}
-        onClose={() => setDownloadModalOpen(false)}
-        itemIds={Array.from(selectedItems)}
-        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
-        selectedCount={selectedItems.size}
-        contentType={activeContentType as ContentTab}
-        preserveTree={oneDriveFolderSelected.size > 0}
-        snapshotDate={
-          // Tab-selected snapshot's date lives on contentSnapshots.byContent — the
-          // top-level `snapshots` list is just the first 50 from listByResource
-          // and may not contain the active tab's snapshotId, so .find() often
-          // returned undefined and the modal title showed no date.
-          contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
-          || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
-          || undefined
-        }
-        // resourceId + threadPath are forwarded so the modal can scope
-        // the per-thread chat export hitting /exports/chat.
-        resourceId={selectedResource?.id}
-        resourceKind={selectedResource?.kind}
-        threadPath={threadPath}
-      />
     </>
   );
 }

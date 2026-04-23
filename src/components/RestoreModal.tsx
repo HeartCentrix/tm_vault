@@ -15,6 +15,12 @@ interface RestoreModalProps {
   itemType?: string;
   snapshotDate?: string;
   resourceKind?: string;
+  // Set by Recovery when the selection is a Teams chat / channel /
+  // user 1:1 chat — Microsoft Graph has no app-only API to post chat
+  // messages as another user, so restore is a platform-level no-op.
+  // Render a clear "unsupported" screen instead of a greyed-out form
+  // the user can still fill in and "submit" to a silent skip.
+  chatRestoreUnsupported?: boolean;
 }
 
 const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
@@ -24,7 +30,7 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
   // Shared + room mailboxes have no OneDrive in M365 — hide it so users
@@ -139,7 +145,8 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
       || resourceKind === 'shared_mailbox'
       || resourceKind === 'room_mailbox';
     const isOneDriveSource = resourceKind === 'onedrive';
-    if (!isMailSource && !isOneDriveSource) return;
+    const isSharepointSource = resourceKind === 'sharepoint_site';
+    if (!isMailSource && !isOneDriveSource && !isSharepointSource) return;
 
     let cancelled = false;
     setMailboxTargetsLoading(true);
@@ -151,6 +158,8 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
           getResourcesByType(tenantId, 'SHARED_MAILBOX', 1, 500, undefined, 'active'),
           getResourcesByType(tenantId, 'ROOM_MAILBOX', 1, 500, undefined, 'active'),
         ]
+      : isSharepointSource
+      ? [getResourcesByType(tenantId, 'SHAREPOINT_SITE', 1, 500, undefined, 'active')]
       : [getResourcesByType(tenantId, 'ONEDRIVE', 1, 500, undefined, 'active')];
 
     Promise.all(loaders)
@@ -190,6 +199,40 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
 
   if (!isOpen) return null;
 
+  // Chat restore is a Microsoft platform limit, not a TMvault limit:
+  //   * POST /chats/{id}/messages        — no app-only permission
+  //   * POST /teams/{id}/channels/{id}/messages — ditto, same refusal
+  // Any submit here would complete with "skipped" counts and no data
+  // landing in Outlook / Teams. Show the unsupported screen and point
+  // at Download as the supported path.
+  if (chatRestoreUnsupported) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <button className="modal-close" onClick={onClose}>×</button>
+          <div className="modal-title">Recover not supported for chat messages</div>
+          <div className="restore-item-info" style={{ marginTop: 12 }}>
+            Microsoft Graph has no app-only API for posting chat or channel
+            messages on behalf of a user — neither <code>/chats/{'{'}id{'}'}/messages</code>
+            {' '}nor <code>/teams/{'{'}id{'}'}/channels/{'{'}id{'}'}/messages</code> accept
+            an application token. Every M365 backup vendor (afi.ai, Druva,
+            Keepit) hits the same wall; that's why none of them offer a
+            true chat "recover to Teams" path either.
+          </div>
+          <div className="restore-item-info" style={{ marginTop: 8 }}>
+            Use <strong>Download</strong> to export the conversation as
+            HTML, JSON, or PDF. The archive preserves sender, timestamp,
+            attachments, reactions, and the reply tree — suitable for
+            compliance, legal hold, or human review.
+          </div>
+          <div className="modal-actions" style={{ marginTop: 16 }}>
+            <button className="btn-cancel" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const toggleWorkload = (w: Workload) => {
     setWorkloads(prev => {
       const next = new Set(prev);
@@ -199,11 +242,21 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   };
 
   const handleRecover = async () => {
+    const isSharepointSource = resourceKind === 'sharepoint_site';
     // Full-account restore requires at least one workload selected —
     // otherwise the backend receives an empty filter list and silently
     // skips every item. The error surfaces the misconfiguration before
-    // the restore job gets created.
-    if (scope === 'full' && !isPowerBiItem && !isPowerAppItem && !isPowerFlowItem && !isPowerDlpItem && workloads.size === 0) {
+    // the restore job gets created. File-family resources (SharePoint)
+    // don't have a workload axis, so skip the check for them.
+    if (
+      scope === 'full'
+      && !isPowerBiItem
+      && !isPowerAppItem
+      && !isPowerFlowItem
+      && !isPowerDlpItem
+      && !isSharepointSource
+      && workloads.size === 0
+    ) {
       setError(`Select at least one workload to restore (${availableWorkloads.join(', ')}).`);
       return;
     }
@@ -219,6 +272,11 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
       }
     } else if (isPowerDlpItem) {
       // DLP is tenant-scoped — only in-place restore is meaningful
+    } else if (isSharepointSource) {
+      if (destination === 'another' && !targetUserId.trim()) {
+        setError('Please select a target SharePoint site');
+        return;
+      }
     } else if (destination === 'another' && !targetUserId.trim()) {
       setError('Please enter a target resource ID');
       return;
@@ -247,6 +305,11 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         restoreType = 'IN_PLACE';  // Power Platform uses IN_PLACE + targetEnvironmentId for cross-env
       } else if (isPowerDlpItem) {
         restoreType = 'IN_PLACE';
+      } else if (isSharepointSource) {
+        // SharePoint's "another site" is a workload-family restore, not a
+        // user-mailbox re-target — backend expects CROSS_RESOURCE with
+        // targetResourceId, NOT CROSS_USER with targetUserId.
+        restoreType = destination === 'another' ? 'CROSS_RESOURCE' : 'IN_PLACE';
       } else {
         restoreType = destination === 'another' ? 'CROSS_USER' : 'IN_PLACE';
       }
@@ -255,18 +318,31 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         restoreType,
         snapshotIds,
         itemIds: scope === 'selected' ? itemIds : [],
-        targetUserId: !isPowerBiItem && !isPowerPlatformItem && destination === 'another' ? targetUserId : undefined,
-        targetResourceId: isPowerBiItem && destination === 'another' ? targetResourceId : undefined,
+        // For SharePoint the dropdown's value IS the target resource id
+        // (we store it in targetUserId state for UI parity, but forward
+        // it as targetResourceId to the backend).
+        targetUserId:
+          !isPowerBiItem && !isPowerPlatformItem && !isSharepointSource
+            && destination === 'another'
+              ? targetUserId : undefined,
+        targetResourceId:
+          isPowerBiItem && destination === 'another' ? targetResourceId
+          : isSharepointSource && destination === 'another' ? targetUserId
+          : undefined,
         targetEnvironmentId: (isPowerAppItem || isPowerFlowItem) && destination === 'another' ? targetEnvironmentId : undefined,
         targetFolder: !isPowerBiItem && !isPowerPlatformItem
           && ((destination === 'original')
-            || (destination === 'another' && resourceKind === 'onedrive'))
+            || (destination === 'another'
+                && (resourceKind === 'onedrive' || isSharepointSource)))
           && originalSub === 'separate_folder' ? folderName : undefined,
         overwrite: !isPowerBiItem && !isPowerPlatformItem
           && ((destination === 'original')
-            || (destination === 'another' && resourceKind === 'onedrive'))
+            || (destination === 'another'
+                && (resourceKind === 'onedrive' || isSharepointSource)))
           && originalSub === 'overwrite',
-        workloads: !isPowerBiItem && !isPowerPlatformItem && scope === 'full' ? Array.from(workloads) : undefined,
+        workloads:
+          !isPowerBiItem && !isPowerPlatformItem && !isSharepointSource
+            && scope === 'full' ? Array.from(workloads) : undefined,
       });
       setSuccess(response.jobId);
     } catch (err) {
@@ -328,6 +404,144 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         {resourceKind === 'entra_directory' ? (
           <div className="modal-columns">
             <EntraRestoreForm onChange={setEntraSelection} />
+          </div>
+        ) : resourceKind === 'sharepoint_site' ? (
+          // SharePoint sites aren't mailboxes — the Mail / OneDrive /
+          // Contacts / Calendar workload picker doesn't apply. Render a
+          // file-family UI: scope (selected files/folders vs whole site)
+          // + destination (original site vs another SharePoint site).
+          // Submits through /export-or-restore exactly like OneDrive;
+          // the backend routes to SharePointRestoreHandler when the
+          // target is SHAREPOINT_SITE.
+          <div className="modal-columns">
+            <div className="modal-col">
+              <label className="radio-row">
+                <input
+                  type="radio"
+                  checked={scope === 'selected'}
+                  onChange={() => setScope('selected')}
+                />
+                <span>
+                  Recover selected files / folders
+                  {itemName && <strong> ({itemName})</strong>}
+                </span>
+              </label>
+              <label className="radio-row">
+                <input
+                  type="radio"
+                  checked={scope === 'full'}
+                  onChange={() => setScope('full')}
+                />
+                <span>Recover the entire site</span>
+              </label>
+            </div>
+
+            <div className="modal-col">
+              <label className="radio-row">
+                <input
+                  type="radio"
+                  checked={destination === 'original'}
+                  onChange={() => setDestination('original')}
+                />
+                <span>Recover to the original site</span>
+              </label>
+
+              {destination === 'original' && (
+                <div className="sub-options">
+                  <label className="radio-row">
+                    <input
+                      type="radio"
+                      checked={originalSub === 'separate_folder'}
+                      onChange={() => setOriginalSub('separate_folder')}
+                    />
+                    <span>
+                      Recover to a separate folder{' '}
+                      <span
+                        className="info-icon"
+                        title="Files land under this folder with the original tree preserved"
+                      >
+                        ℹ
+                      </span>
+                    </span>
+                  </label>
+                  {originalSub === 'separate_folder' && (
+                    <input
+                      className="folder-input"
+                      value={folderName}
+                      onChange={(e) => setFolderName(e.target.value)}
+                    />
+                  )}
+                  <label className="radio-row">
+                    <input
+                      type="radio"
+                      checked={originalSub === 'overwrite'}
+                      onChange={() => setOriginalSub('overwrite')}
+                    />
+                    <span>Overwrite existing content</span>
+                  </label>
+                </div>
+              )}
+
+              <label className="radio-row">
+                <input
+                  type="radio"
+                  checked={destination === 'another'}
+                  onChange={() => setDestination('another')}
+                />
+                <span>Recover to another SharePoint site</span>
+              </label>
+
+              {destination === 'another' && (
+                <>
+                  <select
+                    value={targetUserId}
+                    onChange={(e) => setTargetUserId(e.target.value)}
+                    className="folder-input"
+                    disabled={mailboxTargetsLoading}
+                  >
+                    <option value="">Select target SharePoint site</option>
+                    {mailboxTargets.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.email ? `${r.name} <${r.email}>` : r.name}
+                      </option>
+                    ))}
+                  </select>
+                  {mailboxTargetsLoading && (
+                    <div className="restore-item-info">Loading SharePoint sites…</div>
+                  )}
+                  {mailboxTargetsError && (
+                    <div className="modal-error">{mailboxTargetsError}</div>
+                  )}
+                  {targetUserId && (
+                    <div className="sub-options">
+                      <label className="radio-row">
+                        <input
+                          type="radio"
+                          checked={originalSub === 'separate_folder'}
+                          onChange={() => setOriginalSub('separate_folder')}
+                        />
+                        <span>Recover to a separate folder</span>
+                      </label>
+                      {originalSub === 'separate_folder' && (
+                        <input
+                          className="folder-input"
+                          value={folderName}
+                          onChange={(e) => setFolderName(e.target.value)}
+                        />
+                      )}
+                      <label className="radio-row">
+                        <input
+                          type="radio"
+                          checked={originalSub === 'overwrite'}
+                          onChange={() => setOriginalSub('overwrite')}
+                        />
+                        <span>Overwrite existing content</span>
+                      </label>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         ) : (
         <div className="modal-columns">
