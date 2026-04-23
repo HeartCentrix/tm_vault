@@ -5,7 +5,6 @@ import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocalDate, fmtLocalTime, parseAsUtc } from '../utils/datetime';
-import { API } from '../config/api';
 import './Protection.css';
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
@@ -370,9 +369,20 @@ export default function Protection() {
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
 
   // Silent auto-refresh while any resource has an in-flight backup.
-  // Polls getResources every 8s and stops the moment every row settles
-  // on a terminal status, so the UI stays live without requiring the
-  // user to hit Refresh — and no perpetual network chatter when idle.
+  // Polls every 8s and stops the moment every row settles on a
+  // terminal status, so the UI stays live without requiring the user
+  // to hit Refresh — and no perpetual network chatter when idle.
+  //
+  // Uses getResources() (same as the initial fetch + focus-reconcile)
+  // so the poll is scoped to the active tab's resource types. The
+  // prior inline fetch sent `type=<tab-name>` (e.g. `type=users`) to
+  // /api/v1/resources, but:
+  //   1. The backend expects the param `types` (plural).
+  //   2. It expects ENUM values (`ENTRA_USER`), not tab names.
+  // Both wrong → the backend silently ignored the filter and returned
+  // every resource in the tenant, so stray rows from other types
+  // leaked into the list mid-backup. getResources() maps tab → enum
+  // list via getTabTypeMap and handles the special "all" tab.
   useEffect(() => {
     if (!tenantId) return;
     const IN_FLIGHT = new Set(['RUNNING', 'QUEUED', 'DISPATCHED']);
@@ -380,25 +390,12 @@ export default function Protection() {
     if (!anyLive) return;
     const tick = async () => {
       try {
-        // Hit the gateway directly so we can append `_silent=1` — the
-        // gateway's uvicorn access-log filter suppresses log lines for
-        // that query param, so the polling stays quiet in docker logs.
-        const token = localStorage.getItem('access_token');
-        const params = new URLSearchParams({
-          tenantId, type: activeTab,
-          page: String(searchQuery ? 1 : page),
-          size: String(searchQuery ? 10000 : 50),
-          _silent: '1',
-        });
-        if (searchQuery) params.set('search', searchQuery);
-        if (slaFilter) params.set('slaPolicyId', slaFilter);
-        if (resourceFilter) params.set('resourceFilter', resourceFilter);
-        if (serviceType) params.set('serviceType', serviceType);
-        const res = await fetch(`${API.RESOURCES.LIST}?${params}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) return;
-        const data = await res.json();
+        const size = searchQuery ? 10000 : 50;
+        const pageN = searchQuery ? 1 : page;
+        const data = await getResources(
+          tenantId, activeTab, pageN, size, searchQuery,
+          slaFilter || undefined, resourceFilter || undefined, serviceType,
+        );
         setResources(data.items || []);
       } catch { /* ignore transient failures — next tick retries */ }
     };
