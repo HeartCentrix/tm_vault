@@ -2511,7 +2511,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   font-size: 10px;
   color: #94a3b8;
   background: #f1f5f9;
-  padding: 1px 6px;
+  padding: 2px 10px;
   border-radius: 3px;
   flex-shrink: 0;
 }
