@@ -15,6 +15,11 @@ export interface RestoreRequest {
   restoreType: RestoreType;
   snapshotIds?: string[];
   itemIds?: string[];
+  // Folder-checkbox scope (e.g. `/Inbox`, `Contacts`). Backend's
+  // shared.folder_resolver expands these into item ids against the
+  // folder_path index, so the UI doesn't have to materialise the full
+  // list. Union with itemIds.
+  folderPaths?: string[];
   targetUserId?: string;
   targetResourceId?: string;
   /** For Power Platform restores: target environment to restore the app/flow into.

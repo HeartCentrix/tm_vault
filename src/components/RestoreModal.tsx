@@ -21,6 +21,10 @@ interface RestoreModalProps {
   // Render a clear "unsupported" screen instead of a greyed-out form
   // the user can still fill in and "submit" to a silent skip.
   chatRestoreUnsupported?: boolean;
+  // Mail / Contacts / generic folder checkbox selection. When the user
+  // ticks e.g. `/Inbox` in the left rail, we forward the path to the
+  // backend; shared.folder_resolver expands it into item ids.
+  folderPaths?: string[];
 }
 
 const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
@@ -30,7 +34,7 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
   // Shared + room mailboxes have no OneDrive in M365 — hide it so users
@@ -318,6 +322,10 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         restoreType,
         snapshotIds,
         itemIds: scope === 'selected' ? itemIds : [],
+        folderPaths:
+          scope === 'selected' && folderPaths && folderPaths.length > 0
+            ? folderPaths
+            : undefined,
         // For SharePoint the dropdown's value IS the target resource id
         // (we store it in targetUserId state for UI parity, but forward
         // it as targetResourceId to the backend).
