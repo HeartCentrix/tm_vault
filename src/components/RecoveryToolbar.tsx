@@ -117,7 +117,16 @@ function VersionDropdown({
 
 function fmtSnapshotLabel(s: SnapshotItem): string {
   if (!s.createdAt) return s.id.slice(0, 8);
-  const d = new Date(s.createdAt);
+  // Backend TIMESTAMP WITHOUT TIME ZONE columns serialize as
+  // "YYYY-MM-DDTHH:MM:SS[.ffffff]" with no Z/offset. Without the
+  // suffix, `new Date(...)` interprets the string as LOCAL time,
+  // which left the version-picker label shifted by the user's tz
+  // offset (IST users saw snapshots stamped ~5.5h in the past).
+  // Treat no-tz timestamps as UTC so toLocaleString converts them
+  // to the user's local wall-clock.
+  const raw = s.createdAt;
+  const hasTz = /Z|[+-]\d{2}:?\d{2}$/.test(raw);
+  const d = new Date(hasTz ? raw : raw + 'Z');
   if (isNaN(d.getTime())) return s.id.slice(0, 8);
   return d.toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',

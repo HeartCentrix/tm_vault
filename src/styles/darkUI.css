@@ -2626,3 +2626,71 @@
   border-bottom: 1px solid var(--tm-hover) !important;
 }
 [data-theme="dark"] .loading-cell { color: var(--tm-body) !important; }
+
+/* =========================================================================
+   Dropdowns — universal highlight (any and all menus, listboxes, selects)
+   -------------------------------------------------------------------------
+   User spec: dropdown text in cream, highlighted item uses the brand
+   pink/red but a shade darker (lower gamma). --tm-accent-dark (#8F0A2A)
+   is that muted variant of --tm-accent (#B80E38).
+
+   These rules are intentionally broad so every menu surface in the app
+   lands on the same palette — header tenant/source pickers, the custom
+   RoundedSelect, Recovery's version picker, generic role=listbox /
+   role=menu popups, and native <select> option dropdowns.
+   ========================================================================= */
+[data-theme="dark"] .dropdown-menu,
+[data-theme="dark"] .dropdown-content,
+[data-theme="dark"] .rsel-menu,
+[data-theme="dark"] .recovery-toolbar-version-menu,
+[data-theme="dark"] [role="listbox"],
+[data-theme="dark"] [role="menu"] {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+
+[data-theme="dark"] .dropdown-menu .dropdown-item,
+[data-theme="dark"] .dropdown-menu .dropdown-item span,
+[data-theme="dark"] .rsel-opt,
+[data-theme="dark"] .recovery-toolbar-version-opt,
+[data-theme="dark"] [role="listbox"] [role="option"],
+[data-theme="dark"] [role="menu"] [role="menuitem"] {
+  color: var(--tm-text) !important;
+}
+
+/* Highlight: hover OR active OR aria-selected — all land on darker-pink
+   fill + cream text. Covers the four surfaces above at once. The earlier
+   rule in section 3 (header dropdown-item:hover = transparent bg + pink
+   outline) is overridden here for uniformity. */
+[data-theme="dark"] .dropdown-menu .dropdown-item:hover,
+[data-theme="dark"] .dropdown-menu .dropdown-item.active,
+[data-theme="dark"] .rsel-opt:hover,
+[data-theme="dark"] .rsel-opt.active,
+[data-theme="dark"] .recovery-toolbar-version-opt:hover,
+[data-theme="dark"] .recovery-toolbar-version-opt.active,
+[data-theme="dark"] [role="listbox"] [role="option"]:hover,
+[data-theme="dark"] [role="listbox"] [role="option"][aria-selected="true"],
+[data-theme="dark"] [role="menu"] [role="menuitem"]:hover {
+  background: var(--tm-accent-dark) !important;
+  color: var(--tm-text) !important;
+  outline: none !important;
+}
+[data-theme="dark"] .dropdown-menu .dropdown-item:hover span,
+[data-theme="dark"] .dropdown-menu .dropdown-item.active span,
+[data-theme="dark"] [role="listbox"] [role="option"]:hover *,
+[data-theme="dark"] [role="listbox"] [role="option"][aria-selected="true"] * {
+  color: var(--tm-text) !important;
+}
+
+/* Native <select> options — Chromium & Firefox honor these; Safari
+   falls back to OS-native styling (can't be styled cross-browser). */
+[data-theme="dark"] select option {
+  background: var(--tm-surface);
+  color: var(--tm-text);
+}
+[data-theme="dark"] select option:checked,
+[data-theme="dark"] select option:hover {
+  background: var(--tm-accent-dark);
+  color: var(--tm-text);
+}
