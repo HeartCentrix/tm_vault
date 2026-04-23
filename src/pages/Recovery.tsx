@@ -6307,6 +6307,18 @@ export default function Recovery() {
       setAzureDbRecoverOpen(true);
       return;
     }
+    // On the Calendar tab the sidebar filter (Event Type / Calendar)
+    // is a "soft" selection — nothing lands in selectedItems unless the
+    // user individually ticks an event inside the hover tooltip.
+    // Mirror handleDownload: when no items are explicitly ticked but the
+    // filter has narrowed to a non-empty set, treat that filter set as
+    // the recover scope so the button works consistently with what the
+    // UI is showing.
+    if (activeContentType === 'calendar' && selectedItems.size === 0 && filteredCalendarIds.length > 0) {
+      setSelectedItems(new Set(filteredCalendarIds));
+      setRestoreModalOpen(true);
+      return;
+    }
     if (selectedItems.size === 0) return;
     setRestoreModalOpen(true);
   };
@@ -6726,13 +6738,24 @@ export default function Recovery() {
                 // reports that count here via onSelectionInfoChange.
                 const vmVolumesHasPick = isAzureVm && vmTab === 'volumes'
                   && (vmSelectionInfo?.count ?? 0) > 0;
+                // Calendar tab: the sidebar's Event Type / Calendar
+                // filters define a "soft" selection stored in
+                // filteredCalendarIds. Keep the buttons enabled when a
+                // filter has narrowed the view even if the user hasn't
+                // ticked individual events — handleDownload /
+                // handleRecover both seed selectedItems from the filter
+                // set on click, so the action still targets exactly
+                // what the grid is showing.
+                const calendarFilterScoped =
+                  activeContentType === 'calendar' && filteredCalendarIds.length > 0;
                 const allowEmptyDownload =
                   (isAzureDb && azureDbTab === 'configuration') ||
                   (isAzureVm && vmTab !== 'volumes') ||
-                  vmVolumesHasPick;
+                  vmVolumesHasPick ||
+                  calendarFilterScoped;
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
-                const allowEmptyRecover = isAzureDb || isAzureVm;
+                const allowEmptyRecover = isAzureDb || isAzureVm || calendarFilterScoped;
                 return (
                   <RecoveryToolbar
                     snapshots={snapshots}

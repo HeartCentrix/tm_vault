@@ -23,7 +23,7 @@
   background: none; color: #9ca3af; border: none; font-size: 24px;
   cursor: pointer; padding: 0 6px;
 }
-.wiz-close:hover { color: #fff; }
+.wiz-close:hover { color: #872c2c; }
 
 .wiz-stepper {
   display: flex; gap: 6px;
