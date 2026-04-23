@@ -2753,3 +2753,18 @@
 [data-theme="dark"] .audit-table .actor-cell .actor-email {
   color: var(--tm-body) !important;
 }
+
+/* =========================================================================
+   Entra Directory → Users tab header
+   Light rule uses white bg + slate border + muted grey text; on dark that
+   flashes bright against the panel. Align with the standard panel palette:
+   surface bg, standard border, secondary body text, with the count pill
+   using full cream and the sort label staying in muted body.
+   ========================================================================= */
+[data-theme="dark"] .entra-user-list-header {
+  background: var(--tm-surface) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .entra-user-count { color: var(--tm-text) !important; }
+[data-theme="dark"] .entra-user-sort  { color: var(--tm-body) !important; }
