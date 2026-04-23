@@ -2392,6 +2392,33 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   width: 100%;
 }
 
+/* Catalog lists (Composed Looks, Master Page Gallery, …) render a
+ * variable number of extra columns — Title / MasterPageUrl / ThemeUrl /
+ * ImageUrl / FontSchemeUrl for Composed Looks, fewer for Theme Gallery.
+ * --cat-cols is set inline on the .od-table-catalog wrapper so the
+ * head and every row share the same grid layout. */
+.od-table-catalog .od-table-head,
+.od-table-catalog .od-row {
+  grid-template-columns:
+    36px
+    minmax(200px, 1.6fr)
+    repeat(var(--cat-cols, 3), minmax(140px, 1fr));
+}
+
+.od-td-catalog,
+.od-th-catalog {
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.od-td-catalog a {
+  color: #0d9488;
+  text-decoration: none;
+}
+.od-td-catalog a:hover { text-decoration: underline; }
+
 .od-table-head {
   display: grid;
   grid-template-columns: 36px minmax(260px, 3fr) minmax(140px, 1.2fr) minmax(120px, 1fr) 100px;

@@ -1991,6 +1991,260 @@ function SubsitesIcon() {
   );
 }
 
+// SharePoint lists ship their list-item columns through SP REST's
+// $expand=FieldValuesAsText. Rather than dump every field SP returns
+// (AFI's default view shows 30+ columns, most of them plumbing), we
+// curate an "essentials" set per list template below. Unknown
+// templates fall back to dynamic derivation.
+type CatalogColumn = { key: string; label: string; isUrl?: boolean };
+
+// Normalized SharePoint list template name → columns the Recovery
+// grid should surface. Keys match TEMPLATE_NUM_TO_NAME on the backend
+// (workers/backup-worker/main.py) so a list row's metadata.template
+// value indexes directly into this map.
+const CATALOG_COLUMNS: Record<string, CatalogColumn[]> = {
+  // ── Catalog / gallery lists ────────────────────────────────
+  // Composed Looks (124) — each row is a theme. AFI view:
+  // Title / Modified / Name / MasterPageUrl / ThemeUrl / ImageUrl / FontSchemeUrl.
+  composedlooks: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'MasterPageUrl', label: 'Master Page URL', isUrl: true },
+    { key: 'ThemeUrl', label: 'Theme URL', isUrl: true },
+    { key: 'ImageUrl', label: 'Image URL', isUrl: true },
+    { key: 'FontSchemeUrl', label: 'Font Scheme URL', isUrl: true },
+  ],
+  // Master Page Gallery (116) — .master / .preview / display templates.
+  masterpagecatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'MasterPageDescription', label: 'Description' },
+  ],
+  themecatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+  ],
+  webpartcatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'Description', label: 'Description' },
+  ],
+  webtemplatecatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+  ],
+  solutioncatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'SolutionVersion', label: 'Version' },
+  ],
+  appdatacatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+  ],
+  appfilescatalog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'FileLeafRef', label: 'Name' },
+  ],
+
+  // ── Standard lists ─────────────────────────────────────────
+  // Tasks (107 / 171) — classic project tracking.
+  tasks: [
+    { key: 'Title', label: 'Title' },
+    { key: 'AssignedTo', label: 'Assigned To' },
+    { key: 'DueDate', label: 'Due Date' },
+    { key: 'Status', label: 'Status' },
+    { key: 'Priority', label: 'Priority' },
+    { key: 'PercentComplete', label: '% Complete' },
+  ],
+  // Events / Calendar (106).
+  events: [
+    { key: 'Title', label: 'Title' },
+    { key: 'EventDate', label: 'Start Time' },
+    { key: 'EndDate', label: 'End Time' },
+    { key: 'Location', label: 'Location' },
+    { key: 'Category', label: 'Category' },
+    { key: 'Description', label: 'Description' },
+  ],
+  announcements: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Body', label: 'Body' },
+    { key: 'Expires', label: 'Expires' },
+    { key: 'Modified', label: 'Modified' },
+  ],
+  contacts: [
+    { key: 'FullName', label: 'Name' },
+    { key: 'EMail', label: 'Email' },
+    { key: 'WorkPhone', label: 'Work Phone' },
+    { key: 'Company', label: 'Company' },
+    { key: 'JobTitle', label: 'Job Title' },
+  ],
+  links: [
+    { key: 'URL', label: 'URL', isUrl: true },
+    { key: 'Comments', label: 'Comments' },
+    { key: 'Modified', label: 'Modified' },
+  ],
+  discussion: [
+    { key: 'Title', label: 'Subject' },
+    { key: 'Author', label: 'Author' },
+    { key: 'Modified', label: 'Modified' },
+  ],
+  survey: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Author', label: 'Author' },
+    { key: 'Modified', label: 'Modified' },
+  ],
+  genericlist: [
+    { key: 'Title', label: 'Title' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'Author', label: 'Created By' },
+    { key: 'Editor', label: 'Modified By' },
+  ],
+  documentlibrary: [
+    { key: 'Title', label: 'Title' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'Editor', label: 'Modified By' },
+  ],
+  picturelibrary: [
+    { key: 'Title', label: 'Title' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'ImageWidth', label: 'Width' },
+    { key: 'ImageHeight', label: 'Height' },
+  ],
+  sitepages: [
+    { key: 'Title', label: 'Title' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'Modified', label: 'Modified' },
+    { key: 'Editor', label: 'Modified By' },
+  ],
+  maintenancelog: [
+    { key: 'Title', label: 'Title' },
+    { key: 'FileLeafRef', label: 'Name' },
+    { key: 'Modified', label: 'Modified' },
+  ],
+};
+
+// SP Graph returns list template as either a name string OR a numeric
+// ListTemplate id. Frontend-side map — matches TEMPLATE_NUM_TO_NAME on
+// the backup worker so a snapshot produced under either normalization
+// regime looks up the right column set.
+const TEMPLATE_NUM_MAP: Record<string, string> = {
+  '100': 'genericlist',
+  '101': 'documentlibrary',
+  '102': 'survey',
+  '103': 'links',
+  '104': 'announcements',
+  '105': 'contacts',
+  '106': 'events',
+  '107': 'tasks',
+  '108': 'discussion',
+  '109': 'picturelibrary',
+  '113': 'webpartcatalog',
+  '114': 'webtemplatecatalog',
+  '116': 'masterpagecatalog',
+  '119': 'sitepages',
+  '121': 'solutioncatalog',
+  '123': 'themecatalog',
+  '124': 'composedlooks',
+  '125': 'appdatacatalog',
+  '126': 'appfilescatalog',
+  '171': 'tasks',
+  '175': 'maintenancelog',
+};
+
+function normalizeTemplate(raw: unknown): string {
+  const s = String(raw ?? '').trim().toLowerCase();
+  return TEMPLATE_NUM_MAP[s] ?? s;
+}
+
+// Truly opaque plumbing fields SP REST returns for every row — IDs,
+// click-to-edit shims, sort keys. AFI's list view still surfaces many
+// `_`-prefixed and `_x0020_`-encoded fields (_Level, _ColorTag,
+// HTML_x0020_File_x0020_Type, …) so we DON'T blanket-exclude those.
+// FileRef / FileDirRef / EncodedAbsUrl are useful URL columns — kept in.
+const SP_INTERNAL_FIELDS = new Set<string>([
+  'ID', 'GUID', 'UniqueId', 'InstanceID', 'WorkflowInstanceID',
+  'ContentTypeId', 'ScopeId', 'OriginatorId', 'ComplianceAssetId',
+  'MetaInfo', 'Order', 'DocIcon', 'Edit', 'IconOverlay', 'PermMask',
+  'SelectTitle', 'SelectFilename',
+  'LinkFilename', 'LinkFilename2', 'LinkFilenameNoMenu',
+  'LinkTitle', 'LinkTitleNoMenu',
+  'FileSizeDisplay', 'SortBehavior', 'BaseName',
+  'Attachments',
+  'AppAuthor', 'AppEditor', 'AccessPolicy',
+  'ParentVersionString', 'ParentLeafName', 'ProgId',
+  'AverageRating', 'RatingCount', 'NoExecute',
+  'WorkflowVersion', 'owshiddenversion',
+  'SMTotalFileCount', 'SMTotalSize', 'SMLastModifiedDate', 'SMTotalFileStreamSize',
+  'ItemChildCount', 'FolderChildCount',
+]);
+
+function isSpInternalField(key: string): boolean {
+  if (!key) return true;
+  if (key.startsWith('ows_')) return true;           // legacy OWS fields
+  if (SP_INTERNAL_FIELDS.has(key)) return true;
+  return false;
+}
+
+function humanizeSpFieldName(key: string): string {
+  if (key === 'FileLeafRef') return 'Name';
+  if (key === 'Modified') return 'Modified';
+  if (key === 'Created') return 'Created';
+  if (key === 'Author') return 'Created By';
+  if (key === 'Editor') return 'Modified By';
+  // Strip Microsoft's _x0020_ space-encoding, then camelCase → words.
+  const decoded = key.replace(/_x([0-9a-fA-F]{4})_/g, (_m, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+  const spaced = decoded.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return spaced
+    .replace(/\bUrl\b/g, 'URL')
+    .replace(/\bUri\b/g, 'URI')
+    .replace(/\bId\b/g, 'ID');
+}
+
+// Pull the column definition for a grid view from the rows' metadata.columns.
+// Returns null when no row has any user-visible column data, which tells the
+// caller to fall back to the file-centric Owner / Modified / Size grid.
+function deriveDynamicColumns(rows: any[]): CatalogColumn[] | null {
+  const keys = new Set<string>();
+  for (const it of rows) {
+    const cols = (it?.metadata || {}).columns;
+    if (cols && typeof cols === 'object') {
+      for (const k of Object.keys(cols)) {
+        if (!isSpInternalField(k)) keys.add(k);
+      }
+    }
+  }
+  if (keys.size === 0) return null;
+  // Preferred order: Title → Modified → Name, then everything else
+  // alphabetically. Keeps the "key identity" columns on the left.
+  const preferred = ['Title', 'Modified', 'FileLeafRef'];
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const k of preferred) {
+    if (keys.has(k)) { ordered.push(k); seen.add(k); }
+  }
+  for (const k of Array.from(keys).sort()) {
+    if (!seen.has(k)) ordered.push(k);
+  }
+  return ordered.map(key => ({
+    key,
+    label: humanizeSpFieldName(key),
+    isUrl: /Url$|URL$/.test(key),
+  }));
+}
+
 function SharePointView({
   resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
 }: {
@@ -2078,15 +2332,36 @@ function SharePointView({
         const lastModified = ed.last_modified || (ed.raw && ed.raw.lastModifiedDateTime) || it.updatedAt || undefined;
         meta[listName] = { lastModified, source: 'list' };
       }
+      return {
+        displayRows: [],
+        displayFolders: Array.from(folderSet).sort((a, b) => a.localeCompare(b)),
+        folderMeta: meta,
+      };
     }
+
+    // Inside a list: check whether the top-level list should render as
+    // a FLAT table (every row at one level, no folder drilldown). This
+    // matches SharePoint's native list-view UX for catalogs AND standard
+    // lists like Tasks / Events / Announcements. We flatten whenever
+    // either the list row says is_catalog OR we have a curated column
+    // set for its template (which implies "this is a list, not a file
+    // library"). Plain document libraries without a curated entry keep
+    // the classic folder drill-down.
+    const listRow = items.find(it =>
+      (it.itemType || '') === 'SHAREPOINT_LIST' &&
+      String(it.name || '').trim() === spPath[0]
+    );
+    const listTemplate = normalizeTemplate((listRow?.metadata || {}).template);
+    const listHasCuratedGrid = Boolean(CATALOG_COLUMNS[listTemplate]);
+    const listIsCatalog = Boolean(listRow?.metadata?.is_catalog) || listHasCuratedGrid;
 
     for (const it of items) {
       if ((it.itemType || '') === 'SHAREPOINT_LIST') continue;  // handled above
       const fp: string = it.folderPath || '';
       if (!fp.startsWith(prefix)) continue;
       const rest = fp.slice(prefix.length).replace(/^\//, '');
-      if (rest === '') {
-        // Item lives directly at this level.
+      if (rest === '' || listIsCatalog) {
+        // Flat view: every descendant is a row; no folder nesting.
         files.push(it);
       } else {
         const seg = rest.split('/')[0];
@@ -2105,7 +2380,9 @@ function SharePointView({
 
     return {
       displayRows: files,
-      displayFolders: Array.from(folderSet).sort((a, b) => a.localeCompare(b)),
+      displayFolders: listIsCatalog
+        ? []
+        : Array.from(folderSet).sort((a, b) => a.localeCompare(b)),
       folderMeta: meta,
     };
   }, [items, spPrefix, spPath]);
@@ -2125,6 +2402,60 @@ function SharePointView({
   }, [view, resourceId]);
 
   const allChecked = items.length > 0 && items.every(i => selectedItems.has(i.id));
+
+  // Pick the column grid for the current folder:
+  //   1. If the current list's template has a curated CATALOG_COLUMNS
+  //      entry (Composed Looks / Tasks / Events / Master Page Gallery …),
+  //      use it — only the essentials the user asked for.
+  //   2. Else, if any row has FieldValuesAsText columns we haven't seen
+  //      a template for, derive columns dynamically as a best-effort.
+  //   3. Else, null → render the default file grid (Owner/Modified/Size).
+  const currentListRow = spPath.length > 0
+    ? items.find(it =>
+        (it.itemType || '') === 'SHAREPOINT_LIST' &&
+        String(it.name || '').trim() === spPath[0]
+      )
+    : null;
+  const currentTemplate = normalizeTemplate((currentListRow?.metadata || {}).template);
+  const catalogColumns = useMemo(() => {
+    const curated = CATALOG_COLUMNS[currentTemplate];
+    if (curated) return curated;
+    return deriveDynamicColumns(displayRows);
+  }, [currentTemplate, displayRows]);
+  const isCatalogView = Boolean(catalogColumns);
+
+  // Every list row stores a server-relative URL (e.g. /_catalogs/design/1_.000).
+  // Prepending the site's hostname produces the live SharePoint URL the
+  // user can open in a new tab. Hostname is derived from the list's
+  // webUrl (set at backup-time from Graph's SP list.webUrl field).
+  const siteOrigin = useMemo(() => {
+    const webUrl = spPath.length > 0
+      ? (items.find(it =>
+          (it.itemType || '') === 'SHAREPOINT_LIST' &&
+          String(it.name || '').trim() === spPath[0]
+        )?.metadata?.web_url as string | undefined)
+      : undefined;
+    if (!webUrl) {
+      // Fall back to any list's webUrl on the site — they all share host.
+      const anyList = items.find(it =>
+        (it.itemType || '') === 'SHAREPOINT_LIST' && (it.metadata as any)?.web_url
+      );
+      if (anyList) {
+        try { return new URL((anyList.metadata as any).web_url).origin; } catch { /* ignore */ }
+      }
+      return '';
+    }
+    try { return new URL(webUrl).origin; } catch { return ''; }
+  }, [items, spPath]);
+
+  // Turn a possibly-server-relative value into a full URL. Returns null
+  // when we can't build one (no hostname, empty value, not a URL shape).
+  const buildLiveUrl = (v: unknown): string | null => {
+    if (typeof v !== 'string' || !v) return null;
+    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    if (v.startsWith('/') && siteOrigin) return siteOrigin + v;
+    return null;
+  };
 
   return (
     <>
@@ -2184,7 +2515,12 @@ function SharePointView({
               <div className="pbi-empty"><p>No items captured in this snapshot yet.</p></div>
             ) : (
               <div className="od-list">
-                <div className="od-table">
+                <div
+                  className={`od-table ${isCatalogView ? 'od-table-catalog' : ''}`}
+                  style={isCatalogView
+                    ? ({ '--cat-cols': catalogColumns!.length } as React.CSSProperties)
+                    : undefined}
+                >
                   <div className="od-table-head">
                     <div className="od-th od-th-check">
                       <input
@@ -2194,9 +2530,17 @@ function SharePointView({
                       />
                     </div>
                     <div className="od-th od-th-name">Name</div>
-                    <div className="od-th od-th-owner">Owner</div>
-                    <div className="od-th od-th-modified">Last modified</div>
-                    <div className="od-th od-th-size">File size</div>
+                    {isCatalogView ? (
+                      catalogColumns!.map(col => (
+                        <div key={col.key} className="od-th od-th-catalog">{col.label}</div>
+                      ))
+                    ) : (
+                      <>
+                        <div className="od-th od-th-owner">Owner</div>
+                        <div className="od-th od-th-modified">Last modified</div>
+                        <div className="od-th od-th-size">File size</div>
+                      </>
+                    )}
                   </div>
                   <div className="od-table-body">
                     {displayFolders.map((seg) => {
@@ -2204,21 +2548,52 @@ function SharePointView({
                       const lastMod = m?.lastModified
                         ? fmtLocalDate(m.lastModified, { month: 'short', day: 'numeric', year: 'numeric' })
                         : '—';
+                      // Recursive folder select: match every non-container item
+                      // whose folder_path sits at or under this folder's full
+                      // prefix. SHAREPOINT_LIST rows are containers, not files
+                      // the user would download — excluded from the id set.
+                      const folderPrefix = spPrefix + '/' + [...spPath, seg].join('/');
+                      const folderItemIds = items
+                        .filter(it => {
+                          if ((it.itemType || '') === 'SHAREPOINT_LIST') return false;
+                          const fp = it.folderPath || '';
+                          return fp === folderPrefix || fp.startsWith(folderPrefix + '/');
+                        })
+                        .map(it => it.id);
+                      const folderChecked = folderItemIds.length > 0 && folderItemIds.every(id => selectedItems.has(id));
                       return (
                       <div
                         key={`folder-${seg}`}
-                        className="od-row od-row-folder"
+                        className={`od-row od-row-folder ${folderChecked ? 'selected' : ''}`}
                         onClick={() => setSpPath([...spPath, seg])}
                         style={{ cursor: 'pointer' }}
                       >
-                        <div className="od-td od-td-check" />
+                        <div className="od-td od-td-check" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={folderChecked}
+                            disabled={folderItemIds.length === 0}
+                            onChange={e => onSelectAll(folderItemIds, e.target.checked)}
+                            title={folderItemIds.length === 0
+                              ? 'No selectable files in this folder'
+                              : 'Select all files in this folder recursively'}
+                          />
+                        </div>
                         <div className="od-td od-td-name" title={seg}>
                           <span className="od-row-icon" aria-hidden>{FolderIcon}</span>
                           <span className="od-row-name">{seg}</span>
                         </div>
-                        <div className="od-td od-td-owner">—</div>
-                        <div className="od-td od-td-modified">{lastMod}</div>
-                        <div className="od-td od-td-size">—</div>
+                        {isCatalogView ? (
+                          catalogColumns!.map(col => (
+                            <div key={col.key} className="od-td od-td-catalog">—</div>
+                          ))
+                        ) : (
+                          <>
+                            <div className="od-td od-td-owner">—</div>
+                            <div className="od-td od-td-modified">{lastMod}</div>
+                            <div className="od-td od-td-size">—</div>
+                          </>
+                        )}
                       </div>
                       );
                     })}
@@ -2228,6 +2603,43 @@ function SharePointView({
                       const modified = md.modified || md.created || item.createdAt;
                       const size = item.contentSize ?? md.file?.Length ?? 0;
                       const hasBlob = !!item.blobPath;
+                      // Catalog column values live on extra_data.columns
+                      // (FieldValuesAsText from SP REST $expand). Fall back
+                      // to top-level extra_data so a partial / older
+                      // snapshot still renders whatever it captured (e.g.
+                      // `title`, `modified`) instead of going all-blank.
+                      const cols = (md.columns || {}) as Record<string, any>;
+                      // Live SP URL for this row — server-relative URL
+                      // stored at backup time, prepended with the site's
+                      // origin. Null when we don't have either.
+                      const liveUrl = buildLiveUrl(md.server_relative_url)
+                        ?? buildLiveUrl(cols['FileRef'])
+                        ?? buildLiveUrl(cols['EncodedAbsUrl']);
+                      const renderCatalogCell = (col: CatalogColumn) => {
+                        let v: any = cols[col.key];
+                        if (v == null || v === '') {
+                          if (col.key === 'Title') v = md.title;
+                          else if (col.key === 'Modified') v = modified;
+                          else if (col.key === 'FileLeafRef') v = item.name;
+                        }
+                        if (v == null || v === '') return '—';
+                        if (col.key === 'Modified' && v) {
+                          const fmt = fmtLocalDate(v, { month: 'short', day: 'numeric', year: 'numeric' });
+                          return fmt || String(v);
+                        }
+                        // Treat anything shaped like a URL (http…, or a
+                        // server-relative path that we can anchor against
+                        // the site origin) as a clickable link. Covers
+                        // Composed Looks' MasterPageUrl/ThemeUrl/etc AND
+                        // raw FileRef-like columns in any list.
+                        if (typeof v === 'string') {
+                          const asLink = buildLiveUrl(v);
+                          if (asLink) {
+                            return <a href={asLink} target="_blank" rel="noopener noreferrer" title={asLink}>{v}</a>;
+                          }
+                        }
+                        return String(v);
+                      };
                       return (
                         <div
                           key={item.id}
@@ -2255,17 +2667,41 @@ function SharePointView({
                                 <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
                                 <span className="od-row-name">{item.name}</span>
                               </a>
+                            ) : liveUrl ? (
+                              // No captured blob — link to the live SP URL
+                              // instead so the user can still open it.
+                              <a
+                                className="od-row-link"
+                                href={liveUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                title={`Open in SharePoint: ${liveUrl}`}
+                              >
+                                <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
+                                <span className="od-row-name">{item.name}</span>
+                              </a>
                             ) : (
                               <>
                                 <span className="od-row-icon" aria-hidden>{odFileIcon(item.name || '')}</span>
                                 <span className="od-row-name">{item.name}</span>
-                                {!hasBlob && <span className="od-row-tag">metadata only</span>}
+                                {!hasBlob && !isCatalogView && <span className="od-row-tag">metadata only</span>}
                               </>
                             )}
                           </div>
-                          <div className="od-td od-td-owner">{owner}</div>
-                          <div className="od-td od-td-modified">{modified ? fmtLocalDate(modified, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
-                          <div className="od-td od-td-size">{size ? bytesToSize(size) : '—'}</div>
+                          {isCatalogView ? (
+                            catalogColumns!.map(col => (
+                              <div key={col.key} className="od-td od-td-catalog" title={String(cols[col.key] ?? '')}>
+                                {renderCatalogCell(col)}
+                              </div>
+                            ))
+                          ) : (
+                            <>
+                              <div className="od-td od-td-owner">{owner}</div>
+                              <div className="od-td od-td-modified">{modified ? fmtLocalDate(modified, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</div>
+                              <div className="od-td od-td-size">{size ? bytesToSize(size) : '—'}</div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
