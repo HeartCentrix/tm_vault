@@ -5997,11 +5997,18 @@ export default function Recovery() {
     // single source of truth for that value now. Resetting would
     // clobber a restored folder when the user presses browser back.
 
-    if (activeContentType === 'calendar' || !contentSnapshots) {
+    if (activeContentType === 'calendar') {
       return;
     }
-    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
-    const snapId = entry?.snapshotId;
+    // Tier 2 (USER_MAIL / USER_ONEDRIVE / …) ships a resolver
+    // byContent[tab] → snapshotId. Tier 1 direct mailboxes (MAILBOX /
+    // SHARED_MAILBOX / ROOM_MAILBOX / GROUP_MAILBOX) have no resolver
+    // entry but they DO have snapshots of their own — fall back to
+    // selectedSnapshotId so the folders API still fires for them.
+    const entry = contentSnapshots?.byContent[activeContentType as ContentTab];
+    const kind = selectedResource?.kind;
+    const isDirectMailbox = kind === 'mailbox' || kind === 'shared_mailbox' || kind === 'room_mailbox';
+    const snapId = entry?.snapshotId || (isDirectMailbox ? selectedSnapshotId : null);
     if (!snapId) {
       return;
     }
@@ -6057,15 +6064,16 @@ export default function Recovery() {
           foldersInflightRef.current = '';
         }
       });
-  }, [contentSnapshots, activeContentType]);
+  }, [contentSnapshots, activeContentType, selectedSnapshotId, selectedResource?.kind]);
 
   // Infinite-scroll append: when foldersPage advances (driven by the
   // scroll handler below), fetch the next page and append to the tree.
   useEffect(() => {
     if (foldersPage <= 1) return;
-    if (!contentSnapshots) return;
-    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
-    const snapId = entry?.snapshotId;
+    const entry = contentSnapshots?.byContent[activeContentType as ContentTab];
+    const kind = selectedResource?.kind;
+    const isDirectMailbox = kind === 'mailbox' || kind === 'shared_mailbox' || kind === 'room_mailbox';
+    const snapId = entry?.snapshotId || (isDirectMailbox ? selectedSnapshotId : null);
     if (!snapId) return;
     const inflightKey = `${snapId}|${activeContentType}|${foldersPage}`;
     if (foldersInflightRef.current === inflightKey) return;
@@ -6095,7 +6103,7 @@ export default function Recovery() {
         setFoldersLoadingMore(false);
         foldersInflightRef.current = '';
       });
-  }, [foldersPage, contentSnapshots, activeContentType]);
+  }, [foldersPage, contentSnapshots, activeContentType, selectedSnapshotId, selectedResource?.kind]);
 
   // Scroll handler — near the bottom of the folder list, advance page.
   const handleFolderListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
