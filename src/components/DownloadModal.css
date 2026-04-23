@@ -4,8 +4,8 @@
 
 .download-modal .btn-download {
   padding: 9px 64px;
-  background: #0d9488;
-  border: 1.5px solid #0d9488;
+  background: #D31245;
+  border: 1.5px solid #D31245;
   border-radius: 6px;
   color: #fff;
   font-size: 14px;
@@ -15,8 +15,8 @@
 }
 
 .download-modal .btn-download:hover:not(:disabled) {
-  background: #0f766e;
-  border-color: #0f766e;
+  background: #b00f39;
+  border-color: #b00f39;
 }
 
 .download-modal .btn-download:disabled {

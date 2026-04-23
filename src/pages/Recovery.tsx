@@ -398,7 +398,7 @@ export function ContactPreview({ item }: { item: any }) {
             <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>Email</div>
             {emails.map((e, i) => (
               <div key={i} style={{ fontSize: 13 }}>
-                <a href={e.address ? `mailto:${e.address}` : undefined} style={{ color: '#0d9488' }}>
+                <a href={e.address ? `mailto:${e.address}` : undefined} style={{ color: '#D31245' }}>
                   {e.name ? `${e.name} <${e.address}>` : e.address}
                 </a>
               </div>
@@ -992,7 +992,7 @@ export function EntraDirectReportPreview({ item }: { item: any }) {
   const email = raw.mail || raw.userPrincipalName;
   return (
     <EntraRelationshipCard
-      accent="#0d9488"
+      accent="#D31245"
       icon={<span style={{ fontSize: 22 }}>↓</span>}
       label="Direct report"
       name={name}
@@ -1304,8 +1304,8 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   'Cancelled':      '#dc2626',
   'All Day':        '#7c3aed',
   'Online Meeting': '#0284c7',
-  'Recurring':      '#0d9488',
-  'Recurring Series': '#0d9488',
+  'Recurring':      '#D31245',
+  'Recurring Series': '#D31245',
   'Exception':      '#d97706',
   'Meeting':        '#16a34a',
   'Appointment':    '#16a34a',

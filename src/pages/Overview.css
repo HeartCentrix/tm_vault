@@ -63,7 +63,7 @@
 }
 
 .status-summary-title.success {
-  color: #17838a;
+  color: #D31245;
 }
 
 .status-summary-title.warning {
@@ -110,7 +110,7 @@
 }
 
 .status-summary-row.success span::before {
-  background: #17838a;
+  background: #D31245;
 }
 
 .status-summary-row.warning span::before {
@@ -211,11 +211,11 @@
 }
 
 .chart-legend-item.success {
-  color: #17838a;
+  color: #D31245;
 }
 
 .chart-legend-item.success::before {
-  background: #17838a;
+  background: #D31245;
 }
 
 .chart-legend-item.warning {
@@ -301,7 +301,7 @@
 .protection-summary-value {
   font-size: 32px;
   font-weight: 700;
-  color: #17838a;
+  color: #D31245;
   line-height: 1;
 }
 
@@ -340,7 +340,7 @@
 }
 
 .protection-breakdown-value.complete {
-  color: #17838a;
+  color: #D31245;
 }
 
 .chart-tooltip-total {
@@ -398,7 +398,7 @@
 
 .backup-size-pill.positive {
   background: #ecfeff;
-  color: #0f766e;
+  color: #b00f39;
 }
 
 .backup-size-pill.neutral {
@@ -501,7 +501,7 @@
 .backup-all-btn {
   width: 100%;
   padding: 10px 16px;
-  background: #17838a;
+  background: #D31245;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -512,7 +512,7 @@
 }
 
 .backup-all-btn:hover {
-  background: #136c72;
+  background: #b00f39;
 }
 
 @media (max-width: 1280px) {

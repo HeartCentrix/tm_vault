@@ -68,10 +68,10 @@ interface BackupSizeChartDatum {
 type SizeUnit = 'MB' | 'GB' | 'TB';
 
 const CHART_COLORS = {
-  success: '#17838a',
+  success: '#D31245',
   warning: '#f59e0b',
   failure: '#ef7d73',
-  backup: '#17838a',
+  backup: '#D31245',
 };
 
 function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: number; totalCount: number; percentage: number } {
@@ -483,7 +483,7 @@ export default function Overview() {
                     </div>
                     <svg className="protection-ring" width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
                       <circle cx="20" cy="20" r="16" fill="none" stroke="#e2e8f0" strokeWidth="4" />
-                      <circle cx="20" cy="20" r="16" fill="none" stroke="#0d9488" strokeWidth="4"
+                      <circle cx="20" cy="20" r="16" fill="none" stroke="#D31245" strokeWidth="4"
                         strokeDasharray={`${2 * Math.PI * 16}`}
                         strokeDashoffset={`${2 * Math.PI * 16 * (1 - totals.percentage / 100)}`}
                         strokeLinecap="round" />

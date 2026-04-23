@@ -235,8 +235,8 @@ export default function BackupSizeSummary({ snapshots, totalBytes }: Props) {
         >
           <defs>
             <linearGradient id="bss-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#0f9e8e" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#0f9e8e" stopOpacity="0.05" />
+              <stop offset="0%" stopColor="#D31245" stopOpacity="0.45" />
+              <stop offset="100%" stopColor="#D31245" stopOpacity="0.05" />
             </linearGradient>
           </defs>
 
@@ -269,7 +269,7 @@ export default function BackupSizeSummary({ snapshots, totalBytes }: Props) {
             return (
               <g key={idx}>
                 <path d={areaPath} fill="url(#bss-fill)" />
-                <path d={linePath} fill="none" stroke="#0f9e8e" strokeWidth={1.25} />
+                <path d={linePath} fill="none" stroke="#D31245" strokeWidth={1.25} />
               </g>
             );
           })}
@@ -293,14 +293,14 @@ export default function BackupSizeSummary({ snapshots, totalBytes }: Props) {
                 x2={xFor(hoverIdx)}
                 y1={padTop}
                 y2={padTop + innerH}
-                stroke="#0f9e8e"
+                stroke="#D31245"
                 strokeWidth={0.75}
               />
               <circle
                 cx={xFor(hoverIdx)}
                 cy={yFor(hoveredPoint.value)}
                 r={2.5}
-                fill="#0f9e8e"
+                fill="#D31245"
                 stroke="#fff"
                 strokeWidth={0.75}
               />

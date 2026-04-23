@@ -33,7 +33,7 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .search-input::placeholder {
@@ -164,16 +164,16 @@
 
 .dropdown-item.active {
   background: #e0f2f1;
-  color: #0d9488;
+  color: #D31245;
   font-weight: 500;
 }
 
 .dropdown-item.active .dropdown-icon {
-  color: #0d9488;
+  color: #D31245;
 }
 
 .dropdown-item.active .dropdown-icon svg {
-  color: #0d9488;
+  color: #D31245;
 }
 
 .dropdown-icon {
@@ -276,7 +276,7 @@
   width: 40px;
   height: 40px;
   border: 4px solid #e2e8f0;
-  border-top: 4px solid #0d9488;
+  border-top: 4px solid #D31245;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -380,7 +380,7 @@
 
 .recover-btn-small {
   padding: 4px 12px;
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -390,7 +390,7 @@
 }
 
 .recover-btn-small:hover {
-  background: #0f766e;
+  background: #b00f39;
 }
 
 /* Pagination */
@@ -412,9 +412,9 @@
 }
 
 .pagination button:hover:not(:disabled) {
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .pagination button:disabled {

@@ -286,7 +286,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
         <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={onClose}>×</button>
           <div className="modal-success">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" style={{ width: 48, height: 48 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#D31245" strokeWidth="2" style={{ width: 48, height: 48 }}>
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
               </svg>
             <p>Restore job queued</p>

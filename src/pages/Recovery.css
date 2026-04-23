@@ -50,7 +50,7 @@
 
 .resource-search-input:focus {
   outline: none;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .resource-search-input::placeholder {
@@ -82,8 +82,8 @@
 }
 
 .resource-list-item.selected {
-  background: #e0f7f4;
-  border-left: 3px solid #0d9488;
+  background: #fde1e7;
+  border-left: 3px solid #D31245;
   padding-left: 13px;
 }
 
@@ -126,8 +126,8 @@
 }
 
 .identity-surfaces .resource-list-item.surface-item.selected {
-  background: #e0f7f4;
-  border-left: 3px solid #0d9488;
+  background: #fde1e7;
+  border-left: 3px solid #D31245;
   padding-left: 49px;
 }
 
@@ -237,7 +237,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid #e2e8f0;
-  border-top-color: #0d9488;
+  border-top-color: #D31245;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -246,7 +246,7 @@
   width: 16px;
   height: 16px;
   border: 2px solid #e2e8f0;
-  border-top-color: #0d9488;
+  border-top-color: #D31245;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -330,7 +330,7 @@
 }
 
 .last-backup-info .value {
-  color: #0d9488;
+  color: #D31245;
   font-weight: 500;
 }
 
@@ -375,7 +375,7 @@
 
 .stats-bar {
   height: 100%;
-  background: linear-gradient(to right, #0d9488, #14b8a6);
+  background: linear-gradient(to right, #D31245, #e8607a);
   transition: width 0.3s ease;
 }
 
@@ -438,7 +438,7 @@
 .snapshot-count-num {
   font-size: 22px;
   font-weight: 600;
-  color: #0d9488;
+  color: #D31245;
   line-height: 1;
 }
 .snapshot-count-label {
@@ -477,7 +477,7 @@
 .content-tab.active {
   color: #0f172a;
   font-weight: 600;
-  border-bottom-color: #0d9488;
+  border-bottom-color: #D31245;
 }
 
 /* Per-tab item count badge — pulled from the content-snapshots resolver.
@@ -495,7 +495,7 @@
 }
 .content-tab.active .content-tab-count {
   background: #ccfbf1;
-  color: #0f766e;
+  color: #b00f39;
 }
 .content-tab-empty {
   color: #94a3b8;
@@ -531,7 +531,7 @@
 }
 .folder-tree-item.active {
   background: #ccfbf1;
-  color: #0f766e;
+  color: #b00f39;
   font-weight: 600;
 }
 .folder-tree-toggle {
@@ -619,9 +619,9 @@
 }
 
 .filter-toggle.active {
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 /* Wrapper holds the border — input + button read as one rounded pill.
@@ -727,7 +727,7 @@
 .action-button.recover {
   background: #d1fae5;
   color: #065f46;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .action-button.recover:hover:not(:disabled) {
@@ -877,7 +877,7 @@
 }
 
 .item-row.selected {
-  background: #e0f7f4;
+  background: #fde1e7;
 }
 
 .item-row input[type="checkbox"] {
@@ -1094,11 +1094,11 @@
 a.email-ol-attach-chip.email-ol-attach-link {
   cursor: pointer;
   text-decoration: none;
-  color: #0d9488;
+  color: #D31245;
 }
 a.email-ol-attach-chip.email-ol-attach-link:hover {
   background: #ccfbf1;
-  border-color: #0d9488;
+  border-color: #D31245;
   text-decoration: underline;
 }
 
@@ -1221,7 +1221,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 
 .chat-quote {
-  border-left: 3px solid #0d9488;
+  border-left: 3px solid #D31245;
   background: #f1f5f9;
   padding: 6px 10px;
   border-radius: 0 6px 6px 0;
@@ -1231,7 +1231,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 
 .chat-quote-sender {
   font-weight: 600;
-  color: #0f766e;
+  color: #b00f39;
   margin-bottom: 2px;
   font-size: 12px;
 }
@@ -1394,7 +1394,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .cal-mini-day.empty { visibility: hidden; }
 
 .cal-mini-day.event-day {
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
   font-weight: 700;
   border-radius: 50%;
@@ -1489,12 +1489,12 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 
 .chat-item-row:hover { background: #f8fafc; }
-.chat-item-row.selected { background: #e0f7f4; }
+.chat-item-row.selected { background: #fde1e7; }
 
 .chat-item-row input[type="checkbox"] {
   margin-top: 3px;
   flex-shrink: 0;
-  accent-color: #0d9488;
+  accent-color: #D31245;
 }
 
 .chat-item-avatar {
@@ -1533,7 +1533,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .chat-item-sender {
   font-size: 13px;
   font-weight: 500;
-  color: #0d9488;
+  color: #D31245;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1586,12 +1586,12 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 
 .email-item-row:hover { background: #f8fafc; }
-.email-item-row.selected { background: #e0f7f4; border-left: 3px solid #0d9488; padding-left: 11px; }
+.email-item-row.selected { background: #fde1e7; border-left: 3px solid #D31245; padding-left: 11px; }
 
 .email-item-row input[type="checkbox"] {
   margin-top: 3px;
   flex-shrink: 0;
-  accent-color: #0d9488;
+  accent-color: #D31245;
 }
 
 .email-item-body {
@@ -1703,7 +1703,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 
 .kind-filter-btn:hover { background: #f1f5f9; }
-.kind-filter-btn.active { background: #e0f7f4; color: #0d9488; border-color: #0d9488; }
+.kind-filter-btn.active { background: #fde1e7; color: #D31245; border-color: #D31245; }
 
 .kind-filter-dropdown {
   position: absolute;
@@ -1732,7 +1732,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 
 .kind-filter-option:hover { background: #f8fafc; }
-.kind-filter-option.selected { color: #0d9488; font-weight: 600; background: #f0fdfa; }
+.kind-filter-option.selected { color: #D31245; font-weight: 600; background: #fef1f4; }
 
 .select-all-wrap {
   display: flex;
@@ -1744,7 +1744,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .select-all-wrap input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: #0d9488;
+  accent-color: #D31245;
   cursor: pointer;
 }
 
@@ -2067,7 +2067,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 }
 
 .cal-day-today .cal-day-number {
-  background: #0d9488;
+  background: #D31245;
   color: #fff;
   border-radius: 50%;
   width: 18px;
@@ -2192,7 +2192,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .cal-hover-check {
   margin: 0;
   flex-shrink: 0;
-  accent-color: #0d9488;
+  accent-color: #D31245;
 }
 
 .cal-hover-dot {
@@ -2847,7 +2847,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .az-db-tree-row:hover { background: #f8fafc; }
 .az-db-tree-row.active {
   background: #e0f7fa;
-  box-shadow: inset 3px 0 0 #14b8a6;
+  box-shadow: inset 3px 0 0 #e8607a;
 }
 .az-db-tree-check { margin: 0; justify-self: center; }
 .az-db-tree-caret {

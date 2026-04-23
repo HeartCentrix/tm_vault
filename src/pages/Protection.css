@@ -128,7 +128,7 @@
 
 .search-wrapper .search-input:focus {
   outline: none;
-  border-color: #0d9488;
+  border-color: #D31245;
 }
 
 .search-wrapper .search-input::placeholder {
@@ -180,8 +180,8 @@
 }
 
 .filter-btn.has-filters {
-  border-color: #0d9488;
-  color: #0d9488;
+  border-color: #D31245;
+  color: #D31245;
 }
 
 .filter-dropdown {
@@ -334,7 +334,7 @@
   cursor: pointer;
   width: 16px;
   height: 16px;
-  accent-color: #0d9488;
+  accent-color: #D31245;
 }
 
 .resources-table td {
@@ -360,7 +360,7 @@
   cursor: pointer;
   width: 16px;
   height: 16px;
-  accent-color: #0d9488;
+  accent-color: #D31245;
 }
 
 .resources-table td.checkbox-cell input[type="checkbox"]:disabled {

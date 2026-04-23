@@ -161,7 +161,7 @@
 
 .header .header-left .data-source-selector .dropdown-menu .dropdown-search input:focus {
   outline: none;
-  border-color: #0d9488;
+  border-color: #D31245;
   background: #fff;
 }
 
@@ -265,18 +265,18 @@
 }
 
 .header .header-left .data-source-selector .dropdown-menu .dropdown-section .dropdown-item.add-source {
-  color: #0d9488;
+  color: #D31245;
 }
 
 .header .header-left .data-source-selector .dropdown-menu .dropdown-section .dropdown-item.add-source .add-icon {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  color: #0d9488;
+  color: #D31245;
 }
 
 .header .header-left .data-source-selector .dropdown-menu .dropdown-section .dropdown-item.add-source span {
-  color: #0d9488;
+  color: #D31245;
   font-weight: 500;
 }
 
