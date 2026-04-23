@@ -4163,14 +4163,25 @@ function sanitizeMessageHtml(raw: any): string {
 
 function GroupTeamsView({
   resourceId, snapshots, selectedItems, onToggleItem, onSelectAll,
+  activeTab: controlledTab, onTabChange,
 }: {
   resourceId: string;
   snapshots: SnapshotItem[];
   selectedItems: Set<string>;
   onToggleItem: (id: string) => void;
   onSelectAll: (ids: string[], checked: boolean) => void;
+  // Optional controlled-tab mode — parent can drive the active tab so
+  // the Download / Recover modals can route by (resourceKind × tab).
+  // Omitting both keeps the legacy internal-state behaviour.
+  activeTab?: GroupTab;
+  onTabChange?: (next: GroupTab) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<GroupTab>('site');
+  const [internalTab, setInternalTab] = useState<GroupTab>('site');
+  const activeTab: GroupTab = controlledTab ?? internalTab;
+  const setActiveTab = (next: GroupTab) => {
+    if (controlledTab === undefined) setInternalTab(next);
+    onTabChange?.(next);
+  };
 
   const latestSnapshot = useMemo(() => {
     return snapshots
@@ -5529,6 +5540,13 @@ export default function Recovery() {
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
 
+  // Active tab inside GroupTeamsView (M365 Groups / Entra Groups /
+  // Teams Channels). Lifted into the parent so the Download / Recover
+  // modals can route by tab: Site → file-family UX, Channels → chat
+  // UX, Mail → mailbox UX. Legacy resources that don't use this view
+  // ignore the state entirely.
+  const [groupTeamsTab, setGroupTeamsTab] = useState<'site' | 'mail' | 'channels'>('site');
+
   // Folders (real from snapshot items)
   const [folders, setFolders] = useState<SnapshotFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>(() => {
@@ -6879,6 +6897,8 @@ export default function Recovery() {
                     if (checked) setSelectedItems(new Set(ids));
                     else setSelectedItems(new Set());
                   }}
+                  activeTab={groupTeamsTab}
+                  onTabChange={setGroupTeamsTab}
                 />
               ) : (
                 <>
@@ -7242,16 +7262,67 @@ export default function Recovery() {
         </div>
       </div>
       </div>
-      <RestoreModal
-        isOpen={restoreModalOpen}
-        onClose={() => setRestoreModalOpen(false)}
-        itemIds={Array.from(selectedItems)}
-        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
-        itemName={restoreItemName}
-        itemType={restoreItemType}
-        resourceKind={selectedResource?.kind}
-        snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
-      />
+      {(() => {
+        // Modal routing for M365 Group / Entra Group / Teams Channel:
+        // the GroupTeamsView has three content surfaces (Site / Mail /
+        // Channels) that each need a completely different modal UX —
+        // file-family for Site, chat for Channels, mailbox for Mail.
+        // We don't actually mutate the resource row; we override what
+        // the modals see for `resourceKind` and `contentType` so their
+        // existing type-based branches fire correctly.
+        //
+        // SharePoint Site tab     → resourceKind='sharepoint_site'
+        //                          (kicks into the file-family branch)
+        // Teams Channels tab      → contentType='chats'
+        //                          (triggers the chat-export code path
+        //                           identical to the users' Chats tab)
+        // Group Mail tab          → resourceKind='mailbox'
+        //                          (re-uses the users' mail modal UX
+        //                           so the target-picker + mailbox flow
+        //                           behaves identically)
+        const isGroupLike = !!selectedResource && [
+          'm365_group', 'entra_group', 'teams_channel',
+        ].includes(selectedResource.kind);
+        const effectiveResourceKind =
+          isGroupLike && groupTeamsTab === 'site' ? 'sharepoint_site'
+          : isGroupLike && groupTeamsTab === 'mail' ? 'mailbox'
+          : selectedResource?.kind;
+        const effectiveContentType: ContentTab =
+          isGroupLike && groupTeamsTab === 'channels' ? 'chats'
+          : isGroupLike && groupTeamsTab === 'mail' ? 'mail'
+          : (activeContentType as ContentTab);
+        return (
+          <>
+            <RestoreModal
+              isOpen={restoreModalOpen}
+              onClose={() => setRestoreModalOpen(false)}
+              itemIds={Array.from(selectedItems)}
+              snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+              itemName={restoreItemName}
+              itemType={restoreItemType}
+              resourceKind={effectiveResourceKind}
+              snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
+            />
+            <DownloadModal
+              isOpen={downloadModalOpen}
+              onClose={() => setDownloadModalOpen(false)}
+              itemIds={Array.from(selectedItems)}
+              snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+              selectedCount={selectedItems.size}
+              contentType={effectiveContentType}
+              preserveTree={oneDriveFolderSelected.size > 0}
+              snapshotDate={
+                contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
+                || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
+                || undefined
+              }
+              resourceId={selectedResource?.id}
+              resourceKind={effectiveResourceKind}
+              threadPath={threadPath}
+            />
+          </>
+        );
+      })()}
       {selectedResource && (() => {
         const snap = snapshots.find(s => s.id === selectedSnapshotId);
         if (!snap) return null;
@@ -7275,29 +7346,6 @@ export default function Recovery() {
           />
         );
       })()}
-      <DownloadModal
-        isOpen={downloadModalOpen}
-        onClose={() => setDownloadModalOpen(false)}
-        itemIds={Array.from(selectedItems)}
-        snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
-        selectedCount={selectedItems.size}
-        contentType={activeContentType as ContentTab}
-        preserveTree={oneDriveFolderSelected.size > 0}
-        snapshotDate={
-          // Tab-selected snapshot's date lives on contentSnapshots.byContent — the
-          // top-level `snapshots` list is just the first 50 from listByResource
-          // and may not contain the active tab's snapshotId, so .find() often
-          // returned undefined and the modal title showed no date.
-          contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
-          || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
-          || undefined
-        }
-        // resourceId + threadPath are forwarded so the modal can scope
-        // the per-thread chat export hitting /exports/chat.
-        resourceId={selectedResource?.id}
-        resourceKind={selectedResource?.kind}
-        threadPath={threadPath}
-      />
     </>
   );
 }
