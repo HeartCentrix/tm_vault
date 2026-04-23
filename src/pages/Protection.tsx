@@ -470,7 +470,11 @@ export default function Protection() {
       return filtered.sort(byName);
     }
 
-    const sizeKey: Record<string, string> = {
+    // `as const` + the narrow type annotation gives TS the specific
+    // keyof usage values so `b.usage?.[key]` doesn't trip TS7053 under
+    // strict index checking.
+    type UsageKey = 'size' | 'size_delta_week' | 'size_delta_month' | 'size_delta_year';
+    const sizeKey: Record<string, UsageKey> = {
       top_total: 'size',
       top_7d: 'size_delta_week',
       top_30d: 'size_delta_month',

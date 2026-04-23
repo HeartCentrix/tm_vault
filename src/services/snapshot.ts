@@ -189,6 +189,11 @@ export const SnapshotService = {
     kind: string | null;
     contentType: string | null;
     isInline: boolean;
+    // MIME Content-ID the email body references via <img src="cid:...">.
+    // EmailPreview rewrites those cid: URLs to real content-endpoint URLs
+    // before rendering. Populated by the backend at services/snapshot-
+    // service/main.py:2102.
+    contentId: string | null;
     resolved: boolean;
     sourceUrl: string | null;
   }>> {

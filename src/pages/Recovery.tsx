@@ -120,7 +120,9 @@ export function EmailPreview({ item }: { item: any }) {
   // (e.g. when the backup ran before attachment capture was wired), but any
   // items with resolved=true link to our own content endpoint.
   const [attachments, setAttachments] = useState<Array<{
-    id: string; name: string; size: number; contentType: string | null;
+    id: string; name: string; size: number;
+    kind: string | null;
+    contentType: string | null;
     isInline: boolean; contentId: string | null;
     resolved: boolean; sourceUrl: string | null;
   }>>([]);
