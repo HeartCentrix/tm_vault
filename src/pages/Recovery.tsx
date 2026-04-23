@@ -3699,6 +3699,24 @@ function groupTabMatches(tab: GroupTab, itemType: string): boolean {
 
 function sanitizeMessageHtml(raw: any): string {
   const html = raw?.body?.content ?? '';
+  // Teams system events (meeting started/ended, members joined, chat
+  // renamed, role updated, …) arrive with body "<systemEventMessage/>"
+  // and from = null. Browsers drop the unknown tag, which leaves the
+  // preview pane blank — users see empty messages for any folder that
+  // happens to be mostly lifecycle events (e.g. a meeting chat). Render
+  // a labeled placeholder derived from eventDetail.@odata.type instead.
+  const isSystem =
+    !raw?.from ||
+    String(html).includes('<systemEventMessage/>') ||
+    !!raw?.eventDetail;
+  if (isSystem) {
+    const label = String(raw?.eventDetail?.['@odata.type'] || '')
+      .replace('#microsoft.graph.', '')
+      .replace(/EventMessageDetail$/, '')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/^./, (c) => c.toUpperCase());
+    return `<div class="sys-event-label">— ${label || 'System event'} —</div>`;
+  }
   if (!html) return '';
   // Strip inline <img> tags (Teams embeds giant base64 images that make
   // the right pane unreadable). Replace them with a small placeholder.
