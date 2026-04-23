@@ -6252,12 +6252,13 @@ export default function Recovery() {
         if (content.length < 2000) break;
         page += 1;
       }
+      // If the search endpoint returned 0 (pagination mismatch, case
+      // sensitivity, etc.), keep the folder ticked anyway. folderPaths
+      // is forwarded to the backend resolver which indexes on
+      // folder_path directly and may find rows the search endpoint
+      // didn't expose. Silent-deselect here used to leave the user
+      // staring at an unticked box they had just ticked.
       if (allIds.length === 0) {
-        setGenericFolderSelected(prev => {
-          const next = new Set(prev);
-          next.delete(folderPath);
-          return next;
-        });
         return;
       }
       setSelectedItems(prev => {
@@ -6336,6 +6337,14 @@ export default function Recovery() {
     // UI is showing.
     if (activeContentType === 'calendar' && selectedItems.size === 0 && filteredCalendarIds.length > 0) {
       setSelectedItems(new Set(filteredCalendarIds));
+      setRestoreModalOpen(true);
+      return;
+    }
+    // Folder checkbox selection (mail / contacts / etc.) — the async
+    // pagination walk hydrates selectedItems, but we open the modal
+    // immediately because folderPaths is forwarded to the backend
+    // resolver regardless. Works even if the walk finds zero rows.
+    if (selectedItems.size === 0 && genericFolderSelected.size > 0) {
       setRestoreModalOpen(true);
       return;
     }
@@ -6778,18 +6787,32 @@ export default function Recovery() {
                 // thread as implicit selection so Download lights up.
                 const chatThreadScoped =
                   activeContentType === 'chats' && !!threadPath;
+                // Generic-folder scope: mail / contacts / site tabs let
+                // the user tick an entire folder (e.g. `/Inbox`, or
+                // `Contacts`) in the left rail. That selection lives in
+                // `genericFolderSelected` — selectedItems only fills
+                // after the async pagination walk, which leaves the
+                // toolbar greyed out until the walk finishes and the
+                // user gets a button that never lights up when the
+                // backend returns zero rows. Treat any ticked folder as
+                // implicit selection and pass folderPaths to the modal,
+                // which forwards them to the backend folder_resolver.
+                const genericFolderScoped =
+                  activeContentType !== 'chats' && genericFolderSelected.size > 0;
                 const allowEmptyDownload =
                   (isAzureDb && azureDbTab === 'configuration') ||
                   (isAzureVm && vmTab !== 'volumes') ||
                   vmVolumesHasPick ||
                   calendarFilterScoped ||
-                  chatThreadScoped;
+                  chatThreadScoped ||
+                  genericFolderScoped;
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
                 // Chat Recover stays blocked by toolbarIsChat below —
                 // Graph has no app-only chat-post API, so enabling
                 // thread scope there would just open a dead modal.
-                const allowEmptyRecover = isAzureDb || isAzureVm || calendarFilterScoped;
+                const allowEmptyRecover =
+                  isAzureDb || isAzureVm || calendarFilterScoped || genericFolderScoped;
                 // Chat restore is a Microsoft platform limit — no
                 // app-only API to post chat/channel messages as another
                 // user. Grey out Recover so users don't submit a no-op
@@ -7336,6 +7359,11 @@ export default function Recovery() {
               itemType={restoreItemType}
               resourceKind={effectiveResourceKind}
               chatRestoreUnsupported={isChatRestoreUnsupported}
+              folderPaths={
+                activeContentType !== 'chats' && genericFolderSelected.size > 0
+                  ? Array.from(genericFolderSelected)
+                  : undefined
+              }
               snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
             />
             <DownloadModal
@@ -7345,7 +7373,12 @@ export default function Recovery() {
               snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
               selectedCount={selectedItems.size}
               contentType={effectiveContentType}
-              preserveTree={oneDriveFolderSelected.size > 0}
+              preserveTree={oneDriveFolderSelected.size > 0 || genericFolderSelected.size > 0}
+              folderPaths={
+                activeContentType !== 'chats' && genericFolderSelected.size > 0
+                  ? Array.from(genericFolderSelected)
+                  : undefined
+              }
               snapshotDate={
                 contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
                 || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt
