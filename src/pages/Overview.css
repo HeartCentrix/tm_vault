@@ -245,15 +245,17 @@
   min-width: 160px;
   padding: 12px 14px;
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.96);
-  color: #f8fafc;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+  background: #ffffff;
+  color: #231F20;
+  border: 1px solid #D31245;
+  box-shadow: 0 10px 30px rgba(211, 18, 69, 0.15);
 }
 
 .chart-tooltip-title {
   font-size: 12px;
   font-weight: 700;
   margin-bottom: 8px;
+  color: #231F20;
 }
 
 .chart-tooltip-row,
@@ -263,6 +265,7 @@
   justify-content: space-between;
   gap: 12px;
   font-size: 12px;
+  color: #6B6B6B;
 }
 
 .chart-tooltip-row + .chart-tooltip-row,
@@ -270,20 +273,14 @@
   margin-top: 6px;
 }
 
-.chart-tooltip-row.success {
-  color: #8ce3e6;
-}
-
-.chart-tooltip-row.warning {
-  color: #fcd34d;
-}
-
-.chart-tooltip-row.failure {
-  color: #ffb4ae;
-}
-
-.chart-tooltip-row.backup {
-  color: #8ce3e6;
+.chart-tooltip-row span { color: #6B6B6B; }
+.chart-tooltip-row strong,
+.chart-tooltip-row.success strong,
+.chart-tooltip-row.warning strong,
+.chart-tooltip-row.failure strong,
+.chart-tooltip-row.backup strong {
+  color: #D31245;
+  font-variant-numeric: tabular-nums;
 }
 
 .protection-card-content {
@@ -349,8 +346,12 @@
 .chart-tooltip-total {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(226, 232, 240, 0.2);
-  color: #e2e8f0;
+  border-top: 1px solid rgba(224, 217, 208, 0.8);
+  color: #231F20;
+}
+.chart-tooltip-total strong {
+  color: #D31245;
+  font-variant-numeric: tabular-nums;
 }
 
 .backup-size-summary {

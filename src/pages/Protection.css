@@ -2,51 +2,50 @@
   padding: 0 24px 24px;
 }
 
-/* Tabs */
+/* Tabs — pill/bubble treatment matching the Settings sub-navbar. Light
+ * palette only; dark mode overrides live in darkUI.css. */
 .resource-tabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0;
-  border-bottom: 1px solid #e2e8f0;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #F2EDE6;
+  border: 1px solid #E0D9D0;
+  border-radius: 12px;
   overflow-x: auto;
-  background: #fff;
-  padding: 8px 8px;
 }
 
 .resource-tab {
-  padding: 10px 14px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  background: #ffffff;
+  border: 1px solid #E0D9D0;
+  border-radius: 999px;
   font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
+  font-weight: 600;
+  color: #6B6B6B;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .resource-tab:hover {
-  color: #1e293b;
+  background: #F9F6F2;
+  border-color: #D31245;
+  color: #231F20;
 }
 
-.resource-tab.active {
-  color: #0f172a;
-  font-weight: 600;
-  border-bottom-color: #0d9488;
-}
-
+.resource-tab.active,
 .resource-tab.pill.active {
-  background: #d1fae5;
-  color: #065f46;
-  border-bottom-color: transparent;
-  border-radius: 6px;
+  background: #D31245;
+  border-color: #D31245;
+  color: #ffffff;
 }
 
 .tab-divider {
   width: 1px;
   height: 20px;
-  background: #e2e8f0;
+  background: #E0D9D0;
   margin: 0 4px;
   flex-shrink: 0;
 }
@@ -58,17 +57,17 @@
   flex-shrink: 0;
   padding: 0;
   margin: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border: 1px solid #E0D9D0;
+  border-radius: 10px;
 }
 
 .auto-protection-label {
   font-size: 10px;
   font-weight: 600;
-  color: #a0aec0;
+  color: #6B6B6B;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  background: #fff;
+  background: #F2EDE6;
   padding: 0 6px;
   margin-top: -6px;
   transition: opacity 0.15s;
@@ -83,23 +82,13 @@
 
 .auto-protection-tabs {
   display: flex;
-  gap: 0;
+  gap: 6px;
   margin-top: 4px;
+  padding: 4px 6px 6px;
 }
 
 .auto-protection-tabs .resource-tab {
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  color: #64748b;
-  padding: 6px 10px;
-}
-
-.auto-protection-tabs .resource-tab.active {
-  border-bottom-color: #0d9488;
-  background: transparent;
-  color: #0f172a;
-  font-weight: 600;
+  padding: 6px 12px;
 }
 
 /* Action Bar */

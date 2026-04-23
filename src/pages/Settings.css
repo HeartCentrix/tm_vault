@@ -2,33 +2,44 @@
   padding: 0 24px 24px;
 }
 
+/* Settings sub-navbar — pill/bubble treatment matching the Protection
+ * page's resource sub-tabs. Light palette only; dark mode overrides live
+ * in darkUI.css. */
 .settings-tabs {
   display: flex;
-  gap: 0;
-  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #F2EDE6;
+  border: 1px solid #E0D9D0;
+  border-radius: 12px;
   margin-bottom: 24px;
   position: relative;
 }
 
 .settings-tab {
-  padding: 12px 20px;
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
-  font-size: 15px;
+  padding: 8px 16px;
+  background: #ffffff;
+  border: 1px solid #E0D9D0;
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: #6B6B6B;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   white-space: nowrap;
-  position: relative;
-  margin-bottom: -1px;
 }
 
-.settings-tab:hover { color: #111827; }
-.settings-tab.active { 
-  color: #0d9488; 
-  border-bottom-color: #0d9488; 
+.settings-tab:hover {
+  background: #F9F6F2;
+  border-color: #D31245;
+  color: #231F20;
+}
+
+.settings-tab.active {
+  background: #D31245;
+  border-color: #D31245;
+  color: #ffffff;
 }
 
 /* SLA Header */

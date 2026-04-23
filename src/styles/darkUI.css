@@ -100,12 +100,13 @@
 [data-theme="dark"] .header .dropdown-menu .dropdown-search,
 [data-theme="dark"] .header .dropdown-menu .dropdown-section:not(:last-child) { border-color: #38332C !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-header .header-tenant-name,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item span,
-[data-theme="dark"] .header .user-dropdown .user-info .user-name { color: #D9D4CC !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item span { color: #D9D4CC !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-header .home-icon,
 [data-theme="dark"] .header .dropdown-menu .dropdown-item .home-icon,
-[data-theme="dark"] .header .user-dropdown .user-info .user-email,
 [data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-label { color: #6B6157 !important; }
+/* User dropdown — name white, email pink so both are clearly legible. */
+[data-theme="dark"] .header .user-dropdown .user-info .user-name { color: #F0EDE8 !important; }
+[data-theme="dark"] .header .user-dropdown .user-info .user-email { color: #E8607A !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-search input {
   background: #242019 !important;
   color: #D9D4CC !important;
@@ -191,17 +192,24 @@
   color: #F0EDE8 !important;
 }
 
-/* Service nav */
+/* Service nav — warm grey (surface) bar, readable idle label, clearly
+ * lifted hover (near-white), brand red active underline. The slide-in
+ * ::after underline from ServiceNav.css keeps its accent color. */
 [data-theme="dark"] .service-nav {
-  background: #141210 !important;
-  border-bottom-color: #2E2924 !important;
+  background: #242019 !important;
+  border-bottom-color: #38332C !important;
 }
-[data-theme="dark"] .service-nav .nav-tab { color: #9E9589 !important; border-bottom-color: transparent !important; }
-[data-theme="dark"] .service-nav .nav-tab:hover { color: #D9D4CC !important; }
+[data-theme="dark"] .service-nav .nav-tab {
+  color: #C2BDB5 !important;
+  border-bottom-color: transparent !important;
+}
+[data-theme="dark"] .service-nav .nav-tab:hover { color: #F0EDE8 !important; }
+[data-theme="dark"] .service-nav .nav-tab::after { background: #B80E38 !important; }
 [data-theme="dark"] .service-nav .nav-tab.active {
-  color: #E8607A !important;
+  color: #F0EDE8 !important;
   border-bottom-color: #B80E38 !important;
 }
+[data-theme="dark"] .service-nav .nav-tab.active::after { background: #B80E38 !important; }
 
 /* Inputs */
 [data-theme="dark"] input[type="text"],
@@ -373,12 +381,12 @@
   color: #F0EDE8 !important;
 }
 
-/* Service tabs bar */
-[data-theme="dark"] .service-nav,
+/* Service tabs bar — sibling containers share the same warm grey surface
+ * as .service-nav above. */
 [data-theme="dark"] .service-tabs,
 [data-theme="dark"] .service-nav-tabs {
-  background: #141210 !important;
-  border-bottom-color: #2E2924 !important;
+  background: #242019 !important;
+  border-bottom-color: #38332C !important;
 }
 
 /* Shared page headings that were hard-coded dark */
@@ -544,3 +552,496 @@
   border-color: #8F0A2A !important;
   color: #ffffff !important;
 }
+
+/* =========================================================================
+   Protection page — white panels (resource tabs, action bar, resources
+   table, SLA menu, filter dropdown, auto-protection group) become warm
+   grey surfaces with light text. Backgrounds that are already dark
+   palette values are left alone; only text is recolored where needed.
+   ========================================================================= */
+[data-theme="dark"] .resource-tabs {
+  background: #242019 !important;
+  border-bottom-color: #38332C !important;
+  gap: 6px !important;
+  padding: 10px 12px !important;
+}
+/* Uniform pill treatment — every resource tab renders as a rounded
+ * bubble in dark mode (matches the SharePoint sites pill look). */
+[data-theme="dark"] .resource-tab {
+  background: #1F1C18 !important;
+  border: 1px solid #38332C !important;
+  border-radius: 999px !important;
+  padding: 7px 14px !important;
+  color: #D9D4CC !important;
+  transition: all 0.15s ease !important;
+}
+[data-theme="dark"] .resource-tab:hover {
+  background: #2E2924 !important;
+  border-color: #B80E38 !important;
+  color: #F0EDE8 !important;
+}
+[data-theme="dark"] .resource-tab.active,
+[data-theme="dark"] .resource-tab.pill.active {
+  background: #B80E38 !important;
+  border-color: #B80E38 !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .tab-divider { background: #38332C !important; }
+
+[data-theme="dark"] .auto-protection-group {
+  border-color: #38332C !important;
+}
+[data-theme="dark"] .auto-protection-label {
+  background: #242019 !important;
+  color: #9E9589 !important;
+}
+[data-theme="dark"] .auto-protection-tabs .resource-tab {
+  background: #1F1C18 !important;
+  border: 1px solid #38332C !important;
+  border-radius: 999px !important;
+  color: #D9D4CC !important;
+}
+[data-theme="dark"] .auto-protection-tabs .resource-tab.active {
+  background: #B80E38 !important;
+  border-color: #B80E38 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .action-bar {
+  background: #242019 !important;
+  border-bottom-color: #38332C !important;
+}
+[data-theme="dark"] .search-wrapper .search-input {
+  background: #1F1C18 !important;
+  border-color: #38332C !important;
+  color: #F0EDE8 !important;
+}
+[data-theme="dark"] .search-wrapper .search-input::placeholder { color: #9E9589 !important; }
+[data-theme="dark"] .search-wrapper .search-input:focus { border-color: #B80E38 !important; }
+[data-theme="dark"] .search-wrapper .search-icon { color: #9E9589 !important; }
+
+[data-theme="dark"] .action-btn {
+  background: #1F1C18 !important;
+  color: #D9D4CC !important;
+  border-color: #38332C !important;
+}
+[data-theme="dark"] .action-btn:hover {
+  background: #2E2924 !important;
+  color: #F0EDE8 !important;
+  border-color: #B80E38 !important;
+}
+[data-theme="dark"] .filter-btn.has-filters {
+  border-color: #B80E38 !important;
+  color: #E8607A !important;
+}
+[data-theme="dark"] .filter-dropdown {
+  background: #242019 !important;
+  border-color: #38332C !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .filter-section-header,
+[data-theme="dark"] .filter-section-item { color: #D9D4CC !important; }
+[data-theme="dark"] .filter-section-item:hover { background: #2E2924 !important; color: #F0EDE8 !important; }
+
+[data-theme="dark"] .resources-table-container {
+  background: #242019 !important;
+  border: 1px solid #38332C !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .resources-table thead {
+  background: #1F1C18 !important;
+  border-bottom-color: #38332C !important;
+}
+[data-theme="dark"] .resources-table th { color: #C2BDB5 !important; }
+[data-theme="dark"] .resources-table td {
+  color: #F0EDE8 !important;
+  border-bottom-color: #2E2924 !important;
+}
+[data-theme="dark"] .resources-table tbody tr:hover { background: #2E2924 !important; }
+[data-theme="dark"] .resources-table tbody tr:hover td { color: #F0EDE8 !important; }
+[data-theme="dark"] .resource-display-name { color: #F0EDE8 !important; }
+[data-theme="dark"] .resource-email { color: #9E9589 !important; }
+
+[data-theme="dark"] .sla-header {
+  background: #1F1C18 !important;
+  border-color: #38332C !important;
+  color: #D9D4CC !important;
+}
+[data-theme="dark"] .sla-header:hover {
+  background: #2E2924 !important;
+  color: #F0EDE8 !important;
+  border-color: #B80E38 !important;
+}
+[data-theme="dark"] .sla-header.not-protected { color: #E8607A !important; }
+[data-theme="dark"] .sla-menu {
+  background: #242019 !important;
+  border-color: #38332C !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .sla-item { color: #D9D4CC !important; }
+[data-theme="dark"] .sla-item:hover { background: #2E2924 !important; color: #F0EDE8 !important; }
+
+[data-theme="dark"] .pagination-btn:hover:not(:disabled) { background: #2E2924 !important; }
+[data-theme="dark"] .pagination-page { color: #D9D4CC !important; }
+
+/* =========================================================================
+   Overview page — status cards, backup size summary, recent activity
+   section. Swap white → #242019 warm grey, recolor slate text → light.
+   ========================================================================= */
+[data-theme="dark"] .status-card {
+  background: #242019 !important;
+  border: 1px solid #38332C !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .status-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .status-label { color: #9E9589 !important; }
+[data-theme="dark"] .status-summary-row { color: #C2BDB5 !important; }
+[data-theme="dark"] .status-summary-row strong { color: #F0EDE8 !important; }
+
+[data-theme="dark"] .backup-size-pill.positive {
+  background: rgba(184, 14, 56, 0.12) !important;
+  color: #E8607A !important;
+}
+[data-theme="dark"] .backup-size-pill.neutral {
+  background: #2E2924 !important;
+  color: #C2BDB5 !important;
+}
+
+/* Recent Activity "navbar" — the panel header on Overview that was white.
+ * Now: grey surface, white title, muted meta. Hovered rows lift to #2E2924. */
+[data-theme="dark"] .activity-section {
+  background: #242019 !important;
+  border: 1px solid #38332C !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .activity-title { color: #F0EDE8 !important; }
+[data-theme="dark"] .activity-table thead {
+  background: #1F1C18 !important;
+  border-bottom-color: #38332C !important;
+}
+[data-theme="dark"] .activity-table th { color: #C2BDB5 !important; }
+[data-theme="dark"] .activity-table td {
+  color: #F0EDE8 !important;
+  border-bottom-color: #2E2924 !important;
+}
+[data-theme="dark"] .activity-table tbody tr:hover { background: #2E2924 !important; }
+[data-theme="dark"] .activity-table tbody tr:hover td { color: #F0EDE8 !important; }
+[data-theme="dark"] .activity-tenant { color: #F0EDE8 !important; }
+[data-theme="dark"] .activity-status.done {
+  background: rgba(184, 14, 56, 0.15) !important;
+  color: #E8607A !important;
+}
+[data-theme="dark"] .activity-status.in-progress,
+[data-theme="dark"] .activity-status.warning {
+  background: #2E2924 !important;
+  color: #D9D4CC !important;
+}
+[data-theme="dark"] .activity-status.failed {
+  background: rgba(184, 14, 56, 0.22) !important;
+  color: #F0EDE8 !important;
+}
+
+/* =========================================================================
+   Overview charts — recharts bars/grid/axes get repainted in semantic
+   colors that read on the dark card surface:
+     success  → #7DC28A (light warm green)
+     warning  → #E5B458 (warm gold)
+     failure  → #E8607A (brand light pink)
+   Backup-size bars share success green's slot (CHART_COLORS.backup ==
+   #17838a in Overview.tsx); override them separately to brand red.
+   ========================================================================= */
+[data-theme="dark"] .recharts-surface path[fill="#17838a"],
+[data-theme="dark"] .recharts-surface rect[fill="#17838a"] { fill: #7DC28A !important; }
+[data-theme="dark"] .recharts-surface path[fill="#f59e0b"],
+[data-theme="dark"] .recharts-surface rect[fill="#f59e0b"] { fill: #E5B458 !important; }
+[data-theme="dark"] .recharts-surface path[fill="#ef7d73"],
+[data-theme="dark"] .recharts-surface rect[fill="#ef7d73"] { fill: #E8607A !important; }
+/* Backup-size card uses CHART_COLORS.backup (#17838a) — keep it brand
+ * pink inside that specific card so it doesn't pick up success green. */
+[data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface path[fill="#17838a"],
+[data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface rect[fill="#17838a"] {
+  fill: #B80E38 !important;
+}
+
+/* Protection ring donut on the Protection Status card */
+[data-theme="dark"] .protection-ring circle[stroke="#e2e8f0"] { stroke: #38332C !important; }
+[data-theme="dark"] .protection-ring circle[stroke="#0d9488"] { stroke: #B80E38 !important; }
+
+/* Cartesian grid + axis lines */
+[data-theme="dark"] .recharts-cartesian-grid line { stroke: #38332C !important; }
+
+/* Card chart legend — green/yellow/pink semantic set */
+[data-theme="dark"] .chart-legend-item.success { color: #7DC28A !important; }
+[data-theme="dark"] .chart-legend-item.success::before { background: #7DC28A !important; }
+[data-theme="dark"] .chart-legend-item.warning { color: #E5B458 !important; }
+[data-theme="dark"] .chart-legend-item.warning::before { background: #E5B458 !important; }
+[data-theme="dark"] .chart-legend-item.failure { color: #E8607A !important; }
+[data-theme="dark"] .chart-legend-item.failure::before { background: #E8607A !important; }
+
+/* 24h status headline + dots — green/yellow/pink semantic set */
+[data-theme="dark"] .status-summary-title.success { color: #7DC28A !important; }
+[data-theme="dark"] .status-summary-title.warning { color: #E5B458 !important; }
+[data-theme="dark"] .status-summary-title.failure { color: #E8607A !important; }
+[data-theme="dark"] .status-summary-row.success span::before { background: #7DC28A !important; }
+[data-theme="dark"] .status-summary-row.warning span::before { background: #E5B458 !important; }
+[data-theme="dark"] .status-summary-row.failure span::before { background: #E8607A !important; }
+[data-theme="dark"] .status-summary-row.success strong { color: #F0EDE8 !important; }
+[data-theme="dark"] .status-summary-row.warning strong { color: #F0EDE8 !important; }
+[data-theme="dark"] .status-summary-row.failure strong { color: #F0EDE8 !important; }
+
+/* Custom chart hover tooltip (StatusChartTooltip / BackupSizeTooltip) —
+ * was a dark slate card; now a warm light surface with pink text so
+ * values pop when hovering bars on the dark Overview cards. */
+[data-theme="dark"] .chart-tooltip {
+  background: #EFE9E0 !important;
+  color: #231F20 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  border: 1px solid #B80E38 !important;
+}
+[data-theme="dark"] .chart-tooltip-title { color: #231F20 !important; }
+[data-theme="dark"] .chart-tooltip-row { color: #231F20 !important; }
+[data-theme="dark"] .chart-tooltip-row span { color: #6B6157 !important; }
+/* Each row's value takes a darker readable tint of its semantic color,
+ * so success=green, warning=gold, failure=pink on the warm-light bg. */
+[data-theme="dark"] .chart-tooltip-row.success strong { color: #2F8A4A !important; }
+[data-theme="dark"] .chart-tooltip-row.warning strong { color: #B8862E !important; }
+[data-theme="dark"] .chart-tooltip-row.failure strong { color: #B80E38 !important; }
+[data-theme="dark"] .chart-tooltip-row.backup strong { color: #B80E38 !important; }
+[data-theme="dark"] .chart-tooltip-total {
+  border-top-color: rgba(56, 51, 44, 0.3) !important;
+  color: #231F20 !important;
+}
+[data-theme="dark"] .chart-tooltip-total strong { color: #231F20 !important; }
+
+/* Protection Status card — percentage in pink, values white, labels muted */
+[data-theme="dark"] .protection-summary-value { color: #E8607A !important; }
+[data-theme="dark"] .protection-breakdown-row { color: #C2BDB5 !important; }
+[data-theme="dark"] .protection-breakdown-label { color: #C2BDB5 !important; }
+[data-theme="dark"] .protection-breakdown-value.complete { color: #F0EDE8 !important; }
+[data-theme="dark"] .protection-breakdown-value.partial { color: #E8607A !important; }
+
+/* Backup Size card — total in white, summary pills become warm-grey
+ * surfaces with a pink border and white value. */
+[data-theme="dark"] .backup-size-total { color: #F0EDE8 !important; }
+[data-theme="dark"] .backup-size-pill,
+[data-theme="dark"] .backup-size-pill.positive,
+[data-theme="dark"] .backup-size-pill.neutral {
+  background: #2E2924 !important;
+  border: 1px solid #E8607A !important;
+  color: #F0EDE8 !important;
+}
+[data-theme="dark"] .backup-size-pill span { color: #C2BDB5 !important; }
+[data-theme="dark"] .backup-size-pill strong { color: #F0EDE8 !important; }
+
+/* BackupSizeSummary component (separate from Overview's backup-size card) —
+ * used inside Recovery / Resource detail panels. Also gets the warm dark
+ * treatment with pink accents for its SVG sparkline strokes and tooltip. */
+[data-theme="dark"] .bss-root {
+  background: #242019 !important;
+  border-color: #38332C !important;
+  color: #F0EDE8 !important;
+}
+[data-theme="dark"] .bss-label,
+[data-theme="dark"] .bss-value,
+[data-theme="dark"] .bss-delta-val { color: #F0EDE8 !important; }
+[data-theme="dark"] .bss-arrow { color: #E8607A !important; }
+[data-theme="dark"] .bss-delta-key { color: #C2BDB5 !important; }
+[data-theme="dark"] .bss-chart svg line[stroke="#e5e7eb"] { stroke: #38332C !important; }
+[data-theme="dark"] .bss-chart svg line[stroke="#9ca3af"] { stroke: #9E9589 !important; }
+[data-theme="dark"] .bss-chart svg path[stroke="#0f9e8e"] { stroke: #B80E38 !important; }
+[data-theme="dark"] .bss-chart svg line[stroke="#0f9e8e"] { stroke: #B80E38 !important; }
+[data-theme="dark"] .bss-chart svg circle[fill="#0f9e8e"] { fill: #E8607A !important; stroke: #242019 !important; }
+[data-theme="dark"] .bss-chart svg text[fill="#111827"] { fill: #F0EDE8 !important; }
+[data-theme="dark"] .bss-chart svg text[fill="#6b7280"] { fill: #C2BDB5 !important; }
+[data-theme="dark"] .bss-chart svg text[fill="#9ca3af"] { fill: #9E9589 !important; }
+[data-theme="dark"] .bss-tooltip {
+  background: #EFE9E0 !important;
+  color: #231F20 !important;
+  border: 1px solid #B80E38 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .bss-tip-date { color: #231F20 !important; }
+[data-theme="dark"] .bss-tip-key { color: #6B6157 !important; }
+[data-theme="dark"] .bss-tip-val { color: #B80E38 !important; }
+[data-theme="dark"] .bss-tip-empty { color: #6B6157 !important; }
+
+/* =========================================================================
+   Settings page sub-navbar — same pill treatment as Protection's resource
+   sub-tabs, but using the dark palette. The pill shape itself is defined
+   in Settings.css (light palette); this block only re-tints for dark.
+   ========================================================================= */
+[data-theme="dark"] .settings-tabs {
+  background: #242019 !important;
+  border: 1px solid #38332C !important;
+}
+[data-theme="dark"] .settings-tab {
+  background: #1F1C18 !important;
+  border: 1px solid #38332C !important;
+  color: #D9D4CC !important;
+}
+[data-theme="dark"] .settings-tab:hover {
+  background: #2E2924 !important;
+  border-color: #B80E38 !important;
+  color: #F0EDE8 !important;
+}
+[data-theme="dark"] .settings-tab.active {
+  background: #B80E38 !important;
+  border-color: #B80E38 !important;
+  color: #ffffff !important;
+}
+
+/* =========================================================================
+   Admin Consent cards — Microsoft 365 / Azure / Power BI panels on the
+   Settings > Admin Consent tab. White surface → warm grey, all text in
+   the light family, solid pink background on hover (text stays white).
+   ========================================================================= */
+[data-theme="dark"] .admin-consent-card {
+  background: #242019 !important;
+  border-color: #38332C !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .admin-consent-card:hover {
+  background: #B80E38 !important;
+  border-color: #B80E38 !important;
+  box-shadow: 0 8px 28px rgba(184, 14, 56, 0.35) !important;
+}
+[data-theme="dark"] .admin-consent-title,
+[data-theme="dark"] .admin-consent-granted-by { color: #F0EDE8 !important; }
+[data-theme="dark"] .admin-consent-status.granted { color: #D9D4CC !important; }
+[data-theme="dark"] .admin-consent-status.not-granted { color: #9E9589 !important; }
+[data-theme="dark"] .admin-consent-date { color: #9E9589 !important; }
+/* On hover everything inside the card reads white against the solid pink. */
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-title,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-granted-by,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-status,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-status.granted,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-status.not-granted,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-date { color: #ffffff !important; }
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-icon svg,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-icon path,
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-icon { color: #ffffff !important; }
+
+/* Regrant button inside the card — readable idle, inverted on hover. */
+[data-theme="dark"] .admin-consent-regrant-btn {
+  background: transparent !important;
+  color: #D9D4CC !important;
+  border-color: #38332C !important;
+}
+[data-theme="dark"] .admin-consent-regrant-btn:hover:not(:disabled) {
+  background: #ffffff !important;
+  color: #B80E38 !important;
+  border-color: #ffffff !important;
+}
+[data-theme="dark"] .admin-consent-card:hover .admin-consent-regrant-btn {
+  border-color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+/* =========================================================================
+   Power BI readiness card — the 4th admin-consent box. Uses a different
+   class set (.power-bi-readiness-card + nested .power-bi-metric /
+   .power-bi-check / .power-bi-next-steps). Same dark treatment as the
+   other three admin-consent-cards: warm grey surface, light text, solid
+   pink bg on hover with everything inside reading white.
+   ========================================================================= */
+[data-theme="dark"] .power-bi-readiness-card {
+  background: #242019 !important;
+  border-color: #38332C !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+[data-theme="dark"] .power-bi-readiness-title { color: #F0EDE8 !important; }
+[data-theme="dark"] .power-bi-readiness-subtitle { color: #C2BDB5 !important; }
+[data-theme="dark"] .power-bi-summary { color: #D9D4CC !important; }
+
+/* Nested surfaces inside the card stay grey at rest. */
+[data-theme="dark"] .power-bi-metric,
+[data-theme="dark"] .power-bi-check,
+[data-theme="dark"] .power-bi-next-steps {
+  background: #1F1C18 !important;
+  border-color: #38332C !important;
+}
+[data-theme="dark"] .power-bi-metric-label { color: #9E9589 !important; }
+[data-theme="dark"] .power-bi-metric-value { color: #F0EDE8 !important; }
+[data-theme="dark"] .power-bi-check-title { color: #F0EDE8 !important; }
+[data-theme="dark"] .power-bi-check-detail { color: #C2BDB5 !important; }
+[data-theme="dark"] .power-bi-next-steps-title { color: #F0EDE8 !important; }
+[data-theme="dark"] .power-bi-next-steps-list,
+[data-theme="dark"] .power-bi-next-steps-list li,
+[data-theme="dark"] .power-bi-next-steps-empty { color: #D9D4CC !important; }
+
+/* Status badges — retint to the green/yellow/pink semantic set used on
+ * the Overview cards so they read against the dark surface. */
+[data-theme="dark"] .power-bi-status-badge.ready,
+[data-theme="dark"] .power-bi-check-state.ready {
+  background: rgba(125, 194, 138, 0.18) !important;
+  color: #7DC28A !important;
+}
+[data-theme="dark"] .power-bi-status-badge.warning,
+[data-theme="dark"] .power-bi-check-state.warning {
+  background: rgba(229, 180, 88, 0.18) !important;
+  color: #E5B458 !important;
+}
+[data-theme="dark"] .power-bi-status-badge.action,
+[data-theme="dark"] .power-bi-check-state.action {
+  background: rgba(232, 96, 122, 0.18) !important;
+  color: #E8607A !important;
+}
+[data-theme="dark"] .power-bi-check.ready { border-left-color: #7DC28A !important; }
+[data-theme="dark"] .power-bi-check.warning { border-left-color: #E5B458 !important; }
+[data-theme="dark"] .power-bi-check.action { border-left-color: #E8607A !important; }
+
+/* Hover — whole card floods pink; nested boxes go transparent with a
+ * 1px white-alpha border so the surface reads as a single block. Every
+ * text/value element inside flips to white. */
+[data-theme="dark"] .power-bi-readiness-card:hover {
+  background: #B80E38 !important;
+  border-color: #B80E38 !important;
+  box-shadow: 0 8px 28px rgba(184, 14, 56, 0.35) !important;
+}
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-metric,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+}
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check.ready,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check.warning,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check.action {
+  border-left-color: #ffffff !important;
+}
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-readiness-title,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-readiness-subtitle,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-summary,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-metric-label,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-metric-value,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check-title,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check-detail,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-title,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-list,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-list li,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-empty { color: #ffffff !important; }
+/* Status badges on hover — translucent white tile with white text. */
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-status-badge,
+[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check-state {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+/* Regrant button inside — mirror the same hover inversion as the other cards. */
+[data-theme="dark"] .power-bi-readiness-card:hover .admin-consent-regrant-btn {
+  border-color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+/* =========================================================================
+   Recovery empty state — "No backups available" panel uses inline styles
+   in Recovery.tsx (#0f172a title, #64748b body, #94a3b8 icon). Override
+   them in dark mode via attribute selectors so the message is legible:
+     title → pink, body → white, icon → pink.
+   ========================================================================= */
+[data-theme="dark"] .recovery-page .loading-container p[style*="#0f172a"] { color: #E8607A !important; }
+[data-theme="dark"] .recovery-page .loading-container p[style*="#64748b"] { color: #F0EDE8 !important; }
+[data-theme="dark"] .recovery-page .loading-container svg[style*="#94a3b8"] { color: #E8607A !important; }
+[data-theme="dark"] .recovery-page .loading-container svg line[stroke="#94a3b8"] { stroke: #E8607A !important; }
