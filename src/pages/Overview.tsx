@@ -68,10 +68,15 @@ interface BackupSizeChartDatum {
 type SizeUnit = 'MB' | 'GB' | 'TB';
 
 const CHART_COLORS = {
-  success: '#D31245',
-  warning: '#f59e0b',
-  failure: '#ef7d73',
-  backup: '#D31245',
+  // Semantic colors — fixed across light AND dark themes per user spec:
+  // success = green, warning = yellow/amber, failure = red. Picked to
+  // stay legible on both the warm-white and warm-grey surfaces without
+  // needing theme-aware swapping in JS (recharts fill is evaluated once
+  // per render and these mid-tone values read on both backgrounds).
+  success: '#16a34a',   // tailwind green-600
+  warning: '#f59e0b',   // amber-500 (unchanged)
+  failure: '#dc2626',   // red-600
+  backup: '#D31245',    // brand red for non-status bars (storage usage)
 };
 
 function calculateProtectionTotals(data: ProtectionStatus): { protectedCount: number; totalCount: number; percentage: number } {
@@ -433,7 +438,7 @@ export default function Overview() {
                   <span className="chart-legend-item failure">Failures {status7dTotals.failures}</span>
                 </div>
                 <div className="chart-shell">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={status7dChartData} barGap={6} margin={{ top: 8, right: 8, left: 8, bottom: 6 }}>
                       <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
                       <XAxis
@@ -539,7 +544,7 @@ export default function Overview() {
 
               {backupSizeChartData.length > 0 && (
                 <div className="chart-shell">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={backupSizeChartData} barGap={8} margin={{ top: 8, right: 8, left: 8, bottom: 6 }}>
                       <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
                       <XAxis

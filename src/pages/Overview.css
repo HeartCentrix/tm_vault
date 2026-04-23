@@ -6,6 +6,7 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
+  padding-top: 20px;
   margin-bottom: 32px;
 }
 
@@ -210,12 +211,14 @@
   display: inline-block;
 }
 
+/* Semantic chart legend colors — fixed for both light & dark themes.
+   Success = green, warning = amber, failure = red. */
 .chart-legend-item.success {
-  color: #D31245;
+  color: #16a34a;
 }
 
 .chart-legend-item.success::before {
-  background: #D31245;
+  background: #16a34a;
 }
 
 .chart-legend-item.warning {
@@ -227,16 +230,17 @@
 }
 
 .chart-legend-item.failure {
-  color: #d94841;
+  color: #dc2626;
 }
 
 .chart-legend-item.failure::before {
-  background: #ef7d73;
+  background: #dc2626;
 }
 
 .chart-shell {
   width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 190px;
   flex: 1;
 }

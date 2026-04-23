@@ -31,9 +31,13 @@
   --tm-accent-soft: #E8607A;
 
   /* Semantic chart colors (Overview) */
-  --tm-success: #7DC28A;
-  --tm-warning: #E5B458;
-  --tm-failure: #E8607A;
+  /* Semantic chart colors — aligned with light theme so success/warning/
+     failure read green/yellow/red in BOTH modes (user spec). Picked the
+     400-500 tailwind variants because they're bright enough to pop on
+     the warm-grey dark surface while still feeling muted vs neon. */
+  --tm-success: #22c55e;
+  --tm-warning: #fbbf24;
+  --tm-failure: #ef4444;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -892,10 +896,16 @@
 
 [data-theme="dark"] .recharts-surface path[fill="#D31245"],
 [data-theme="dark"] .recharts-surface rect[fill="#D31245"] { fill: var(--tm-accent-soft) !important; }
+/* Recharts bars use the semantic hex values from Overview.tsx
+   CHART_COLORS. Map them to the dark-theme semantic vars so bars
+   match the legend swatches above — green for success, amber/yellow
+   for warning, red for failure. */
+[data-theme="dark"] .recharts-surface path[fill="#16a34a"],
+[data-theme="dark"] .recharts-surface rect[fill="#16a34a"] { fill: var(--tm-success) !important; }
 [data-theme="dark"] .recharts-surface path[fill="#f59e0b"],
 [data-theme="dark"] .recharts-surface rect[fill="#f59e0b"] { fill: var(--tm-warning) !important; }
-[data-theme="dark"] .recharts-surface path[fill="#ef7d73"],
-[data-theme="dark"] .recharts-surface rect[fill="#ef7d73"] { fill: var(--tm-failure) !important; }
+[data-theme="dark"] .recharts-surface path[fill="#dc2626"],
+[data-theme="dark"] .recharts-surface rect[fill="#dc2626"] { fill: var(--tm-failure) !important; }
 [data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface path[fill="#D31245"],
 [data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface rect[fill="#D31245"] {
   fill: var(--tm-accent) !important;
