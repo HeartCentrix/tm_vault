@@ -15,6 +15,12 @@ interface RestoreModalProps {
   itemType?: string;
   snapshotDate?: string;
   resourceKind?: string;
+  // Set by Recovery when the selection is a Teams chat / channel /
+  // user 1:1 chat — Microsoft Graph has no app-only API to post chat
+  // messages as another user, so restore is a platform-level no-op.
+  // Render a clear "unsupported" screen instead of a greyed-out form
+  // the user can still fill in and "submit" to a silent skip.
+  chatRestoreUnsupported?: boolean;
 }
 
 const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
@@ -24,7 +30,7 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
   // Shared + room mailboxes have no OneDrive in M365 — hide it so users
@@ -192,6 +198,40 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // Chat restore is a Microsoft platform limit, not a TMvault limit:
+  //   * POST /chats/{id}/messages        — no app-only permission
+  //   * POST /teams/{id}/channels/{id}/messages — ditto, same refusal
+  // Any submit here would complete with "skipped" counts and no data
+  // landing in Outlook / Teams. Show the unsupported screen and point
+  // at Download as the supported path.
+  if (chatRestoreUnsupported) {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <button className="modal-close" onClick={onClose}>×</button>
+          <div className="modal-title">Recover not supported for chat messages</div>
+          <div className="restore-item-info" style={{ marginTop: 12 }}>
+            Microsoft Graph has no app-only API for posting chat or channel
+            messages on behalf of a user — neither <code>/chats/{'{'}id{'}'}/messages</code>
+            {' '}nor <code>/teams/{'{'}id{'}'}/channels/{'{'}id{'}'}/messages</code> accept
+            an application token. Every M365 backup vendor (afi.ai, Druva,
+            Keepit) hits the same wall; that's why none of them offer a
+            true chat "recover to Teams" path either.
+          </div>
+          <div className="restore-item-info" style={{ marginTop: 8 }}>
+            Use <strong>Download</strong> to export the conversation as
+            HTML, JSON, or PDF. The archive preserves sender, timestamp,
+            attachments, reactions, and the reply tree — suitable for
+            compliance, legal hold, or human review.
+          </div>
+          <div className="modal-actions" style={{ marginTop: 16 }}>
+            <button className="btn-cancel" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const toggleWorkload = (w: Workload) => {
     setWorkloads(prev => {

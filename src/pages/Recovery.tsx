@@ -6776,6 +6776,18 @@ export default function Recovery() {
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
                 const allowEmptyRecover = isAzureDb || isAzureVm || calendarFilterScoped;
+                // Chat restore is a Microsoft platform limit — no
+                // app-only API to post chat/channel messages as another
+                // user. Grey out Recover so users don't submit a no-op
+                // job. Affects: user Chats tab AND the Channels tab
+                // inside Group / Teams Channel resources (where we
+                // remap effectiveContentType='chats' for modal routing).
+                const isGroupLikeForTb = !!selectedResource && [
+                  'm365_group', 'entra_group', 'teams_channel',
+                ].includes(selectedResource.kind);
+                const toolbarIsChat =
+                  activeContentType === 'chats'
+                  || (isGroupLikeForTb && groupTeamsTab === 'channels');
                 return (
                   <RecoveryToolbar
                     snapshots={snapshots}
@@ -6786,6 +6798,7 @@ export default function Recovery() {
                     selectedCount={selectedItems.size}
                     downloadError={inlineDownloadError || downloadError}
                     downloadDisabled={inlineDownloadRunning}
+                    recoverDisabled={toolbarIsChat}
                     allowEmptyDownload={allowEmptyDownload}
                     allowEmptyRecover={allowEmptyRecover}
                     searchValue={showSearch ? searchQuery : undefined}
@@ -7291,6 +7304,13 @@ export default function Recovery() {
           isGroupLike && groupTeamsTab === 'channels' ? 'chats'
           : isGroupLike && groupTeamsTab === 'mail' ? 'mail'
           : (activeContentType as ContentTab);
+        // Chat restore is a Microsoft platform limit, not a TMvault
+        // limit — neither /chats/{id}/messages nor
+        // /teams/{id}/channels/{id}/messages accept an app-only
+        // token. Surface that clearly in the modal AND grey out the
+        // toolbar Recover button so the user can't even open the
+        // modal (which would just show the unsupported screen).
+        const isChatRestoreUnsupported = effectiveContentType === 'chats';
         return (
           <>
             <RestoreModal
@@ -7301,6 +7321,7 @@ export default function Recovery() {
               itemName={restoreItemName}
               itemType={restoreItemType}
               resourceKind={effectiveResourceKind}
+              chatRestoreUnsupported={isChatRestoreUnsupported}
               snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
             />
             <DownloadModal
