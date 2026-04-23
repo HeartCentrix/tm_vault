@@ -423,11 +423,27 @@ export default function Protection() {
     });
   }, [resources, searchQuery]);
 
-  // Apply size-based sorting/filtering and SLA filtering to resources
+  // Apply SLA filtering + deterministic ordering.
+  //
+  // The default list order is strictly alphabetical by display name.
+  // Backend rows come back ordered by `r.created_at DESC`, which flips
+  // rows around after a backup for two reasons:
+  //   1. Bulk-discovered resources (dozens of ENTRA_USER inserted in
+  //      one transaction) share identical created_at values; Postgres
+  //      then returns tied rows in heap-scan order, which drifts
+  //      between refetches.
+  //   2. Size-filter sorts key off `usage.size` / size_delta_*, both
+  //      of which move when a backup completes, causing the row
+  //      itself to jump up or down.
+  // Anchoring on display_name as the primary sort — with a stable
+  // tie-break by id — keeps a row in the same visual slot before,
+  // during, and after a backup, regardless of what the backend
+  // returns. Size filters still override as the primary key, but
+  // display_name is the secondary so ties don't reorder rows.
   const sortedResources = useMemo(() => {
     let filtered = [...filteredResources];
 
-    // Apply SLA filter first
+    // SLA filter
     if (slaFilter) {
       if (slaFilter === 'Not protected') {
         filtered = filtered.filter(r => !r.protections || r.protections.length === 0 || !r.protections[0]?.policy_id);
@@ -441,30 +457,34 @@ export default function Protection() {
       }
     }
 
-    // Apply size filter (sorting)
-    if (!sizeFilter || sizeFilter === null) return filtered;
+    const byName = (a: any, b: any) => {
+      const an = String(a.name || '').toLowerCase();
+      const bn = String(b.name || '').toLowerCase();
+      if (an < bn) return -1;
+      if (an > bn) return 1;
+      // Stable secondary to avoid id-order drift across refetches.
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    };
 
-    switch (sizeFilter) {
-      case 'top_total':
-        // Sort by total size (descending)
-        return filtered.sort((a, b) => (b.usage?.size || 0) - (a.usage?.size || 0));
-
-      case 'top_7d':
-        // Sort by 7-day growth (descending)
-        return filtered.sort((a, b) => (b.usage?.size_delta_week || 0) - (a.usage?.size_delta_week || 0));
-
-      case 'top_30d':
-        // Sort by 30-day growth (descending)
-        return filtered.sort((a, b) => (b.usage?.size_delta_month || 0) - (a.usage?.size_delta_month || 0));
-
-      case 'top_365d':
-        // Sort by yearly growth (descending)
-        return filtered.sort((a, b) => (b.usage?.size_delta_year || 0) - (a.usage?.size_delta_year || 0));
-
-      default:
-        return filtered;
+    if (!sizeFilter) {
+      return filtered.sort(byName);
     }
-  }, [resources, sizeFilter, slaFilter, policies]);
+
+    const sizeKey: Record<string, string> = {
+      top_total: 'size',
+      top_7d: 'size_delta_week',
+      top_30d: 'size_delta_month',
+      top_365d: 'size_delta_year',
+    };
+    const key = sizeKey[sizeFilter];
+    if (!key) return filtered.sort(byName);
+
+    return filtered.sort((a, b) => {
+      const delta = (b.usage?.[key] || 0) - (a.usage?.[key] || 0);
+      if (delta !== 0) return delta;
+      return byName(a, b);
+    });
+  }, [filteredResources, sizeFilter, slaFilter, policies]);
 
   // Apply client-side pagination when searching
   const displayedResources = useMemo(() => {
