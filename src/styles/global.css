@@ -150,7 +150,7 @@ h4, h5, h6 { font-family: 'DM Sans', sans-serif; font-weight: 600; color: #231F2
 .sidebar .logo,
 .sidebar .sidebar-footer { border-color: #E0D9D0 !important; }
 .sidebar .logo .logo-icon,
-.sidebar .logo .logo-text { color: #231F20 !important; }
+.sidebar .logo .logo-text { color: #D31245 !important; }
 .sidebar .logo .logo-text { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; letter-spacing: -0.01em; }
 .sidebar .nav-menu .nav-item {
   color: #6B6B6B !important;
@@ -185,7 +185,7 @@ h4, h5, h6 { font-family: 'DM Sans', sans-serif; font-weight: 600; color: #231F2
   background: #F9F6F2 !important;
   border-color: #D31245 !important;
 }
-.header .header-left .data-source-selector .selector-btn .home-icon,
+.header .header-left .data-source-selector .selector-btn .home-icon { color: #D31245 !important; }
 .header .header-left .data-source-selector .selector-btn .source-name { color: #231F20 !important; }
 .header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: #9E8E82 !important; }
 
@@ -214,9 +214,9 @@ h4, h5, h6 { font-family: 'DM Sans', sans-serif; font-weight: 600; color: #231F2
 .header .dropdown-menu .dropdown-item span,
 .header .user-dropdown .user-info .user-name { color: #231F20 !important; }
 .header .dropdown-menu .dropdown-header .collapse-btn svg,
-.header .dropdown-menu .dropdown-item .home-icon,
 .header .user-dropdown .user-info .user-email,
 .header .dropdown-menu .dropdown-section .dropdown-label { color: #6B6B6B !important; }
+.header .dropdown-menu .dropdown-item .home-icon { color: #D31245 !important; }
 .header .dropdown-menu .dropdown-search input {
   background: #ffffff !important;
   color: #231F20 !important;
@@ -230,8 +230,8 @@ h4, h5, h6 { font-family: 'DM Sans', sans-serif; font-weight: 600; color: #231F2
 
 /* Dropdown item hover: cream bg + dark text, native status badges stay readable */
 .header .dropdown-menu .dropdown-item:hover { background: #F2EDE6 !important; color: #231F20 !important; }
-.header .dropdown-menu .dropdown-item:hover span,
-.header .dropdown-menu .dropdown-item:hover .home-icon { color: #231F20 !important; }
+.header .dropdown-menu .dropdown-item:hover span { color: #231F20 !important; }
+.header .dropdown-menu .dropdown-item:hover .home-icon { color: #D31245 !important; }
 .header .user-dropdown .logout-item:hover { background: #F2EDE6 !important; }
 .header .dropdown-menu .dropdown-item.active { background: #F2EDE6 !important; }
 .header .dropdown-menu .dropdown-item.active span { color: #D31245 !important; font-weight: 600; }

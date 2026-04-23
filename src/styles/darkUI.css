@@ -100,7 +100,7 @@
 [data-theme="dark"] .sidebar .logo,
 [data-theme="dark"] .sidebar .sidebar-footer { border-color: var(--tm-hover) !important; }
 [data-theme="dark"] .sidebar .logo .logo-icon,
-[data-theme="dark"] .sidebar .logo .logo-text { color: var(--tm-text) !important; }
+[data-theme="dark"] .sidebar .logo .logo-text { color: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .sidebar .nav-menu .nav-item { color: var(--tm-body-2) !important; }
 [data-theme="dark"] .sidebar .nav-menu .nav-item:hover {
   background: transparent !important;
@@ -131,8 +131,8 @@
 [data-theme="dark"] .header .header-left .data-source-selector .selector-btn:hover {
   border-color: var(--tm-accent) !important;
 }
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .source-name,
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .home-icon { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .source-name { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .home-icon { color: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: var(--tm-body) !important; }
 
 [data-theme="dark"] .header .header-right .icon-btn svg { color: var(--tm-text) !important; }
@@ -161,9 +161,9 @@
 [data-theme="dark"] .header .dropdown-menu .dropdown-section:not(:last-child) { border-color: var(--tm-border) !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-header .header-tenant-name,
 [data-theme="dark"] .header .dropdown-menu .dropdown-item span { color: var(--tm-text) !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-header .home-icon,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item .home-icon,
 [data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-label { color: var(--tm-body) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-header .home-icon,
+[data-theme="dark"] .header .dropdown-menu .dropdown-item .home-icon { color: var(--tm-accent-soft) !important; }
 
 /* User dropdown — name white, email pink */
 [data-theme="dark"] .header .user-dropdown .user-info .user-name  { color: var(--tm-text) !important; }
@@ -187,8 +187,8 @@
   outline-offset: -1px !important;
   color: var(--tm-text) !important;
 }
-[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover span,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover .home-icon { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover span { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover .home-icon { color: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-item.active { background: var(--tm-hover) !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-item.active span { color: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .header .dropdown-menu .dropdown-item .source-icon {
@@ -615,6 +615,147 @@
   border-color: var(--tm-accent) !important;
   color: var(--tm-text) !important;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   11a-bis. RestoreModal + DownloadModal — radios, checkboxes, inputs,
+   info-icon, error panel, and the two CTAs. The shared .modal-content
+   rule above already paints the surface dark and inherits text white,
+   but native form controls render dark-on-dark and a few hex colors
+   from RestoreModal.css (#1e293b, #94a3b8, #e2e8f0, #fee2e2) leak
+   through specificity gaps. Force-apply the locked palette here.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .modal-overlay .modal-content .modal-title { color: var(--tm-text) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-columns { border-top-color: var(--tm-border) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .radio-row,
+[data-theme="dark"] .modal-overlay .modal-content .checkbox-row,
+[data-theme="dark"] .modal-overlay .modal-content .radio-row span,
+[data-theme="dark"] .modal-overlay .modal-content .checkbox-row span,
+[data-theme="dark"] .modal-overlay .modal-content .radio-row strong,
+[data-theme="dark"] .modal-overlay .modal-content .checkbox-row strong {
+  color: var(--tm-text) !important;
+}
+
+/* Custom-paint the radios + checkboxes — accent-color alone only colors
+ * the *checked* state, so unchecked native controls vanish on dark
+ * surfaces. appearance:none + explicit border/fill restores visibility. */
+[data-theme="dark"] .modal-overlay .modal-content input[type="radio"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  border: 1.5px solid var(--tm-body) !important;
+  background: transparent !important;
+  position: relative !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  margin: 2px 0 0 0 !important;
+  transition: border-color 0.15s ease !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content input[type="radio"]:hover { border-color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .modal-overlay .modal-content input[type="radio"]:checked { border-color: var(--tm-accent) !important; }
+[data-theme="dark"] .modal-overlay .modal-content input[type="radio"]:checked::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--tm-accent);
+}
+
+[data-theme="dark"] .modal-overlay .modal-content input[type="checkbox"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 3px !important;
+  border: 1.5px solid var(--tm-body) !important;
+  background: transparent !important;
+  position: relative !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: border-color 0.15s ease, background 0.15s ease !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content input[type="checkbox"]:hover { border-color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .modal-overlay .modal-content input[type="checkbox"]:checked {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* Folder-name underline input + native <select> dropdowns inside the
+ * modal (target mailbox picker, environment picker, etc.) */
+[data-theme="dark"] .modal-overlay .modal-content .folder-input,
+[data-theme="dark"] .modal-overlay .modal-content select.folder-input {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content .folder-input:focus,
+[data-theme="dark"] .modal-overlay .modal-content select.folder-input:focus {
+  border-bottom-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content select.folder-input option {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+}
+
+[data-theme="dark"] .modal-overlay .modal-content .info-icon {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-body) !important;
+}
+
+[data-theme="dark"] .modal-overlay .modal-content .modal-error {
+  background: rgba(184, 14, 56, 0.12) !important;
+  border: 1px solid var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+}
+
+[data-theme="dark"] .modal-overlay .modal-content .restore-item-info {
+  color: var(--tm-body-2) !important;
+}
+
+/* Recover (ghost pink) + Download (solid pink) — replace the teal
+ * defaults so the CTAs match the dark accent. */
+[data-theme="dark"] .modal-overlay .modal-content .btn-recover {
+  background: transparent !important;
+  border: 1.5px solid var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content .btn-recover:hover:not(:disabled) {
+  background: rgba(184, 14, 56, 0.12) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 18px rgba(184, 14, 56, 0.25) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content .btn-download {
+  background: var(--tm-accent) !important;
+  border: 1.5px solid var(--tm-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(184, 14, 56, 0.35) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content .btn-download:hover:not(:disabled) {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(184, 14, 56, 0.55) !important;
+}
+
+[data-theme="dark"] .modal-overlay .modal-content .modal-success p { color: var(--tm-text) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .success-job-id { color: var(--tm-body) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-size-chip { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-size-chip .warn { color: var(--tm-warning, #E5B458) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-progress-bar { background: var(--tm-surface-2) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-progress-bar > div { background: var(--tm-accent) !important; }
 
 /* ─────────────────────────────────────────────────────────────────────
    11b. AddSecretModal (.add-sec-*) — custom-prefixed, not caught by
