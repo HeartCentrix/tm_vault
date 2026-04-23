@@ -277,7 +277,12 @@ export function DownloadModal({
       setError('No items selected.');
       return;
     }
-    if (scope === 'all' && workloads.size === 0) {
+    // The workload picker only applies to user-centric resources
+    // (mailbox / entra_user). For file-family resources (SharePoint
+    // sites today, OneDrive tomorrow) scope='all' means "download the
+    // whole resource" — there's no workload axis to pick from.
+    const isFilesFamily = resourceKind === 'sharepoint_site';
+    if (scope === 'all' && !isFilesFamily && workloads.size === 0) {
       setError('Select at least one workload.');
       return;
     }
@@ -303,11 +308,14 @@ export function DownloadModal({
         restoreType: 'EXPORT_ZIP',
         snapshotIds,
         itemIds: scope === 'selected' ? itemIds : [],
-        exportFormat,
-        workloads: scope === 'all' ? Array.from(workloads) : undefined,
-        includeAttachments,
-        preserveTree: scope === 'all' || preserveTree,
-        contactFolders: contactFoldersPayload,
+        // File-family resources always export as ZIP with full tree;
+        // no format or workload axis applies.
+        exportFormat: isFilesFamily ? undefined : exportFormat,
+        workloads:
+          !isFilesFamily && scope === 'all' ? Array.from(workloads) : undefined,
+        includeAttachments: isFilesFamily ? undefined : includeAttachments,
+        preserveTree: isFilesFamily || scope === 'all' || preserveTree,
+        contactFolders: isFilesFamily ? undefined : contactFoldersPayload,
       });
       const jobId = response.jobId;
 
@@ -369,6 +377,47 @@ export function DownloadModal({
         {resourceKind === 'entra_directory' ? (
           <div className="modal-columns">
             <EntraDownloadForm onChange={setEntraSelection} />
+          </div>
+        ) : resourceKind === 'sharepoint_site' ? (
+          // SharePoint sites aren't mailboxes — the Mail/Contacts/Calendar
+          // workload picker + per-content-type export formats don't apply.
+          // Offer a file-family UX (selected items vs whole site) that
+          // submits the existing EXPORT_ZIP path via /export-or-restore.
+          <div className="modal-columns">
+            <div className="modal-col">
+              <label className="radio-row">
+                <input
+                  type="radio"
+                  checked={scope === 'selected'}
+                  onChange={() => setScope('selected')}
+                />
+                <span>
+                  Download selected files / folders
+                  {selectedCount > 0 && (
+                    <strong> ({selectedCount} {selectedCount === 1 ? 'item' : 'items'})</strong>
+                  )}
+                </span>
+              </label>
+              <label className="radio-row">
+                <input
+                  type="radio"
+                  checked={scope === 'all'}
+                  onChange={() => setScope('all')}
+                />
+                <span>Download entire site</span>
+              </label>
+            </div>
+            <div className="modal-col">
+              <div className="radio-row">
+                <span>
+                  Export format: <strong>ZIP</strong>
+                </span>
+              </div>
+              <div className="restore-item-info" style={{ marginTop: 8 }}>
+                Folder structure is preserved inside the archive — your tree is rebuilt
+                as you see it on SharePoint.
+              </div>
+            </div>
           </div>
         ) : (
         <div className="modal-columns">
