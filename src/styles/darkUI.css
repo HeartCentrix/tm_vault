@@ -1,10 +1,18 @@
 /* =========================================================================
-   TAYLOR MORRISON — DARK MODE
-   Activated by [data-theme="dark"] on <html>. Palette sourced from the
-   reference darkUI.css at the repo root — unchanged values, only scope.
+   TAYLOR MORRISON — DARK MODE (consolidated)
+   Activated by [data-theme="dark"] on <html>. Rules follow three principles:
+     1. White surfaces → warm grey (var(--tm-surface)); text → white.
+     2. Hover → background stays the same as idle; only the BORDER turns
+        pink. For elements without a border, an outline is added. Text
+        stays white.
+     3. Exceptions that keep a pink-filled background (explicitly requested):
+          • Primary / submit / CTA buttons
+          • Sub-navbar pill ACTIVE state (Protection + Settings + Service nav)
+          • Overview card palette (green / yellow / pink chart colors)
    ========================================================================= */
 
 [data-theme="dark"] {
+  /* Core palette (user-locked) */
   --tm-bg:          #1A1714;
   --tm-surface:     #242019;
   --tm-border:      #38332C;
@@ -13,337 +21,63 @@
   --tm-text:        #F0EDE8;
   --tm-body:        #9E9589;
   --tm-muted:       #6B6157;
+
+  /* Derived helpers */
+  --tm-chrome:      #141210;
+  --tm-surface-2:   #1F1C18;
+  --tm-hover:       #2E2924;
+  --tm-body-2:      #C2BDB5;
+  --tm-body-3:      #D9D4CC;
+  --tm-accent-soft: #E8607A;
+
+  /* Semantic chart colors (Overview) */
+  --tm-success: #7DC28A;
+  --tm-warning: #E5B458;
+  --tm-failure: #E8607A;
 }
 
-/* Page shell */
+/* ─────────────────────────────────────────────────────────────────────
+   1. Page shell & typography
+   ─────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] html,
-[data-theme="dark"] body       { background: #1A1714; color: #F0EDE8; }
-[data-theme="dark"] .main-content { background: #1A1714 !important; color: #F0EDE8; }
+[data-theme="dark"] body { background: var(--tm-bg); color: var(--tm-text); }
+[data-theme="dark"] .main-content,
+[data-theme="dark"] .activity-page,
+[data-theme="dark"] .configuration-page,
+[data-theme="dark"] .overview-page,
+[data-theme="dark"] .protection-page,
+[data-theme="dark"] .recovery-page,
+[data-theme="dark"] .tenants-page,
+[data-theme="dark"] .settings-page,
+[data-theme="dark"] .storage-page { background: var(--tm-bg) !important; color: var(--tm-text) !important; }
 
-/* Typography */
 [data-theme="dark"] h1,
 [data-theme="dark"] h2,
-[data-theme="dark"] h3          { color: #F0EDE8; }
+[data-theme="dark"] h3,
+[data-theme="dark"] .page-title,
+[data-theme="dark"] .section-title,
+[data-theme="dark"] .activity-header,
+[data-theme="dark"] .settings-page h1,
+[data-theme="dark"] .settings-page h2,
+[data-theme="dark"] .configuration-page .section-title { color: var(--tm-text) !important; }
 [data-theme="dark"] h4,
 [data-theme="dark"] h5,
-[data-theme="dark"] h6          { color: #D9D4CC; }
+[data-theme="dark"] h6   { color: var(--tm-body-3); }
 [data-theme="dark"] p,
 [data-theme="dark"] label,
 [data-theme="dark"] li,
 [data-theme="dark"] dt,
-[data-theme="dark"] dd          { color: #C2BDB5; }
+[data-theme="dark"] dd   { color: var(--tm-body-2); }
 [data-theme="dark"] small,
 [data-theme="dark"] .caption,
 [data-theme="dark"] .hint,
-[data-theme="dark"] .text-muted { color: #9E9589 !important; }
+[data-theme="dark"] .text-muted { color: var(--tm-body) !important; }
 [data-theme="dark"] .eyebrow,
-[data-theme="dark"] .section-eyebrow { color: #E8607A; }
+[data-theme="dark"] .section-eyebrow { color: var(--tm-accent-soft); }
 
-/* Sidebar */
-[data-theme="dark"] .sidebar {
-  background: #141210 !important;
-  border-right-color: #2E2924 !important;
-  color: #C2BDB5 !important;
-}
-[data-theme="dark"] .sidebar .logo,
-[data-theme="dark"] .sidebar .sidebar-footer { border-color: #2E2924 !important; }
-[data-theme="dark"] .sidebar .logo .logo-icon,
-[data-theme="dark"] .sidebar .logo .logo-text { color: #F0EDE8 !important; }
-[data-theme="dark"] .sidebar .nav-menu .nav-item { color: #9E9589 !important; }
-[data-theme="dark"] .sidebar .nav-menu .nav-item:hover {
-  background: #242019 !important;
-  color: #F0EDE8 !important;
-}
-[data-theme="dark"] .sidebar .nav-menu .nav-item.active {
-  background: #2E2924 !important;
-  color: #E8607A !important;
-  border-left-color: #B80E38 !important;
-}
-[data-theme="dark"] .sidebar .sidebar-footer .footer-link { color: #9E9589 !important; }
-[data-theme="dark"] .sidebar .sidebar-footer .footer-link:hover { color: #E8607A !important; }
-
-/* Header */
-[data-theme="dark"] .header {
-  background: #141210 !important;
-  border-bottom-color: #2E2924 !important;
-  box-shadow: 0 1px 0 rgba(46, 41, 36, 0.6) !important;
-}
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn {
-  background: #1F1C18 !important;
-  border-color: #38332C !important;
-  color: #C2BDB5 !important;
-}
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn:hover {
-  border-color: #B80E38 !important;
-}
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .source-name,
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .home-icon { color: #D9D4CC !important; }
-[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: #6B6157 !important; }
-[data-theme="dark"] .header .header-right .icon-btn svg { color: #D9D4CC !important; }
-[data-theme="dark"] .header .header-right .icon-btn:hover { background: #242019 !important; }
-[data-theme="dark"] .header .header-right .icon-btn:hover svg { color: #E8607A !important; }
-[data-theme="dark"] .header .header-right .icon-btn .badge { background: #B80E38 !important; }
-[data-theme="dark"] .header .header-right .user-menu .avatar {
-  background: #B80E38 !important;
-  color: #ffffff !important;
-}
-
-/* Dropdown surfaces */
-[data-theme="dark"] .header .dropdown-menu,
-[data-theme="dark"] .header .user-dropdown {
-  background: #1A1714 !important;
-  border-color: #38332C !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.45) !important;
-}
-[data-theme="dark"] .header .dropdown-menu .dropdown-header { background: #242019 !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-header,
-[data-theme="dark"] .header .dropdown-menu .dropdown-search,
-[data-theme="dark"] .header .dropdown-menu .dropdown-section:not(:last-child) { border-color: #38332C !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-header .header-tenant-name,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item span { color: #D9D4CC !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-header .home-icon,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item .home-icon,
-[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-label { color: #6B6157 !important; }
-/* User dropdown — name white, email pink so both are clearly legible. */
-[data-theme="dark"] .header .user-dropdown .user-info .user-name { color: #F0EDE8 !important; }
-[data-theme="dark"] .header .user-dropdown .user-info .user-email { color: #E8607A !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-search input {
-  background: #242019 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
-}
-[data-theme="dark"] .header .dropdown-menu .dropdown-search input:focus {
-  border-color: #B80E38 !important;
-  box-shadow: 0 0 0 2px rgba(184, 14, 56, 0.2) !important;
-}
-[data-theme="dark"] .header .dropdown-menu .dropdown-search input::placeholder { color: #6B6157 !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover {
-  background: #2E2924 !important;
-  color: #F0EDE8 !important;
-}
-[data-theme="dark"] .header .dropdown-menu .dropdown-item.active { background: #2E2924 !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-item.active span { color: #E8607A !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-item .source-icon {
-  background: #242019 !important;
-  border-color: #38332C !important;
-}
-[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source span,
-[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source .add-icon { color: #E8607A !important; }
-[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source:hover { background: rgba(184, 14, 56, 0.12) !important; }
-[data-theme="dark"] .header .user-dropdown .dropdown-divider { background: #38332C !important; }
-[data-theme="dark"] .header .user-dropdown .logout-item svg,
-[data-theme="dark"] .header .user-dropdown .logout-item span { color: #E8607A !important; }
-
-/* Cards / panels */
-[data-theme="dark"] .status-card,
-[data-theme="dark"] .chart-card,
-[data-theme="dark"] .card,
-[data-theme="dark"] .panel,
-[data-theme="dark"] .tile,
-[data-theme="dark"] .widget,
-[data-theme="dark"] .summary-card,
-[data-theme="dark"] .info-card {
-  background: #242019 !important;
-  border-color: #38332C !important;
-  color: #D9D4CC !important;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
-}
-[data-theme="dark"] .status-card:hover,
-[data-theme="dark"] .chart-card:hover,
-[data-theme="dark"] .card:hover,
-[data-theme="dark"] .panel:hover,
-[data-theme="dark"] .summary-card:hover,
-[data-theme="dark"] .info-card:hover {
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
-}
-[data-theme="dark"] .status-label,
-[data-theme="dark"] .status-detail,
-[data-theme="dark"] .chart-card .status-label { color: #9E9589 !important; }
-[data-theme="dark"] .progress-ring-bg        { stroke: #38332C !important; }
-[data-theme="dark"] .progress-ring-progress  { stroke: #B80E38 !important; }
-
-/* Tables */
-[data-theme="dark"] table { color: #D9D4CC; }
-[data-theme="dark"] thead,
-[data-theme="dark"] thead th {
-  background: #1F1C18 !important;
-  color: #C2BDB5 !important;
-  border-bottom-color: #38332C !important;
-}
-[data-theme="dark"] tbody tr { border-bottom-color: #2E2924 !important; }
-[data-theme="dark"] td { color: #C2BDB5 !important; }
-[data-theme="dark"] tbody tr:hover { background: #2E2924 !important; }
-[data-theme="dark"] tbody tr:hover td { color: #F0EDE8 !important; }
-
-/* Row hovers */
-[data-theme="dark"] .tenant-row:hover,
-[data-theme="dark"] .resource-list-item:hover,
-[data-theme="dark"] .alert-card:hover,
-[data-theme="dark"] .clickable-row:hover,
-[data-theme="dark"] .admin-consent-card:hover,
-[data-theme="dark"] .folder-tree-item:hover,
-[data-theme="dark"] .content-tab:hover,
-[data-theme="dark"] .sla-modal-check:hover,
-[data-theme="dark"] .item-row:hover,
-[data-theme="dark"] .chat-item-row:hover,
-[data-theme="dark"] .email-item-row:hover {
-  background: #2E2924 !important;
-  color: #F0EDE8 !important;
-}
-
-/* Service nav — warm grey (surface) bar, readable idle label, clearly
- * lifted hover (near-white), brand red active underline. The slide-in
- * ::after underline from ServiceNav.css keeps its accent color. */
-[data-theme="dark"] .service-nav {
-  background: #242019 !important;
-  border-bottom-color: #38332C !important;
-}
-[data-theme="dark"] .service-nav .nav-tab {
-  color: #C2BDB5 !important;
-  border-bottom-color: transparent !important;
-}
-[data-theme="dark"] .service-nav .nav-tab:hover { color: #F0EDE8 !important; }
-[data-theme="dark"] .service-nav .nav-tab::after { background: #B80E38 !important; }
-[data-theme="dark"] .service-nav .nav-tab.active {
-  color: #F0EDE8 !important;
-  border-bottom-color: #B80E38 !important;
-}
-[data-theme="dark"] .service-nav .nav-tab.active::after { background: #B80E38 !important; }
-
-/* Inputs */
-[data-theme="dark"] input[type="text"],
-[data-theme="dark"] input[type="search"],
-[data-theme="dark"] input[type="email"],
-[data-theme="dark"] input[type="password"],
-[data-theme="dark"] input[type="number"],
-[data-theme="dark"] input[type="url"],
-[data-theme="dark"] select,
-[data-theme="dark"] textarea {
-  background: #1F1C18 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
-}
-[data-theme="dark"] input::placeholder,
-[data-theme="dark"] textarea::placeholder { color: #6B6157 !important; }
-[data-theme="dark"] input:focus,
-[data-theme="dark"] select:focus,
-[data-theme="dark"] textarea:focus {
-  border-color: #B80E38 !important;
-  box-shadow: 0 0 0 2px rgba(184, 14, 56, 0.2) !important;
-}
-
-/* Buttons */
-[data-theme="dark"] button { background: #1F1C18; color: #C2BDB5; border-color: #38332C; }
-[data-theme="dark"] button:hover:not(:disabled) { border-color: #B80E38; color: #E8607A; }
-[data-theme="dark"] .btn-primary,
-[data-theme="dark"] .primary-btn,
-[data-theme="dark"] button.primary,
-[data-theme="dark"] button[type="submit"] {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  color: #ffffff !important;
-}
-[data-theme="dark"] .btn-primary:hover:not(:disabled),
-[data-theme="dark"] .primary-btn:hover:not(:disabled),
-[data-theme="dark"] button.primary:hover:not(:disabled),
-[data-theme="dark"] button[type="submit"]:hover:not(:disabled) {
-  background: #8F0A2A !important;
-  border-color: #8F0A2A !important;
-}
-[data-theme="dark"] .btn-secondary,
-[data-theme="dark"] .secondary-btn,
-[data-theme="dark"] button.secondary {
-  background: transparent !important;
-  color: #C2BDB5 !important;
-  border-color: #8A857D !important;
-}
-[data-theme="dark"] .btn-secondary:hover:not(:disabled) {
-  background: #8A857D !important;
-  color: #1A1714 !important;
-}
-
-/* Modals */
-[data-theme="dark"] .modal-overlay { background: rgba(0,0,0,0.7) !important; }
-[data-theme="dark"] .modal-overlay .modal-content {
-  background: #1A1714 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.6) !important;
-}
-[data-theme="dark"] .modal-overlay .modal-content .modal-header,
-[data-theme="dark"] .modal-overlay .modal-content .modal-footer {
-  border-color: #38332C !important;
-  background: #242019 !important;
-}
-[data-theme="dark"] .modal-overlay .modal-content .modal-header .modal-title { color: #F0EDE8 !important; }
-[data-theme="dark"] .modal-overlay .modal-content .modal-close:hover { background: #2E2924 !important; }
-[data-theme="dark"] .modal-overlay .modal-content .modal-close svg { color: #D9D4CC !important; }
-[data-theme="dark"] .modal-overlay .modal-content .modal-close:hover svg { color: #E8607A !important; }
-[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo {
-  background: #2E2924 !important;
-  border-color: #38332C !important;
-}
-[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-name { color: #D9D4CC !important; }
-[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn {
-  color: #C2BDB5 !important;
-  border-color: #8A857D !important;
-}
-[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn:hover:not(:disabled) {
-  background: #8A857D !important;
-  color: #1A1714 !important;
-}
-
-/* Recharts */
-[data-theme="dark"] .recharts-cartesian-axis-tick text,
-[data-theme="dark"] .recharts-text,
-[data-theme="dark"] .recharts-label,
-[data-theme="dark"] .recharts-cartesian-axis-label       { fill: #C2BDB5 !important; }
-[data-theme="dark"] .recharts-cartesian-grid line,
-[data-theme="dark"] .recharts-cartesian-axis-line        { stroke: #38332C !important; }
-[data-theme="dark"] .recharts-legend-item-text           { color: #C2BDB5 !important; }
-[data-theme="dark"] .recharts-default-tooltip {
-  background: #242019 !important;
-  border-color: #B80E38 !important;
-  color: #D9D4CC !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
-}
-[data-theme="dark"] .recharts-tooltip-label,
-[data-theme="dark"] .recharts-tooltip-item,
-[data-theme="dark"] .recharts-tooltip-item-name,
-[data-theme="dark"] .recharts-tooltip-item-value         { color: #D9D4CC !important; }
-
-/* Storage labels */
-[data-theme="dark"] .storage-switch-btn:hover:not(:disabled),
-[data-theme="dark"] button.storage-switch-btn:hover:not(:disabled) {
-  background: #1F1C18 !important;
-  color: #E8607A !important;
-  border-color: #B80E38 !important;
-}
-[data-theme="dark"] .storage-switch-btn:hover:not(:disabled)::before { color: #E8607A !important; }
-
-/* Table audit/activity/risk overrides */
-[data-theme="dark"] tbody tr.clickable-row.clickable-row:hover,
-[data-theme="dark"] .activity-table tbody tr:hover,
-[data-theme="dark"] .audit-table tbody tr:hover,
-[data-theme="dark"] .risk-table tbody tr:hover   { background: #2E2924 !important; }
-[data-theme="dark"] tbody tr.clickable-row.clickable-row:hover td,
-[data-theme="dark"] .activity-table tbody tr:hover td,
-[data-theme="dark"] .audit-table tbody tr:hover td,
-[data-theme="dark"] .risk-table tbody tr:hover td { color: #F0EDE8 !important; }
-
-[data-theme="dark"] .audit-table thead,
-[data-theme="dark"] .activity-table thead,
-[data-theme="dark"] .risk-table thead { background: #1F1C18 !important; border-bottom-color: #2E2924 !important; }
-[data-theme="dark"] .audit-table thead th,
-[data-theme="dark"] .activity-table thead th,
-[data-theme="dark"] .risk-table thead th { color: #C2BDB5 !important; }
-
-/* Links */
-[data-theme="dark"] a { color: #E8607A; }
+[data-theme="dark"] a       { color: var(--tm-accent-soft); }
 [data-theme="dark"] a:hover { color: #ED8FA0; }
 
-/* Font smoothing on dark */
 [data-theme="dark"] body,
 [data-theme="dark"] .sidebar,
 [data-theme="dark"] .header,
@@ -354,694 +88,2398 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* -------------------------------------------------------------------------
-   Theme toggle button — visual-only tweak so the sun/moon icon sits right
-   inside the existing .icon-btn shell in both light and dark.
-   ------------------------------------------------------------------------- */
-.theme-toggle-btn .theme-icon { transition: color 0.2s ease, transform 0.3s ease; }
-[data-theme="dark"] .theme-toggle-btn:hover .theme-icon { color: #E8607A !important; }
+/* ─────────────────────────────────────────────────────────────────────
+   2. Sidebar
+   Hover: bg stays, border-left flips to pink, text → white.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .sidebar {
+  background: var(--tm-chrome) !important;
+  border-right-color: var(--tm-hover) !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .sidebar .logo,
+[data-theme="dark"] .sidebar .sidebar-footer { border-color: var(--tm-hover) !important; }
+[data-theme="dark"] .sidebar .logo .logo-icon,
+[data-theme="dark"] .sidebar .logo .logo-text { color: var(--tm-text) !important; }
+[data-theme="dark"] .sidebar .nav-menu .nav-item { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .sidebar .nav-menu .nav-item:hover {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .sidebar .nav-menu .nav-item.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+  border-left-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .sidebar .sidebar-footer .footer-link { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .sidebar .sidebar-footer .footer-link:hover { color: var(--tm-accent-soft) !important; }
 
-/* =========================================================================
-   Page-level surfaces — make Activity, Configuration, Overview, Protection,
-   Recovery, Tenants, Settings, and ServiceNav follow the same warm-charcoal
-   palette as the Storage page (#1A1714 page bg, #242019 card/surface).
-   ========================================================================= */
+/* ─────────────────────────────────────────────────────────────────────
+   3. Header + dropdowns
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .header {
+  background: var(--tm-chrome) !important;
+  border-bottom-color: var(--tm-hover) !important;
+  box-shadow: 0 1px 0 rgba(46, 41, 36, 0.6) !important;
+}
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn:hover {
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .source-name,
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .home-icon { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .header-left .data-source-selector .selector-btn .dropdown-arrow { color: var(--tm-body) !important; }
 
-/* Main workspace canvas */
-[data-theme="dark"] .main-content,
-[data-theme="dark"] .activity-page,
-[data-theme="dark"] .configuration-page,
-[data-theme="dark"] .overview-page,
-[data-theme="dark"] .protection-page,
-[data-theme="dark"] .recovery-page,
-[data-theme="dark"] .tenants-page,
-[data-theme="dark"] .settings-page,
-[data-theme="dark"] .storage-page {
-  background: #1A1714 !important;
-  color: #F0EDE8 !important;
+[data-theme="dark"] .header .header-right .icon-btn svg { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .header-right .icon-btn:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .header .header-right .icon-btn:hover svg { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .header-right .icon-btn .badge { background: var(--tm-accent) !important; }
+[data-theme="dark"] .header .header-right .user-menu .avatar {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
 }
 
-/* Service tabs bar — sibling containers share the same warm grey surface
- * as .service-nav above. */
+/* Dropdown surfaces */
+[data-theme="dark"] .header .dropdown-menu,
+[data-theme="dark"] .header .user-dropdown {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-header { background: var(--tm-hover) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-header,
+[data-theme="dark"] .header .dropdown-menu .dropdown-search,
+[data-theme="dark"] .header .dropdown-menu .dropdown-section:not(:last-child) { border-color: var(--tm-border) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-header .header-tenant-name,
+[data-theme="dark"] .header .dropdown-menu .dropdown-item span { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-header .home-icon,
+[data-theme="dark"] .header .dropdown-menu .dropdown-item .home-icon,
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-label { color: var(--tm-body) !important; }
+
+/* User dropdown — name white, email pink */
+[data-theme="dark"] .header .user-dropdown .user-info .user-name  { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .user-dropdown .user-info .user-email { color: var(--tm-accent-soft) !important; }
+
+[data-theme="dark"] .header .dropdown-menu .dropdown-search input {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-search input:focus {
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 0 0 2px rgba(184, 14, 56, 0.2) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-search input::placeholder { color: var(--tm-muted) !important; }
+
+/* Dropdown items — bg stays, outline pink on hover, text stays white */
+[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover span,
+[data-theme="dark"] .header .dropdown-menu .dropdown-item:hover .home-icon { color: var(--tm-text) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.active { background: var(--tm-hover) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.active span { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item .source-icon {
+  background: var(--tm-surface) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source,
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source span,
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source .add-icon { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .header .dropdown-menu .dropdown-item.add-source:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .header .user-dropdown .dropdown-divider { background: var(--tm-border) !important; }
+[data-theme="dark"] .header .user-dropdown .logout-item svg,
+[data-theme="dark"] .header .user-dropdown .logout-item span { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .header .user-dropdown .logout-item:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .header .user-dropdown .logout-item:hover svg,
+[data-theme="dark"] .header .user-dropdown .logout-item:hover span { color: var(--tm-accent-soft) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   4. Cards & panels — white surfaces → grey, text → white.
+   Hover = subtle pink border only (no bg change).
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .status-card,
+[data-theme="dark"] .chart-card,
+[data-theme="dark"] .card,
+[data-theme="dark"] .panel,
+[data-theme="dark"] .tile,
+[data-theme="dark"] .widget,
+[data-theme="dark"] .summary-card,
+[data-theme="dark"] .info-card,
+[data-theme="dark"] .config-section,
+[data-theme="dark"] .activity-table-container,
+[data-theme="dark"] .audit-table-container,
+[data-theme="dark"] .resources-table-container,
+[data-theme="dark"] .activity-section,
+[data-theme="dark"] .storage-state-card,
+[data-theme="dark"] .storage-table-wrap,
+[data-theme="dark"] .storage-history-empty {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .status-card:hover,
+[data-theme="dark"] .chart-card:hover,
+[data-theme="dark"] .card:hover,
+[data-theme="dark"] .panel:hover,
+[data-theme="dark"] .summary-card:hover,
+[data-theme="dark"] .info-card:hover,
+[data-theme="dark"] .storage-state-card:hover {
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .status-label,
+[data-theme="dark"] .status-detail,
+[data-theme="dark"] .chart-card .status-label { color: var(--tm-body) !important; }
+[data-theme="dark"] .progress-ring-bg       { stroke: var(--tm-border) !important; }
+[data-theme="dark"] .progress-ring-progress { stroke: var(--tm-accent) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   5. Tables — bg stays grey on row hover; pink outline replaces pink flood.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] table { color: var(--tm-text); }
+[data-theme="dark"] thead,
+[data-theme="dark"] thead th,
+[data-theme="dark"] .audit-table thead,
+[data-theme="dark"] .activity-table thead,
+[data-theme="dark"] .risk-table thead,
+[data-theme="dark"] .storage-table thead,
+[data-theme="dark"] .resources-table thead {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-body-2) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .audit-table thead th,
+[data-theme="dark"] .activity-table thead th,
+[data-theme="dark"] .risk-table thead th,
+[data-theme="dark"] .resources-table th { color: var(--tm-body-2) !important; }
+[data-theme="dark"] tbody tr                  { border-bottom-color: var(--tm-hover) !important; }
+[data-theme="dark"] td,
+[data-theme="dark"] .resources-table td,
+[data-theme="dark"] .activity-table td        { color: var(--tm-text) !important; border-bottom-color: var(--tm-hover) !important; }
+[data-theme="dark"] tbody tr:hover,
+[data-theme="dark"] .activity-table tbody tr:hover,
+[data-theme="dark"] .audit-table tbody tr:hover,
+[data-theme="dark"] .risk-table tbody tr:hover,
+[data-theme="dark"] .storage-table tbody tr:hover,
+[data-theme="dark"] .resources-table tbody tr:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] tbody tr:hover td,
+[data-theme="dark"] .activity-table tbody tr:hover td,
+[data-theme="dark"] .audit-table tbody tr:hover td,
+[data-theme="dark"] .risk-table tbody tr:hover td,
+[data-theme="dark"] .storage-table tbody tr:hover td,
+[data-theme="dark"] .resources-table tbody tr:hover td { color: var(--tm-text) !important; }
+
+/* Generic clickable rows — outline pink only. */
+[data-theme="dark"] .tenant-row:hover,
+[data-theme="dark"] .resource-list-item:hover,
+[data-theme="dark"] .alert-card:hover,
+[data-theme="dark"] .clickable-row:hover,
+[data-theme="dark"] .folder-tree-item:hover,
+[data-theme="dark"] .content-tab:hover,
+[data-theme="dark"] .sla-modal-check:hover,
+[data-theme="dark"] .item-row:hover,
+[data-theme="dark"] .chat-item-row:hover,
+[data-theme="dark"] .email-item-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+  color: var(--tm-text) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   6. Service nav (Overview / Protection / Recovery / Settings tabs)
+   Keeps the underline affordance. Active = pink underline + white text.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .service-nav,
 [data-theme="dark"] .service-tabs,
 [data-theme="dark"] .service-nav-tabs {
-  background: #242019 !important;
-  border-bottom-color: #38332C !important;
+  background: var(--tm-surface) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .service-nav .nav-tab {
+  color: var(--tm-body-2) !important;
+  border-bottom-color: transparent !important;
+}
+[data-theme="dark"] .service-nav .nav-tab:hover { color: var(--tm-text) !important; }
+[data-theme="dark"] .service-nav .nav-tab::after,
+[data-theme="dark"] .service-nav .nav-tab.active::after { background: var(--tm-accent) !important; }
+[data-theme="dark"] .service-nav .nav-tab.active {
+  color: var(--tm-text) !important;
+  border-bottom-color: var(--tm-accent) !important;
 }
 
-/* Shared page headings that were hard-coded dark */
-[data-theme="dark"] .page-title,
-[data-theme="dark"] .section-title,
-[data-theme="dark"] .activity-header,
-[data-theme="dark"] .configuration-page .section-title,
-[data-theme="dark"] .settings-page h1,
-[data-theme="dark"] .settings-page h2 { color: #F0EDE8 !important; }
+/* ─────────────────────────────────────────────────────────────────────
+   7. Protection + Settings sub-navbar pills — SAME EFFECT AS BEFORE.
+   Idle pill = grey, hover pill = border pink (bg stays), active pill =
+   solid pink (bg fill kept per user's "keep navbars effect" rule).
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .resource-tabs,
+[data-theme="dark"] .settings-tabs {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  gap: 8px !important;
+  padding: 10px 12px !important;
+}
+[data-theme="dark"] .resource-tab,
+[data-theme="dark"] .settings-tab {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  border-radius: 999px !important;
+  padding: 8px 16px !important;
+  color: var(--tm-text) !important;
+  transition: all 0.15s ease !important;
+}
+[data-theme="dark"] .resource-tab:hover,
+[data-theme="dark"] .settings-tab:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .resource-tab.active,
+[data-theme="dark"] .resource-tab.pill.active,
+[data-theme="dark"] .settings-tab.active {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .tab-divider { background: var(--tm-border) !important; }
 
-/* Configuration page cards */
-[data-theme="dark"] .config-section {
-  background: #242019 !important;
-  border: 1px solid #38332C !important;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
+[data-theme="dark"] .auto-protection-group { border-color: var(--tm-border) !important; }
+[data-theme="dark"] .auto-protection-label {
+  background: var(--tm-surface) !important;
+  color: var(--tm-body) !important;
 }
-[data-theme="dark"] .configuration-page .section-title {
-  border-bottom-color: #38332C !important;
+[data-theme="dark"] .auto-protection-tabs .resource-tab {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  border-radius: 999px !important;
+  color: var(--tm-text) !important;
 }
-[data-theme="dark"] .config-label { color: #D9D4CC !important; }
-[data-theme="dark"] .config-help  { color: #9E9589 !important; }
-[data-theme="dark"] .config-input,
-[data-theme="dark"] .config-select {
-  background: #1F1C18 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
+[data-theme="dark"] .auto-protection-tabs .resource-tab:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
 }
-[data-theme="dark"] .config-input::placeholder { color: #6B6157 !important; }
+[data-theme="dark"] .auto-protection-tabs .resource-tab.active {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
 
-/* Activity page surfaces */
-[data-theme="dark"] .activity-table-container,
-[data-theme="dark"] .audit-table-container {
-  background: #242019 !important;
-  border-color: #38332C !important;
+/* ─────────────────────────────────────────────────────────────────────
+   8. Protection toolbar — action bar, search, filters, SLA
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .action-bar {
+  background: var(--tm-surface) !important;
+  border-bottom-color: var(--tm-border) !important;
 }
-[data-theme="dark"] .date-input-group label,
-[data-theme="dark"] .pagination-info,
-[data-theme="dark"] .page-number { color: #9E9589 !important; }
-[data-theme="dark"] .date-input-group input,
-[data-theme="dark"] .inline-filters select {
-  background: #1F1C18 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
+[data-theme="dark"] .search-wrapper .search-input {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
 }
+[data-theme="dark"] .search-wrapper .search-input::placeholder { color: var(--tm-body) !important; }
+[data-theme="dark"] .search-wrapper .search-input:focus { border-color: var(--tm-accent) !important; }
+[data-theme="dark"] .search-wrapper .search-icon { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .action-btn {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .action-btn:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .filter-btn.has-filters {
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .filter-dropdown {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .filter-section-header,
+[data-theme="dark"] .filter-section-item { color: var(--tm-text) !important; }
+[data-theme="dark"] .filter-section-item:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+  color: var(--tm-text) !important;
+}
+
+[data-theme="dark"] .sla-header {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .sla-header:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .sla-header.not-protected { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .sla-menu {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .sla-item { color: var(--tm-text) !important; }
+[data-theme="dark"] .sla-item:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+  color: var(--tm-text) !important;
+}
+
+[data-theme="dark"] .pagination-btn:hover:not(:disabled) {
+  background: transparent !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .pagination-page { color: var(--tm-text) !important; }
+
+[data-theme="dark"] .resource-display-name { color: var(--tm-text) !important; }
+[data-theme="dark"] .resource-email        { color: var(--tm-body) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   9. Buttons — primary CTAs keep solid pink fill.
+   Default buttons: grey idle, border flips pink on hover.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] button {
+  background: var(--tm-surface-2);
+  color: var(--tm-text);
+  border: 1px solid var(--tm-border);
+}
+[data-theme="dark"] button:hover:not(:disabled) {
+  background: var(--tm-surface-2);
+  border-color: var(--tm-accent);
+  color: var(--tm-text);
+}
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .primary-btn,
+[data-theme="dark"] button.primary,
+[data-theme="dark"] button[type="submit"] {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .btn-primary:hover:not(:disabled),
+[data-theme="dark"] .primary-btn:hover:not(:disabled),
+[data-theme="dark"] button.primary:hover:not(:disabled),
+[data-theme="dark"] button[type="submit"]:hover:not(:disabled) {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .btn-secondary,
+[data-theme="dark"] .secondary-btn,
+[data-theme="dark"] button.secondary {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .btn-secondary:hover:not(:disabled),
+[data-theme="dark"] .secondary-btn:hover:not(:disabled),
+[data-theme="dark"] button.secondary:hover:not(:disabled) {
+  background: transparent !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+
+/* Activity / page toolbar buttons */
 [data-theme="dark"] .reset-btn,
 [data-theme="dark"] .download-btn,
 [data-theme="dark"] .toggle-btn,
 [data-theme="dark"] .pagination-buttons button {
-  background: #1F1C18 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
 }
 [data-theme="dark"] .reset-btn:hover,
 [data-theme="dark"] .download-btn:hover:not(:disabled),
 [data-theme="dark"] .toggle-btn:hover,
 [data-theme="dark"] .pagination-buttons button:hover:not(:disabled) {
-  background: #242019 !important;
-  color: #F0EDE8 !important;
-  border-color: #B80E38 !important;
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border-color: var(--tm-accent) !important;
 }
 [data-theme="dark"] .toggle-btn.active {
-  background: #2E2924 !important;
-  color: #E8607A !important;
-}
-[data-theme="dark"] .activity-table thead,
-[data-theme="dark"] .audit-table thead {
-  background: #1F1C18 !important;
-  border-bottom-color: #38332C !important;
-}
-[data-theme="dark"] .activity-table th,
-[data-theme="dark"] .audit-table th { color: #C2BDB5 !important; }
-
-/* =========================================================================
-   Storage page — match card palette to the rest of dark mode AND ensure
-   all storage text (titles, values, labels, meta, table cells) is light
-   so it reads against the dark surfaces.
-   ========================================================================= */
-[data-theme="dark"] .storage-page          { color: #F0EDE8 !important; }
-[data-theme="dark"] .storage-title,
-[data-theme="dark"] .storage-state-name,
-[data-theme="dark"] .storage-history-title,
-[data-theme="dark"] .storage-modal-title   { color: #F0EDE8 !important; }
-[data-theme="dark"] .storage-eyebrow,
-[data-theme="dark"] .storage-state-label   { color: #E8607A !important; }
-[data-theme="dark"] .storage-desc,
-[data-theme="dark"] .storage-state-kind,
-[data-theme="dark"] .storage-state-meta,
-[data-theme="dark"] .storage-history-count,
-[data-theme="dark"] .storage-history-empty { color: #C2BDB5 !important; }
-[data-theme="dark"] .storage-state-meta strong { color: #F0EDE8 !important; }
-[data-theme="dark"] .storage-state-cooldown,
-[data-theme="dark"] .storage-no-alt,
-[data-theme="dark"] .storage-hash,
-[data-theme="dark"] .storage-modal-field-hint { color: #9E9589 !important; }
-
-[data-theme="dark"] .storage-state-card,
-[data-theme="dark"] .storage-table-wrap,
-[data-theme="dark"] .storage-history-empty {
-  background: #242019 !important;
-  border-color: #38332C !important;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3) !important;
-}
-[data-theme="dark"] .storage-state-card:hover {
-  box-shadow: 0 8px 28px rgba(0,0,0,0.5) !important;
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--tm-accent) !important;
 }
 
-[data-theme="dark"] .storage-table thead  { background: #1F1C18 !important; }
-[data-theme="dark"] .storage-table th,
-[data-theme="dark"] .storage-table td     { color: #F0EDE8 !important; border-bottom-color: #38332C !important; }
-[data-theme="dark"] .storage-table tbody tr:hover { background: #2E2924 !important; }
-[data-theme="dark"] .storage-arrow        { color: #E8607A !important; }
+/* ─────────────────────────────────────────────────────────────────────
+   10. Inputs, selects, checkboxes, config forms
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="search"],
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="url"],
+[data-theme="dark"] input[type="date"],
+[data-theme="dark"] select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .config-input,
+[data-theme="dark"] .config-select,
+[data-theme="dark"] .date-input-group input,
+[data-theme="dark"] .inline-filters select {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder,
+[data-theme="dark"] .config-input::placeholder { color: var(--tm-muted) !important; }
+[data-theme="dark"] input:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus {
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 0 0 2px rgba(184, 14, 56, 0.2) !important;
+}
+[data-theme="dark"] .config-label { color: var(--tm-text) !important; }
+[data-theme="dark"] .config-help,
+[data-theme="dark"] .date-input-group label,
+[data-theme="dark"] .pagination-info,
+[data-theme="dark"] .page-number { color: var(--tm-body) !important; }
 
-[data-theme="dark"] .storage-modal-overlay { background: rgba(0,0,0,0.65) !important; }
-[data-theme="dark"] .storage-modal {
-  background: #1A1714 !important;
-  border-color: #38332C !important;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.6) !important;
+/* Checkboxes + radios — pink accent */
+[data-theme="dark"] input[type="checkbox"],
+[data-theme="dark"] input[type="radio"] { accent-color: var(--tm-accent); }
+
+/* ─────────────────────────────────────────────────────────────────────
+   11. Shared modal (RestoreModal, DownloadModal, DataSources, etc.)
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .modal-overlay { background: rgba(0, 0, 0, 0.7) !important; }
+[data-theme="dark"] .modal-overlay .modal-content {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
 }
-[data-theme="dark"] .storage-modal-warn {
-  background: #242019 !important;
-  border-left-color: #B80E38 !important;
-  color: #F0EDE8 !important;
+[data-theme="dark"] .modal-overlay .modal-content * { color: var(--tm-text); }
+[data-theme="dark"] .modal-overlay .modal-content .modal-header,
+[data-theme="dark"] .modal-overlay .modal-content .modal-footer {
+  border-color: var(--tm-border) !important;
+  background: var(--tm-surface) !important;
 }
-[data-theme="dark"] .storage-modal-field          { color: #D9D4CC !important; }
-[data-theme="dark"] .storage-modal-field code {
-  background: #242019 !important;
-  color: #E8607A !important;
+[data-theme="dark"] .modal-overlay .modal-content .modal-header .modal-title { color: var(--tm-text) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-close svg { color: var(--tm-text) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-close:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
 }
-[data-theme="dark"] .storage-modal-input,
-[data-theme="dark"] .storage-modal-textarea {
-  background: #1F1C18 !important;
-  color: #F0EDE8 !important;
-  border-color: #38332C !important;
+[data-theme="dark"] .modal-overlay .modal-content .modal-close:hover svg { color: var(--tm-text) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-logo {
+  background: var(--tm-hover) !important;
+  border-color: var(--tm-border) !important;
 }
-[data-theme="dark"] .storage-modal-actions        { border-top-color: #38332C !important; }
-[data-theme="dark"] .storage-modal-btn.ghost {
-  color: #F0EDE8 !important;
-  border-color: #F0EDE8 !important;
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-name { color: var(--tm-text) !important; }
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn {
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-accent) !important;
   background: transparent !important;
 }
-[data-theme="dark"] .storage-modal-btn.ghost:hover:not(:disabled) {
-  background: #F0EDE8 !important;
-  color: #1A1714 !important;
-}
-[data-theme="dark"] .storage-modal-btn.primary {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  color: #ffffff !important;
-}
-[data-theme="dark"] .storage-modal-btn.primary:hover:not(:disabled) {
-  background: #8F0A2A !important;
-  border-color: #8F0A2A !important;
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn:hover:not(:disabled) {
+  background: transparent !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
 }
 
-/* Keep the switch-btn (primary CTA) solid accent in dark */
-[data-theme="dark"] .storage-switch-btn {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  color: #ffffff !important;
+/* ─────────────────────────────────────────────────────────────────────
+   11b. AddSecretModal (.add-sec-*) — custom-prefixed, not caught by
+   .modal-content. Matches "+ Secret" dialog in Settings > Secrets.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .add-sec-overlay { background: rgba(0, 0, 0, 0.7) !important; }
+[data-theme="dark"] .add-sec-modal {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6) !important;
 }
-[data-theme="dark"] .storage-switch-btn:hover:not(:disabled) {
-  background: #8F0A2A !important;
-  border-color: #8F0A2A !important;
-  color: #ffffff !important;
+[data-theme="dark"] .add-sec-modal * { color: var(--tm-text); }
+[data-theme="dark"] .add-sec-x { color: var(--tm-body) !important; }
+[data-theme="dark"] .add-sec-x:hover { color: var(--tm-text) !important; }
+[data-theme="dark"] .add-sec-body { color: var(--tm-text) !important; }
+[data-theme="dark"] .add-sec-row label { color: var(--tm-text) !important; }
+[data-theme="dark"] .add-sec-row input[type="text"],
+[data-theme="dark"] .add-sec-row input[type="password"],
+[data-theme="dark"] .add-sec-row select {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
 }
-
-/* =========================================================================
-   Protection page — white panels (resource tabs, action bar, resources
-   table, SLA menu, filter dropdown, auto-protection group) become warm
-   grey surfaces with light text. Backgrounds that are already dark
-   palette values are left alone; only text is recolored where needed.
-   ========================================================================= */
-[data-theme="dark"] .resource-tabs {
-  background: #242019 !important;
-  border-bottom-color: #38332C !important;
-  gap: 6px !important;
-  padding: 10px 12px !important;
-}
-/* Uniform pill treatment — every resource tab renders as a rounded
- * bubble in dark mode (matches the SharePoint sites pill look). */
-[data-theme="dark"] .resource-tab {
-  background: #1F1C18 !important;
-  border: 1px solid #38332C !important;
-  border-radius: 999px !important;
-  padding: 7px 14px !important;
-  color: #D9D4CC !important;
-  transition: all 0.15s ease !important;
-}
-[data-theme="dark"] .resource-tab:hover {
-  background: #2E2924 !important;
-  border-color: #B80E38 !important;
-  color: #F0EDE8 !important;
-}
-[data-theme="dark"] .resource-tab.active,
-[data-theme="dark"] .resource-tab.pill.active {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  color: #ffffff !important;
-}
-[data-theme="dark"] .tab-divider { background: #38332C !important; }
-
-[data-theme="dark"] .auto-protection-group {
-  border-color: #38332C !important;
-}
-[data-theme="dark"] .auto-protection-label {
-  background: #242019 !important;
-  color: #9E9589 !important;
-}
-[data-theme="dark"] .auto-protection-tabs .resource-tab {
-  background: #1F1C18 !important;
-  border: 1px solid #38332C !important;
-  border-radius: 999px !important;
-  color: #D9D4CC !important;
-}
-[data-theme="dark"] .auto-protection-tabs .resource-tab.active {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  color: #ffffff !important;
-}
-
-[data-theme="dark"] .action-bar {
-  background: #242019 !important;
-  border-bottom-color: #38332C !important;
-}
-[data-theme="dark"] .search-wrapper .search-input {
-  background: #1F1C18 !important;
-  border-color: #38332C !important;
-  color: #F0EDE8 !important;
-}
-[data-theme="dark"] .search-wrapper .search-input::placeholder { color: #9E9589 !important; }
-[data-theme="dark"] .search-wrapper .search-input:focus { border-color: #B80E38 !important; }
-[data-theme="dark"] .search-wrapper .search-icon { color: #9E9589 !important; }
-
-[data-theme="dark"] .action-btn {
-  background: #1F1C18 !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
-}
-[data-theme="dark"] .action-btn:hover {
-  background: #2E2924 !important;
-  color: #F0EDE8 !important;
-  border-color: #B80E38 !important;
-}
-[data-theme="dark"] .filter-btn.has-filters {
-  border-color: #B80E38 !important;
-  color: #E8607A !important;
-}
-[data-theme="dark"] .filter-dropdown {
-  background: #242019 !important;
-  border-color: #38332C !important;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
-}
-[data-theme="dark"] .filter-section-header,
-[data-theme="dark"] .filter-section-item { color: #D9D4CC !important; }
-[data-theme="dark"] .filter-section-item:hover { background: #2E2924 !important; color: #F0EDE8 !important; }
-
-[data-theme="dark"] .resources-table-container {
-  background: #242019 !important;
-  border: 1px solid #38332C !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
-}
-[data-theme="dark"] .resources-table thead {
-  background: #1F1C18 !important;
-  border-bottom-color: #38332C !important;
-}
-[data-theme="dark"] .resources-table th { color: #C2BDB5 !important; }
-[data-theme="dark"] .resources-table td {
-  color: #F0EDE8 !important;
-  border-bottom-color: #2E2924 !important;
-}
-[data-theme="dark"] .resources-table tbody tr:hover { background: #2E2924 !important; }
-[data-theme="dark"] .resources-table tbody tr:hover td { color: #F0EDE8 !important; }
-[data-theme="dark"] .resource-display-name { color: #F0EDE8 !important; }
-[data-theme="dark"] .resource-email { color: #9E9589 !important; }
-
-[data-theme="dark"] .sla-header {
-  background: #1F1C18 !important;
-  border-color: #38332C !important;
-  color: #D9D4CC !important;
-}
-[data-theme="dark"] .sla-header:hover {
-  background: #2E2924 !important;
-  color: #F0EDE8 !important;
-  border-color: #B80E38 !important;
-}
-[data-theme="dark"] .sla-header.not-protected { color: #E8607A !important; }
-[data-theme="dark"] .sla-menu {
-  background: #242019 !important;
-  border-color: #38332C !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
-}
-[data-theme="dark"] .sla-item { color: #D9D4CC !important; }
-[data-theme="dark"] .sla-item:hover { background: #2E2924 !important; color: #F0EDE8 !important; }
-
-[data-theme="dark"] .pagination-btn:hover:not(:disabled) { background: #2E2924 !important; }
-[data-theme="dark"] .pagination-page { color: #D9D4CC !important; }
-
-/* =========================================================================
-   Overview page — status cards, backup size summary, recent activity
-   section. Swap white → #242019 warm grey, recolor slate text → light.
-   ========================================================================= */
-[data-theme="dark"] .status-card {
-  background: #242019 !important;
-  border: 1px solid #38332C !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
-}
-[data-theme="dark"] .status-card:hover {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
-}
-[data-theme="dark"] .status-label { color: #9E9589 !important; }
-[data-theme="dark"] .status-summary-row { color: #C2BDB5 !important; }
-[data-theme="dark"] .status-summary-row strong { color: #F0EDE8 !important; }
-
-[data-theme="dark"] .backup-size-pill.positive {
+[data-theme="dark"] .add-sec-row input:focus { border-bottom-color: var(--tm-accent) !important; }
+[data-theme="dark"] .add-sec-row input.add-sec-required { border-bottom-color: var(--tm-accent) !important; }
+[data-theme="dark"] .add-sec-eye { color: var(--tm-body) !important; }
+[data-theme="dark"] .add-sec-eye:hover { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .add-sec-toggle-slider { background: var(--tm-border) !important; }
+[data-theme="dark"] .add-sec-toggle-slider::before { background: var(--tm-text) !important; }
+[data-theme="dark"] .add-sec-toggle input:checked + .add-sec-toggle-slider { background: var(--tm-accent) !important; }
+[data-theme="dark"] .add-sec-error {
   background: rgba(184, 14, 56, 0.12) !important;
-  color: #E8607A !important;
+  border: 1px solid var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
 }
-[data-theme="dark"] .backup-size-pill.neutral {
-  background: #2E2924 !important;
-  color: #C2BDB5 !important;
+[data-theme="dark"] .add-sec-save {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
 }
-
-/* Recent Activity "navbar" — the panel header on Overview that was white.
- * Now: grey surface, white title, muted meta. Hovered rows lift to #2E2924. */
-[data-theme="dark"] .activity-section {
-  background: #242019 !important;
-  border: 1px solid #38332C !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
-}
-[data-theme="dark"] .activity-title { color: #F0EDE8 !important; }
-[data-theme="dark"] .activity-table thead {
-  background: #1F1C18 !important;
-  border-bottom-color: #38332C !important;
-}
-[data-theme="dark"] .activity-table th { color: #C2BDB5 !important; }
-[data-theme="dark"] .activity-table td {
-  color: #F0EDE8 !important;
-  border-bottom-color: #2E2924 !important;
-}
-[data-theme="dark"] .activity-table tbody tr:hover { background: #2E2924 !important; }
-[data-theme="dark"] .activity-table tbody tr:hover td { color: #F0EDE8 !important; }
-[data-theme="dark"] .activity-tenant { color: #F0EDE8 !important; }
-[data-theme="dark"] .activity-status.done {
-  background: rgba(184, 14, 56, 0.15) !important;
-  color: #E8607A !important;
-}
-[data-theme="dark"] .activity-status.in-progress,
-[data-theme="dark"] .activity-status.warning {
-  background: #2E2924 !important;
-  color: #D9D4CC !important;
-}
-[data-theme="dark"] .activity-status.failed {
-  background: rgba(184, 14, 56, 0.22) !important;
-  color: #F0EDE8 !important;
+[data-theme="dark"] .add-sec-save:hover:not(:disabled) {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
 }
 
-/* =========================================================================
-   Overview charts — recharts bars/grid/axes get repainted in semantic
-   colors that read on the dark card surface:
-     success  → #7DC28A (light warm green)
-     warning  → #E5B458 (warm gold)
-     failure  → #E8607A (brand light pink)
-   Backup-size bars share success green's slot (CHART_COLORS.backup ==
-   #17838a in Overview.tsx); override them separately to brand red.
-   ========================================================================= */
+/* ─────────────────────────────────────────────────────────────────────
+   11c. AzureDbRecoverModal (.azdb-rec-*)
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .azdb-rec-overlay { background: rgba(0, 0, 0, 0.7) !important; }
+[data-theme="dark"] .azdb-rec-modal {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .azdb-rec-modal * { color: var(--tm-text); }
+[data-theme="dark"] .azdb-rec-header { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .azdb-rec-header h3 { color: var(--tm-text) !important; }
+[data-theme="dark"] .azdb-rec-x { color: var(--tm-body) !important; }
+[data-theme="dark"] .azdb-rec-x:hover { color: var(--tm-text) !important; }
+[data-theme="dark"] .azdb-rec-section { color: var(--tm-text) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   11d. SlaWizard (.wiz-*) — was already dark slate with blue accents.
+   Retint blues → pink so it fits the TM palette.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .wiz-modal {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .wiz-modal *,
+[data-theme="dark"] .wiz-modal h1,
+[data-theme="dark"] .wiz-modal h2,
+[data-theme="dark"] .wiz-modal h3 { color: var(--tm-text); }
+[data-theme="dark"] .wiz-header { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .wiz-close { color: var(--tm-body) !important; }
+[data-theme="dark"] .wiz-close:hover { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .wiz-stepper { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .wiz-step-pill {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-body-2) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .wiz-step-pill.active {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .wiz-step-pill.done {
+  color: var(--tm-success) !important;
+  border-color: var(--tm-success) !important;
+}
+[data-theme="dark"] .wiz-step-num { background: rgba(255, 255, 255, 0.1) !important; }
+[data-theme="dark"] .wiz-hint { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .wiz-hint.warn { color: var(--tm-warning) !important; }
+[data-theme="dark"] .wiz-row > span { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .wiz-row.inline > span { color: var(--tm-text) !important; }
+[data-theme="dark"] .wiz-row input[type="text"],
+[data-theme="dark"] .wiz-row input[type="number"],
+[data-theme="dark"] .wiz-row input[type="time"],
+[data-theme="dark"] .wiz-row select {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .wiz-row input[type="checkbox"] { accent-color: var(--tm-accent) !important; }
+[data-theme="dark"] .wiz-tier-card {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .wiz-tier-card:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .wiz-tier-name { color: var(--tm-text) !important; }
+[data-theme="dark"] .wiz-tier-meta { color: var(--tm-body-2) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   12. Recharts + chart tooltips — Overview palette (unchanged).
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .recharts-cartesian-axis-tick text,
+[data-theme="dark"] .recharts-text,
+[data-theme="dark"] .recharts-label,
+[data-theme="dark"] .recharts-cartesian-axis-label     { fill: var(--tm-body-2) !important; }
+[data-theme="dark"] .recharts-cartesian-grid line,
+[data-theme="dark"] .recharts-cartesian-axis-line      { stroke: var(--tm-border) !important; }
+[data-theme="dark"] .recharts-legend-item-text         { color: var(--tm-body-2) !important; }
+
 [data-theme="dark"] .recharts-surface path[fill="#17838a"],
-[data-theme="dark"] .recharts-surface rect[fill="#17838a"] { fill: #7DC28A !important; }
+[data-theme="dark"] .recharts-surface rect[fill="#17838a"] { fill: var(--tm-success) !important; }
 [data-theme="dark"] .recharts-surface path[fill="#f59e0b"],
-[data-theme="dark"] .recharts-surface rect[fill="#f59e0b"] { fill: #E5B458 !important; }
+[data-theme="dark"] .recharts-surface rect[fill="#f59e0b"] { fill: var(--tm-warning) !important; }
 [data-theme="dark"] .recharts-surface path[fill="#ef7d73"],
-[data-theme="dark"] .recharts-surface rect[fill="#ef7d73"] { fill: #E8607A !important; }
-/* Backup-size card uses CHART_COLORS.backup (#17838a) — keep it brand
- * pink inside that specific card so it doesn't pick up success green. */
+[data-theme="dark"] .recharts-surface rect[fill="#ef7d73"] { fill: var(--tm-failure) !important; }
 [data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface path[fill="#17838a"],
 [data-theme="dark"] .chart-card:has(.backup-size-summary) .recharts-surface rect[fill="#17838a"] {
-  fill: #B80E38 !important;
+  fill: var(--tm-accent) !important;
 }
 
-/* Protection ring donut on the Protection Status card */
-[data-theme="dark"] .protection-ring circle[stroke="#e2e8f0"] { stroke: #38332C !important; }
-[data-theme="dark"] .protection-ring circle[stroke="#0d9488"] { stroke: #B80E38 !important; }
+[data-theme="dark"] .protection-ring circle[stroke="#e2e8f0"] { stroke: var(--tm-border) !important; }
+[data-theme="dark"] .protection-ring circle[stroke="#0d9488"] { stroke: var(--tm-accent) !important; }
 
-/* Cartesian grid + axis lines */
-[data-theme="dark"] .recharts-cartesian-grid line { stroke: #38332C !important; }
+[data-theme="dark"] .chart-legend-item.success            { color: var(--tm-success) !important; }
+[data-theme="dark"] .chart-legend-item.success::before    { background: var(--tm-success) !important; }
+[data-theme="dark"] .chart-legend-item.warning            { color: var(--tm-warning) !important; }
+[data-theme="dark"] .chart-legend-item.warning::before    { background: var(--tm-warning) !important; }
+[data-theme="dark"] .chart-legend-item.failure            { color: var(--tm-failure) !important; }
+[data-theme="dark"] .chart-legend-item.failure::before    { background: var(--tm-failure) !important; }
 
-/* Card chart legend — green/yellow/pink semantic set */
-[data-theme="dark"] .chart-legend-item.success { color: #7DC28A !important; }
-[data-theme="dark"] .chart-legend-item.success::before { background: #7DC28A !important; }
-[data-theme="dark"] .chart-legend-item.warning { color: #E5B458 !important; }
-[data-theme="dark"] .chart-legend-item.warning::before { background: #E5B458 !important; }
-[data-theme="dark"] .chart-legend-item.failure { color: #E8607A !important; }
-[data-theme="dark"] .chart-legend-item.failure::before { background: #E8607A !important; }
+[data-theme="dark"] .status-summary-title.success         { color: var(--tm-success) !important; }
+[data-theme="dark"] .status-summary-title.warning         { color: var(--tm-warning) !important; }
+[data-theme="dark"] .status-summary-title.failure         { color: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row.success span::before { background: var(--tm-success) !important; }
+[data-theme="dark"] .status-summary-row.warning span::before { background: var(--tm-warning) !important; }
+[data-theme="dark"] .status-summary-row.failure span::before { background: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row,
+[data-theme="dark"] .status-summary-row.success,
+[data-theme="dark"] .status-summary-row.warning,
+[data-theme="dark"] .status-summary-row.failure          { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .status-summary-row strong           { color: var(--tm-text) !important; }
 
-/* 24h status headline + dots — green/yellow/pink semantic set */
-[data-theme="dark"] .status-summary-title.success { color: #7DC28A !important; }
-[data-theme="dark"] .status-summary-title.warning { color: #E5B458 !important; }
-[data-theme="dark"] .status-summary-title.failure { color: #E8607A !important; }
-[data-theme="dark"] .status-summary-row.success span::before { background: #7DC28A !important; }
-[data-theme="dark"] .status-summary-row.warning span::before { background: #E5B458 !important; }
-[data-theme="dark"] .status-summary-row.failure span::before { background: #E8607A !important; }
-[data-theme="dark"] .status-summary-row.success strong { color: #F0EDE8 !important; }
-[data-theme="dark"] .status-summary-row.warning strong { color: #F0EDE8 !important; }
-[data-theme="dark"] .status-summary-row.failure strong { color: #F0EDE8 !important; }
-
-/* Custom chart hover tooltip (StatusChartTooltip / BackupSizeTooltip) —
- * was a dark slate card; now a warm light surface with pink text so
- * values pop when hovering bars on the dark Overview cards. */
 [data-theme="dark"] .chart-tooltip {
   background: #EFE9E0 !important;
   color: #231F20 !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-  border: 1px solid #B80E38 !important;
+  border: 1px solid var(--tm-accent) !important;
 }
-[data-theme="dark"] .chart-tooltip-title { color: #231F20 !important; }
-[data-theme="dark"] .chart-tooltip-row { color: #231F20 !important; }
-[data-theme="dark"] .chart-tooltip-row span { color: #6B6157 !important; }
-/* Each row's value takes a darker readable tint of its semantic color,
- * so success=green, warning=gold, failure=pink on the warm-light bg. */
-[data-theme="dark"] .chart-tooltip-row.success strong { color: #2F8A4A !important; }
-[data-theme="dark"] .chart-tooltip-row.warning strong { color: #B8862E !important; }
-[data-theme="dark"] .chart-tooltip-row.failure strong { color: #B80E38 !important; }
-[data-theme="dark"] .chart-tooltip-row.backup strong { color: #B80E38 !important; }
+[data-theme="dark"] .chart-tooltip-title                 { color: #231F20 !important; }
+[data-theme="dark"] .chart-tooltip-row                   { color: #231F20 !important; }
+[data-theme="dark"] .chart-tooltip-row span              { color: var(--tm-muted) !important; }
+[data-theme="dark"] .chart-tooltip-row.success strong    { color: #2F8A4A !important; }
+[data-theme="dark"] .chart-tooltip-row.warning strong    { color: #B8862E !important; }
+[data-theme="dark"] .chart-tooltip-row.failure strong    { color: var(--tm-accent) !important; }
+[data-theme="dark"] .chart-tooltip-row.backup strong     { color: var(--tm-accent) !important; }
 [data-theme="dark"] .chart-tooltip-total {
   border-top-color: rgba(56, 51, 44, 0.3) !important;
   color: #231F20 !important;
 }
-[data-theme="dark"] .chart-tooltip-total strong { color: #231F20 !important; }
+[data-theme="dark"] .chart-tooltip-total strong          { color: #231F20 !important; }
 
-/* Protection Status card — percentage in pink, values white, labels muted */
-[data-theme="dark"] .protection-summary-value { color: #E8607A !important; }
-[data-theme="dark"] .protection-breakdown-row { color: #C2BDB5 !important; }
-[data-theme="dark"] .protection-breakdown-label { color: #C2BDB5 !important; }
-[data-theme="dark"] .protection-breakdown-value.complete { color: #F0EDE8 !important; }
-[data-theme="dark"] .protection-breakdown-value.partial { color: #E8607A !important; }
+[data-theme="dark"] .recharts-default-tooltip {
+  background: var(--tm-surface) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+[data-theme="dark"] .recharts-tooltip-label,
+[data-theme="dark"] .recharts-tooltip-item,
+[data-theme="dark"] .recharts-tooltip-item-name,
+[data-theme="dark"] .recharts-tooltip-item-value        { color: var(--tm-text) !important; }
 
-/* Backup Size card — total in white, summary pills become warm-grey
- * surfaces with a pink border and white value. */
-[data-theme="dark"] .backup-size-total { color: #F0EDE8 !important; }
+/* ─────────────────────────────────────────────────────────────────────
+   13. Overview detail cards — unchanged palette
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .protection-summary-value            { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .protection-breakdown-row,
+[data-theme="dark"] .protection-breakdown-label          { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .protection-breakdown-value.complete { color: var(--tm-text) !important; }
+[data-theme="dark"] .protection-breakdown-value.partial  { color: var(--tm-accent-soft) !important; }
+
+[data-theme="dark"] .backup-size-total                   { color: var(--tm-text) !important; }
 [data-theme="dark"] .backup-size-pill,
 [data-theme="dark"] .backup-size-pill.positive,
 [data-theme="dark"] .backup-size-pill.neutral {
-  background: #2E2924 !important;
-  border: 1px solid #E8607A !important;
-  color: #F0EDE8 !important;
+  background: var(--tm-hover) !important;
+  border: 1px solid var(--tm-accent-soft) !important;
+  color: var(--tm-text) !important;
 }
-[data-theme="dark"] .backup-size-pill span { color: #C2BDB5 !important; }
-[data-theme="dark"] .backup-size-pill strong { color: #F0EDE8 !important; }
+[data-theme="dark"] .backup-size-pill span               { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .backup-size-pill strong             { color: var(--tm-text) !important; }
 
-/* BackupSizeSummary component (separate from Overview's backup-size card) —
- * used inside Recovery / Resource detail panels. Also gets the warm dark
- * treatment with pink accents for its SVG sparkline strokes and tooltip. */
+/* BackupSizeSummary separate component */
 [data-theme="dark"] .bss-root {
-  background: #242019 !important;
-  border-color: #38332C !important;
-  color: #F0EDE8 !important;
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
 }
 [data-theme="dark"] .bss-label,
 [data-theme="dark"] .bss-value,
-[data-theme="dark"] .bss-delta-val { color: #F0EDE8 !important; }
-[data-theme="dark"] .bss-arrow { color: #E8607A !important; }
-[data-theme="dark"] .bss-delta-key { color: #C2BDB5 !important; }
-[data-theme="dark"] .bss-chart svg line[stroke="#e5e7eb"] { stroke: #38332C !important; }
-[data-theme="dark"] .bss-chart svg line[stroke="#9ca3af"] { stroke: #9E9589 !important; }
-[data-theme="dark"] .bss-chart svg path[stroke="#0f9e8e"] { stroke: #B80E38 !important; }
-[data-theme="dark"] .bss-chart svg line[stroke="#0f9e8e"] { stroke: #B80E38 !important; }
-[data-theme="dark"] .bss-chart svg circle[fill="#0f9e8e"] { fill: #E8607A !important; stroke: #242019 !important; }
-[data-theme="dark"] .bss-chart svg text[fill="#111827"] { fill: #F0EDE8 !important; }
-[data-theme="dark"] .bss-chart svg text[fill="#6b7280"] { fill: #C2BDB5 !important; }
-[data-theme="dark"] .bss-chart svg text[fill="#9ca3af"] { fill: #9E9589 !important; }
+[data-theme="dark"] .bss-delta-val                       { color: var(--tm-text) !important; }
+[data-theme="dark"] .bss-arrow                           { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .bss-delta-key                       { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .bss-chart svg line[stroke="#e5e7eb"]   { stroke: var(--tm-border) !important; }
+[data-theme="dark"] .bss-chart svg line[stroke="#9ca3af"]   { stroke: var(--tm-body) !important; }
+[data-theme="dark"] .bss-chart svg path[stroke="#0f9e8e"]   { stroke: var(--tm-accent) !important; }
+[data-theme="dark"] .bss-chart svg line[stroke="#0f9e8e"]   { stroke: var(--tm-accent) !important; }
+[data-theme="dark"] .bss-chart svg circle[fill="#0f9e8e"]   { fill: var(--tm-accent-soft) !important; stroke: var(--tm-surface) !important; }
+[data-theme="dark"] .bss-chart svg text[fill="#111827"]     { fill: var(--tm-text) !important; }
+[data-theme="dark"] .bss-chart svg text[fill="#6b7280"]     { fill: var(--tm-body-2) !important; }
+[data-theme="dark"] .bss-chart svg text[fill="#9ca3af"]     { fill: var(--tm-body) !important; }
 [data-theme="dark"] .bss-tooltip {
   background: #EFE9E0 !important;
   color: #231F20 !important;
-  border: 1px solid #B80E38 !important;
+  border: 1px solid var(--tm-accent) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
 }
-[data-theme="dark"] .bss-tip-date { color: #231F20 !important; }
-[data-theme="dark"] .bss-tip-key { color: #6B6157 !important; }
-[data-theme="dark"] .bss-tip-val { color: #B80E38 !important; }
-[data-theme="dark"] .bss-tip-empty { color: #6B6157 !important; }
+[data-theme="dark"] .bss-tip-date  { color: #231F20 !important; }
+[data-theme="dark"] .bss-tip-key   { color: var(--tm-muted) !important; }
+[data-theme="dark"] .bss-tip-val   { color: var(--tm-accent) !important; }
+[data-theme="dark"] .bss-tip-empty { color: var(--tm-muted) !important; }
 
-/* =========================================================================
-   Settings page sub-navbar — same pill treatment as Protection's resource
-   sub-tabs, but using the dark palette. The pill shape itself is defined
-   in Settings.css (light palette); this block only re-tints for dark.
-   ========================================================================= */
-[data-theme="dark"] .settings-tabs {
-  background: #242019 !important;
-  border: 1px solid #38332C !important;
+/* ─────────────────────────────────────────────────────────────────────
+   14. Activity section
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .activity-title    { color: var(--tm-text) !important; }
+[data-theme="dark"] .activity-tenant   { color: var(--tm-text) !important; }
+[data-theme="dark"] .activity-status.done {
+  background: rgba(184, 14, 56, 0.15) !important;
+  color: var(--tm-accent-soft) !important;
 }
-[data-theme="dark"] .settings-tab {
-  background: #1F1C18 !important;
-  border: 1px solid #38332C !important;
-  color: #D9D4CC !important;
+[data-theme="dark"] .activity-status.in-progress,
+[data-theme="dark"] .activity-status.warning {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
 }
-[data-theme="dark"] .settings-tab:hover {
-  background: #2E2924 !important;
-  border-color: #B80E38 !important;
-  color: #F0EDE8 !important;
+[data-theme="dark"] .activity-status.failed {
+  background: rgba(184, 14, 56, 0.22) !important;
+  color: var(--tm-text) !important;
 }
-[data-theme="dark"] .settings-tab.active {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
+
+/* ─────────────────────────────────────────────────────────────────────
+   15. Storage page
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .storage-title,
+[data-theme="dark"] .storage-state-name,
+[data-theme="dark"] .storage-history-title,
+[data-theme="dark"] .storage-modal-title   { color: var(--tm-text) !important; }
+[data-theme="dark"] .storage-eyebrow,
+[data-theme="dark"] .storage-state-label   { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .storage-desc,
+[data-theme="dark"] .storage-state-kind,
+[data-theme="dark"] .storage-state-meta,
+[data-theme="dark"] .storage-history-count,
+[data-theme="dark"] .storage-history-empty { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .storage-state-meta strong { color: var(--tm-text) !important; }
+[data-theme="dark"] .storage-state-cooldown,
+[data-theme="dark"] .storage-no-alt,
+[data-theme="dark"] .storage-hash,
+[data-theme="dark"] .storage-modal-field-hint { color: var(--tm-body) !important; }
+[data-theme="dark"] .storage-table th,
+[data-theme="dark"] .storage-table td     { color: var(--tm-text) !important; border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .storage-arrow        { color: var(--tm-accent-soft) !important; }
+
+[data-theme="dark"] .storage-modal-overlay { background: rgba(0, 0, 0, 0.65) !important; }
+[data-theme="dark"] .storage-modal {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .storage-modal * { color: var(--tm-text); }
+[data-theme="dark"] .storage-modal-warn {
+  background: var(--tm-hover) !important;
+  border-left-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .storage-modal-field    { color: var(--tm-text) !important; }
+[data-theme="dark"] .storage-modal-field code {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .storage-modal-input,
+[data-theme="dark"] .storage-modal-textarea {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .storage-modal-actions  { border-top-color: var(--tm-border) !important; }
+[data-theme="dark"] .storage-modal-btn.ghost {
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-accent) !important;
+  background: transparent !important;
+}
+[data-theme="dark"] .storage-modal-btn.ghost:hover:not(:disabled) {
+  background: transparent !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .storage-modal-btn.primary {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .storage-modal-btn.primary:hover:not(:disabled) {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+}
+
+[data-theme="dark"] .storage-switch-btn {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .storage-switch-btn:hover:not(:disabled) {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
   color: #ffffff !important;
 }
 
-/* =========================================================================
-   Admin Consent cards — Microsoft 365 / Azure / Power BI panels on the
-   Settings > Admin Consent tab. White surface → warm grey, all text in
-   the light family, solid pink background on hover (text stays white).
-   ========================================================================= */
-[data-theme="dark"] .admin-consent-card {
-  background: #242019 !important;
-  border-color: #38332C !important;
+/* ─────────────────────────────────────────────────────────────────────
+   16. Admin Consent cards — all 4 (incl. Power BI).
+   Idle: grey surface, white text. Hover: BG STAYS, border flips pink.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .admin-consent-card,
+[data-theme="dark"] .power-bi-readiness-card {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
 }
-[data-theme="dark"] .admin-consent-card:hover {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  box-shadow: 0 8px 28px rgba(184, 14, 56, 0.35) !important;
+[data-theme="dark"] .admin-consent-card:hover,
+[data-theme="dark"] .power-bi-readiness-card:hover {
+  background: var(--tm-surface) !important;
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45) !important;
 }
-[data-theme="dark"] .admin-consent-title,
-[data-theme="dark"] .admin-consent-granted-by { color: #F0EDE8 !important; }
-[data-theme="dark"] .admin-consent-status.granted { color: #D9D4CC !important; }
-[data-theme="dark"] .admin-consent-status.not-granted { color: #9E9589 !important; }
-[data-theme="dark"] .admin-consent-date { color: #9E9589 !important; }
-/* On hover everything inside the card reads white against the solid pink. */
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-title,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-granted-by,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-status,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-status.granted,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-status.not-granted,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-date { color: #ffffff !important; }
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-icon svg,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-icon path,
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-icon { color: #ffffff !important; }
 
-/* Regrant button inside the card — readable idle, inverted on hover. */
+[data-theme="dark"] .admin-consent-title,
+[data-theme="dark"] .admin-consent-granted-by       { color: var(--tm-text) !important; }
+[data-theme="dark"] .admin-consent-status.granted   { color: var(--tm-text) !important; }
+[data-theme="dark"] .admin-consent-status.not-granted,
+[data-theme="dark"] .admin-consent-date             { color: var(--tm-body) !important; }
+
+/* Regrant button — grey idle, pink border on hover */
 [data-theme="dark"] .admin-consent-regrant-btn {
   background: transparent !important;
-  color: #D9D4CC !important;
-  border-color: #38332C !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-accent) !important;
 }
 [data-theme="dark"] .admin-consent-regrant-btn:hover:not(:disabled) {
-  background: #ffffff !important;
-  color: #B80E38 !important;
-  border-color: #ffffff !important;
-}
-[data-theme="dark"] .admin-consent-card:hover .admin-consent-regrant-btn {
-  border-color: #ffffff !important;
-  color: #ffffff !important;
+  background: transparent !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
 }
 
-/* =========================================================================
-   Power BI readiness card — the 4th admin-consent box. Uses a different
-   class set (.power-bi-readiness-card + nested .power-bi-metric /
-   .power-bi-check / .power-bi-next-steps). Same dark treatment as the
-   other three admin-consent-cards: warm grey surface, light text, solid
-   pink bg on hover with everything inside reading white.
-   ========================================================================= */
-[data-theme="dark"] .power-bi-readiness-card {
-  background: #242019 !important;
-  border-color: #38332C !important;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease !important;
-}
-[data-theme="dark"] .power-bi-readiness-title { color: #F0EDE8 !important; }
-[data-theme="dark"] .power-bi-readiness-subtitle { color: #C2BDB5 !important; }
-[data-theme="dark"] .power-bi-summary { color: #D9D4CC !important; }
-
-/* Nested surfaces inside the card stay grey at rest. */
+/* Power BI idle contents */
+[data-theme="dark"] .power-bi-readiness-title    { color: var(--tm-text) !important; }
+[data-theme="dark"] .power-bi-readiness-subtitle { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .power-bi-summary            { color: var(--tm-text) !important; }
 [data-theme="dark"] .power-bi-metric,
 [data-theme="dark"] .power-bi-check,
 [data-theme="dark"] .power-bi-next-steps {
-  background: #1F1C18 !important;
-  border-color: #38332C !important;
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
 }
-[data-theme="dark"] .power-bi-metric-label { color: #9E9589 !important; }
-[data-theme="dark"] .power-bi-metric-value { color: #F0EDE8 !important; }
-[data-theme="dark"] .power-bi-check-title { color: #F0EDE8 !important; }
-[data-theme="dark"] .power-bi-check-detail { color: #C2BDB5 !important; }
-[data-theme="dark"] .power-bi-next-steps-title { color: #F0EDE8 !important; }
+[data-theme="dark"] .power-bi-metric-label       { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .power-bi-metric-value       { color: var(--tm-text) !important; }
+[data-theme="dark"] .power-bi-check-title        { color: var(--tm-text) !important; }
+[data-theme="dark"] .power-bi-check-detail       { color: var(--tm-text) !important; }
+[data-theme="dark"] .power-bi-next-steps-title   { color: var(--tm-text) !important; }
 [data-theme="dark"] .power-bi-next-steps-list,
 [data-theme="dark"] .power-bi-next-steps-list li,
-[data-theme="dark"] .power-bi-next-steps-empty { color: #D9D4CC !important; }
+[data-theme="dark"] .power-bi-next-steps-empty   { color: var(--tm-text) !important; }
 
-/* Status badges — retint to the green/yellow/pink semantic set used on
- * the Overview cards so they read against the dark surface. */
 [data-theme="dark"] .power-bi-status-badge.ready,
 [data-theme="dark"] .power-bi-check-state.ready {
   background: rgba(125, 194, 138, 0.18) !important;
-  color: #7DC28A !important;
+  color: var(--tm-success) !important;
 }
 [data-theme="dark"] .power-bi-status-badge.warning,
 [data-theme="dark"] .power-bi-check-state.warning {
   background: rgba(229, 180, 88, 0.18) !important;
-  color: #E5B458 !important;
+  color: var(--tm-warning) !important;
 }
 [data-theme="dark"] .power-bi-status-badge.action,
 [data-theme="dark"] .power-bi-check-state.action {
   background: rgba(232, 96, 122, 0.18) !important;
-  color: #E8607A !important;
+  color: var(--tm-failure) !important;
 }
-[data-theme="dark"] .power-bi-check.ready { border-left-color: #7DC28A !important; }
-[data-theme="dark"] .power-bi-check.warning { border-left-color: #E5B458 !important; }
-[data-theme="dark"] .power-bi-check.action { border-left-color: #E8607A !important; }
+[data-theme="dark"] .power-bi-check.ready   { border-left-color: var(--tm-success) !important; }
+[data-theme="dark"] .power-bi-check.warning { border-left-color: var(--tm-warning) !important; }
+[data-theme="dark"] .power-bi-check.action  { border-left-color: var(--tm-failure) !important; }
 
-/* Hover — whole card floods pink; nested boxes go transparent with a
- * 1px white-alpha border so the surface reads as a single block. Every
- * text/value element inside flips to white. */
-[data-theme="dark"] .power-bi-readiness-card:hover {
-  background: #B80E38 !important;
-  border-color: #B80E38 !important;
-  box-shadow: 0 8px 28px rgba(184, 14, 56, 0.35) !important;
+/* ─────────────────────────────────────────────────────────────────────
+   17. Recovery empty state ("No backups available") —
+   pink title + white body + pink icon
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .recovery-page .loading-container p[style*="#0f172a"]      { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .recovery-page .loading-container p[style*="#64748b"]      { color: var(--tm-text) !important; }
+[data-theme="dark"] .recovery-page .loading-container svg[style*="#94a3b8"]    { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .recovery-page .loading-container svg line[stroke="#94a3b8"] { stroke: var(--tm-accent-soft) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   18. Safety net — any element whose CSS still hard-codes a slate/black
+   text color will now read as white in dark mode. Scoped narrowly to
+   common component prefixes so we don't steamroll legitimate accent
+   colors elsewhere.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] [class*="-title"]:not(.admin-consent-card:hover *):not(.chart-tooltip-title):not(.bss-tip-date),
+[data-theme="dark"] [class*="-label"]:not(.metric-label):not(.status-label):not(.config-help),
+[data-theme="dark"] [class*="-value"]:not(.protection-breakdown-value.partial):not(.protection-summary-value) {
+  color: inherit;
 }
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-metric,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps {
+
+/* ─────────────────────────────────────────────────────────────────────
+   19. Theme toggle button
+   ─────────────────────────────────────────────────────────────────── */
+.theme-toggle-btn .theme-icon { transition: color 0.2s ease, transform 0.3s ease; }
+[data-theme="dark"] .theme-toggle-btn:hover .theme-icon { color: var(--tm-accent-soft) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   20. Protection table — Total Size + Last Backup columns
+   .size-main / .size-sub / .backup-date / .backup-time all hard-code
+   dark slate text (#1e293b / #94a3b8 / #334155), which renders as
+   "blue on dark" against the warm grey cell. Repaint to white/muted.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .size-main    { color: var(--tm-text) !important; }
+[data-theme="dark"] .size-sub     { color: var(--tm-body) !important; }
+[data-theme="dark"] .backup-date  { color: var(--tm-text) !important; }
+[data-theme="dark"] .backup-time  { color: var(--tm-body) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   21. Storage state label — "Cloud storage" / "on prem storage"
+   Rendered as ::before content on .storage-state-name[data-backend-*].
+   Retint to pink so it pops on the dark storage page.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .storage-state-name[data-backend-kind="azure_blob"]::before,
+[data-theme="dark"] .storage-state-name[data-backend-kind="azure"]::before,
+[data-theme="dark"] .storage-state-name[data-backend-name="azure-primary"]::before,
+[data-theme="dark"] .storage-state-name[data-backend-kind="seaweedfs"]::before,
+[data-theme="dark"] .storage-state-name[data-backend-kind="seaweed"]::before,
+[data-theme="dark"] .storage-state-name[data-backend-name="seaweed"]::before,
+[data-theme="dark"] .storage-state-name[data-backend-name="onprem-pilot"]::before {
+  color: var(--tm-accent-soft) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   22. Recovery page — whole page, two-panel layout, resource list,
+   recovery content panel, and empty states. Every white surface gets
+   the same grey + white text treatment; hovers are pink-outline only.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .recovery-page { background: var(--tm-bg) !important; }
+
+/* Left — resource list panel */
+[data-theme="dark"] .resource-list-panel {
+  background: var(--tm-surface) !important;
+  border-right-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .resource-list-header {
+  background: var(--tm-surface) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .resource-list-header h3 { color: var(--tm-text) !important; }
+[data-theme="dark"] .resource-search-input {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .resource-search-input:focus { border-color: var(--tm-accent) !important; }
+[data-theme="dark"] .resource-search-input::placeholder { color: var(--tm-muted) !important; }
+[data-theme="dark"] .resource-list { background: var(--tm-surface) !important; }
+[data-theme="dark"] .resource-list-item {
   background: transparent !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
+  border-bottom-color: var(--tm-hover) !important;
 }
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check.ready,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check.warning,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check.action {
-  border-left-color: #ffffff !important;
+[data-theme="dark"] .resource-list-item:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
 }
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-readiness-title,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-readiness-subtitle,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-summary,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-metric-label,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-metric-value,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check-title,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check-detail,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-title,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-list,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-list li,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-next-steps-empty { color: #ffffff !important; }
-/* Status badges on hover — translucent white tile with white text. */
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-status-badge,
-[data-theme="dark"] .power-bi-readiness-card:hover .power-bi-check-state {
-  background: rgba(255, 255, 255, 0.2) !important;
-  color: #ffffff !important;
+[data-theme="dark"] .resource-list-item.selected {
+  background: var(--tm-hover) !important;
+  border-left: 3px solid var(--tm-accent) !important;
 }
-/* Regrant button inside — mirror the same hover inversion as the other cards. */
-[data-theme="dark"] .power-bi-readiness-card:hover .admin-consent-regrant-btn {
-  border-color: #ffffff !important;
+[data-theme="dark"] .identity-group { border-bottom-color: var(--tm-hover) !important; }
+[data-theme="dark"] .identity-group.has-selection,
+[data-theme="dark"] .identity-group .identity-header.expanded,
+[data-theme="dark"] .identity-surfaces { background: var(--tm-surface-2) !important; }
+[data-theme="dark"] .identity-surfaces .surface-indent { background: var(--tm-border) !important; }
+[data-theme="dark"] .identity-surfaces .resource-list-item.surface-item.selected {
+  background: var(--tm-hover) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .resource-kind-pill,
+[data-theme="dark"] .kind-badge {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .resource-list-name  { color: var(--tm-text) !important; }
+[data-theme="dark"] .resource-list-email { color: var(--tm-body) !important; }
+[data-theme="dark"] .resource-list-meta  { color: var(--tm-body) !important; }
+[data-theme="dark"] .resource-avatar-sm  { background: var(--tm-accent) !important; color: #ffffff !important; }
+[data-theme="dark"] .empty-resource-list { color: var(--tm-body) !important; }
+
+/* Right — recovery content panel */
+[data-theme="dark"] .recovery-content-panel { background: var(--tm-bg) !important; }
+[data-theme="dark"] .empty-selection        { color: var(--tm-body) !important; }
+
+/* Any remaining white-bg class on the Recovery page — force grey. */
+[data-theme="dark"] .recovery-page [class*="-panel"],
+[data-theme="dark"] .recovery-page [class*="-header"],
+[data-theme="dark"] .recovery-page [class*="-body"],
+[data-theme="dark"] .recovery-page [class*="-content"],
+[data-theme="dark"] .recovery-page [class*="-section"] { color: var(--tm-text); }
+
+/* ─────────────────────────────────────────────────────────────────────
+   23. Activity status badges + Protection backup-status badges
+   User ask: keep the coloured backgrounds (green/yellow/red) but swap
+   the text colour to something readable — dark blue on green/yellow,
+   dark red stays on red. Applies to both Activity.css (.status-*) and
+   Protection.css (.backup-status.*) variants.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .status-done,
+[data-theme="dark"] .backup-status.done {
+  background: #d1fae5 !important;
+  color: #1e3a8a !important;   /* dark blue on light green */
+}
+[data-theme="dark"] .status-in-progress,
+[data-theme="dark"] .status-warning,
+[data-theme="dark"] .status-queued,
+[data-theme="dark"] .backup-status.in-progress,
+[data-theme="dark"] .backup-status.queued {
+  background: #fef3c7 !important;
+  color: #1e3a8a !important;   /* dark blue on light yellow */
+}
+[data-theme="dark"] .backup-status.running {
+  background: #dbeafe !important;
+  color: #1e3a8a !important;   /* dark blue on light blue */
+}
+[data-theme="dark"] .status-failed,
+[data-theme="dark"] .backup-status.failed {
+  background: #fee2e2 !important;
+  color: #991b1b !important;   /* dark red on light red — already readable */
+}
+[data-theme="dark"] .status-canceled,
+[data-theme="dark"] .backup-status.canceled {
+  background: #f3f4f6 !important;
+  color: #1f2937 !important;   /* near-black on light grey */
+}
+[data-theme="dark"] .backup-status.never { color: var(--tm-body) !important; }
+/* In-progress inline cancel button — keep dark-amber on light yellow */
+[data-theme="dark"] .status-badge-cancel { background: rgba(146, 64, 14, 0.15) !important; color: #92400e !important; }
+[data-theme="dark"] .status-badge-cancel:hover:not(:disabled) { background: #dc2626 !important; color: #ffffff !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   24. Settings → Secrets tab — blurb + table text reads white, link
+   rendered as the description cell becomes light blue so it's visible
+   without clashing with the pink accent palette.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .secrets-tab   { color: var(--tm-text) !important; }
+[data-theme="dark"] .secrets-blurb { color: var(--tm-text) !important; }
+[data-theme="dark"] .secrets-info-icon {
+  color: var(--tm-body) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .secrets-error {
+  background: rgba(184, 14, 56, 0.12) !important;
+  color: var(--tm-accent-soft) !important;
+  border: 1px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .secrets-table th,
+[data-theme="dark"] .secrets-table td {
+  color: var(--tm-text) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .secrets-table th { border-bottom: 2px solid var(--tm-accent) !important; }
+/* Description link cell — light blue, readable, stays blue on hover */
+[data-theme="dark"] .secrets-table td a        { color: #8CC4E8 !important; }
+[data-theme="dark"] .secrets-table td a:hover  { color: #B8DBF2 !important; }
+[data-theme="dark"] .secrets-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .secrets-type-sub { color: var(--tm-body) !important; }
+[data-theme="dark"] .secrets-add-btn {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .secrets-add-btn:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .secrets-delete-btn {
+  background: transparent !important;
+  color: var(--tm-accent-soft) !important;
+  border: 1px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .secrets-delete-btn:hover {
+  background: transparent !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   25. Recovery page — comprehensive dark-theme pass
+   Covers the header (avatar, name/email, last-backup info), the stats
+   box with snapshot info, the snapshot-count pill, content-type tabs,
+   folder tree, 3-panel layout (folder list / item list / item preview),
+   toolbar (filter toggle, search wrapper, action buttons), item rows,
+   email preview and loading/spinner states.
+   Per user: "name and email pinkish", "snapshot info box matches theme",
+   everything else synchronised.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Header — divider + avatar */
+[data-theme="dark"] .recovery-header { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .resource-avatar {
+  background: var(--tm-accent) !important;
   color: #ffffff !important;
 }
 
-/* =========================================================================
-   Recovery empty state — "No backups available" panel uses inline styles
-   in Recovery.tsx (#0f172a title, #64748b body, #94a3b8 icon). Override
-   them in dark mode via attribute selectors so the message is legible:
-     title → pink, body → white, icon → pink.
-   ========================================================================= */
-[data-theme="dark"] .recovery-page .loading-container p[style*="#0f172a"] { color: #E8607A !important; }
-[data-theme="dark"] .recovery-page .loading-container p[style*="#64748b"] { color: #F0EDE8 !important; }
-[data-theme="dark"] .recovery-page .loading-container svg[style*="#94a3b8"] { color: #E8607A !important; }
-[data-theme="dark"] .recovery-page .loading-container svg line[stroke="#94a3b8"] { stroke: #E8607A !important; }
+/* Name + email — both pink as requested. Name uses the brighter pink
+ * so it still reads as primary identity. */
+[data-theme="dark"] .resource-name  { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .resource-email { color: var(--tm-accent-soft) !important; opacity: 0.8; }
+
+/* "Last backup" meta row next to the name */
+[data-theme="dark"] .last-backup-info         { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .last-backup-info .label  { color: var(--tm-body) !important; }
+[data-theme="dark"] .last-backup-info .value  { color: var(--tm-text) !important; }
+
+/* Stats box — "information about snapshots" panel on the header */
+[data-theme="dark"] .stats-box {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .stats-label  { color: var(--tm-body) !important; }
+[data-theme="dark"] .stats-value  { color: var(--tm-text) !important; }
+[data-theme="dark"] .stats-bar-container { background: var(--tm-hover) !important; }
+[data-theme="dark"] .stats-bar {
+  background: linear-gradient(to right, var(--tm-accent), var(--tm-accent-soft)) !important;
+}
+[data-theme="dark"] .stats-legend       { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .stats-legend span  { color: var(--tm-accent-soft) !important; }
+
+/* Snapshot count pill */
+[data-theme="dark"] .snapshot-count {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .snapshot-count-num   { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .snapshot-count-label { color: var(--tm-body) !important; }
+
+/* Backup version selector (legacy dropdown) */
+[data-theme="dark"] .backup-version-selector label { color: var(--tm-body) !important; }
+[data-theme="dark"] .backup-version-selector select {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .backup-version-selector select:disabled { background: var(--tm-surface-2) !important; opacity: 0.55; }
+
+/* Content-type tabs row (Emails / Files / Calendar / etc.) */
+[data-theme="dark"] .content-type-tabs { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .content-tab {
+  background: transparent !important;
+  color: var(--tm-body-2) !important;
+  border-bottom: 2px solid transparent !important;
+}
+[data-theme="dark"] .content-tab:hover {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-bottom-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .content-tab.active {
+  color: var(--tm-text) !important;
+  border-bottom-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .content-tab-count {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .content-tab.active .content-tab-count {
+  background: rgba(184, 14, 56, 0.2) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .content-tab-empty { color: var(--tm-body) !important; }
+
+/* Folder tree */
+[data-theme="dark"] .folder-tree-item { color: var(--tm-text) !important; background: transparent !important; }
+[data-theme="dark"] .folder-tree-item:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .folder-tree-item.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .folder-tree-toggle { color: var(--tm-body) !important; }
+
+/* Tab loading / empty states */
+[data-theme="dark"] .tabs-loading,
+[data-theme="dark"] .tabs-empty,
+[data-theme="dark"] .folder-loading,
+[data-theme="dark"] .folder-empty { color: var(--tm-body) !important; }
+[data-theme="dark"] .loading-container { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .spinner,
+[data-theme="dark"] .spinner-sm {
+  border-color: var(--tm-border) !important;
+  border-top-color: var(--tm-accent) !important;
+}
+
+/* Recovery toolbar — filter toggle, search wrapper, action buttons */
+[data-theme="dark"] .filter-toggle {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .filter-toggle:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .filter-toggle.active {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--tm-accent) !important;
+}
+
+[data-theme="dark"] .recovery-toolbar .search-wrapper {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .recovery-toolbar .search-wrapper:hover,
+[data-theme="dark"] .recovery-toolbar .search-wrapper:focus-within { border-color: var(--tm-accent) !important; }
+[data-theme="dark"] .recovery-toolbar .search-wrapper .search-input,
+[data-theme="dark"] .recovery-toolbar .search-wrapper .version-select {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .recovery-toolbar .search-wrapper .search-btn { color: var(--tm-body) !important; }
+[data-theme="dark"] .recovery-toolbar .search-wrapper .search-btn:hover,
+[data-theme="dark"] .recovery-toolbar .search-wrapper .search-btn:focus-visible { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .recovery-toolbar .search-wrapper .version-select:disabled { color: var(--tm-muted) !important; }
+[data-theme="dark"] .toolbar-error { color: var(--tm-accent-soft) !important; }
+
+[data-theme="dark"] .action-button {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .action-button:hover:not(:disabled) {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .action-button.download {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .action-button.recover {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .action-button.recover:hover:not(:disabled) {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+}
+
+/* 3-panel layout — outer + each panel */
+[data-theme="dark"] .three-panel-layout {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .panel-left {
+  background: var(--tm-surface) !important;
+  border-right-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .panel-middle {
+  background: var(--tm-surface) !important;
+  border-right-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .panel-right { background: var(--tm-surface) !important; }
+
+/* Folder list (left panel) */
+[data-theme="dark"] .folder-item {
+  background: transparent !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .folder-item:hover {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .folder-item.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .folder-count {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+}
+
+/* Item list header (middle panel) */
+[data-theme="dark"] .item-list-header {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-body-2) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .item-list-loading-more { color: var(--tm-body) !important; }
+[data-theme="dark"] .item-list-end          { color: var(--tm-body) !important; }
+
+/* Item rows */
+[data-theme="dark"] .item-row {
+  background: transparent !important;
+  border-bottom-color: var(--tm-hover) !important;
+}
+[data-theme="dark"] .item-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .item-row.selected {
+  background: var(--tm-hover) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .item-subject { color: var(--tm-text) !important; }
+[data-theme="dark"] .item-preview { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .item-date    { color: var(--tm-body) !important; }
+
+/* Right-panel item preview */
+[data-theme="dark"] .preview-header { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .preview-from .label,
+[data-theme="dark"] .preview-to .label,
+[data-theme="dark"] .preview-meta-row .label { color: var(--tm-body) !important; }
+[data-theme="dark"] .preview-from .value,
+[data-theme="dark"] .preview-to .value,
+[data-theme="dark"] .preview-meta-row .value,
+[data-theme="dark"] .preview-status,
+[data-theme="dark"] .preview-body,
+[data-theme="dark"] .preview-body p { color: var(--tm-text) !important; }
+[data-theme="dark"] .empty-preview,
+[data-theme="dark"] .empty-state,
+[data-theme="dark"] .empty-state p { color: var(--tm-body) !important; }
+
+/* Outlook-style email header inside the preview */
+[data-theme="dark"] .email-preview    { background: var(--tm-surface) !important; color: var(--tm-text) !important; }
+[data-theme="dark"] .email-ol-header {
+  background: var(--tm-surface-2) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .email-ol-row    { color: var(--tm-text) !important; }
+[data-theme="dark"] .email-ol-label  { color: var(--tm-body) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   26. Recovery page — comprehensive sweep for every remaining content-
+   type sub-view (Email / Chat / Calendar / Files previews + their
+   toolbars, pills, badges, attachments, mentions). Also covers the
+   sub-navbar row above them (content tabs for OneDrive / Mail /
+   Calendar / Chats / etc.) so the whole section reads as one theme.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* -- Page / layout wrappers (safety net) ---------------------------- */
+[data-theme="dark"] .recovery-page,
+[data-theme="dark"] .recovery-layout,
+[data-theme="dark"] .recovery-content,
+[data-theme="dark"] .recovery-content-panel,
+[data-theme="dark"] .recovery-content-panel > *,
+[data-theme="dark"] .recovery-content > *,
+[data-theme="dark"] .panel-right,
+[data-theme="dark"] .panel-middle,
+[data-theme="dark"] .panel-left,
+[data-theme="dark"] .panel-calendar,
+[data-theme="dark"] .email-preview,
+[data-theme="dark"] .chat-preview,
+[data-theme="dark"] .calendar-preview,
+[data-theme="dark"] .cal-full-view { background: var(--tm-surface) !important; }
+
+/* Force every text descendant in Recovery to light by default. Specific
+ * rules below will override where we want an accent or body color. */
+[data-theme="dark"] .recovery-page,
+[data-theme="dark"] .recovery-page * { color: var(--tm-text); }
+
+/* Keep icon-stroke elements legible */
+[data-theme="dark"] .recovery-page svg { stroke-linecap: round; stroke-linejoin: round; }
+
+/* -- Sub-navbar above content sub-views (OneDrive/Mail/Calendar tabs)
+ *    Also handle any scrollable strip that wraps the tabs. ----------- */
+[data-theme="dark"] .content-type-tabs {
+  background: var(--tm-surface) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+  padding: 4px 8px !important;
+}
+[data-theme="dark"] .content-tab {
+  background: transparent !important;
+  color: var(--tm-body-2) !important;
+  border-bottom: 2px solid transparent !important;
+  transition: color 0.15s ease, border-color 0.15s ease !important;
+}
+[data-theme="dark"] .content-tab:hover {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-bottom-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .content-tab.active {
+  color: var(--tm-accent-soft) !important;
+  border-bottom-color: var(--tm-accent) !important;
+  font-weight: 600 !important;
+}
+[data-theme="dark"] .content-tab-count {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .content-tab.active .content-tab-count {
+  background: var(--tm-accent) !important;
+  border-color: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+
+/* -- Email preview (Outlook-style header + body) -------------------- */
+[data-theme="dark"] .email-ol-meta,
+[data-theme="dark"] .email-ol-subject,
+[data-theme="dark"] .email-ol-val      { color: var(--tm-text) !important; }
+[data-theme="dark"] .email-ol-date     { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .email-ol-attachments { border-top-color: var(--tm-border) !important; }
+[data-theme="dark"] .email-ol-attach-chip {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .email-ol-attach-chip:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] a.email-ol-attach-chip.email-ol-attach-link { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] a.email-ol-attach-chip.email-ol-attach-link:hover {
+  background: rgba(184, 14, 56, 0.12) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .email-body  { background: var(--tm-surface) !important; }
+[data-theme="dark"] .email-plain { color: var(--tm-text) !important; background: var(--tm-surface) !important; }
+
+/* Email item rows in the middle list column */
+[data-theme="dark"] .email-item-row {
+  background: transparent !important;
+  border-bottom-color: var(--tm-hover) !important;
+}
+[data-theme="dark"] .email-item-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .email-item-row.selected {
+  background: var(--tm-hover) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+  padding-left: 11px !important;
+}
+[data-theme="dark"] .email-item-sender  { color: var(--tm-text) !important; }
+[data-theme="dark"] .email-item-date    { color: var(--tm-body) !important; }
+[data-theme="dark"] .email-item-subject { color: var(--tm-text) !important; }
+[data-theme="dark"] .email-item-preview { color: var(--tm-body-2) !important; }
+
+/* -- Chat preview (bubbles, quotes, attachments, mentions) ----------- */
+[data-theme="dark"] .chat-context-label { color: var(--tm-body) !important; }
+[data-theme="dark"] .chat-avatar {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .chat-bubble {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .chat-sender { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .chat-time   { color: var(--tm-body) !important; }
+[data-theme="dark"] .chat-reply-badge {
+  background: rgba(184, 14, 56, 0.18) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .chat-body, [data-theme="dark"] .chat-body p { color: var(--tm-text) !important; }
+
+[data-theme="dark"] .chat-quote {
+  background: var(--tm-surface-2) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .chat-quote-sender      { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .chat-item-quote        { color: var(--tm-body-2) !important; border-left-color: var(--tm-border) !important; }
+[data-theme="dark"] .chat-item-quote-sender { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .chat-deleted           { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .chat-attachment-chip {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .chat-mention {
+  background: rgba(184, 14, 56, 0.18) !important;
+  color: var(--tm-accent-soft) !important;
+}
+
+/* Chat item rows in the middle list column */
+[data-theme="dark"] .chat-item-row {
+  background: transparent !important;
+  border-bottom-color: var(--tm-hover) !important;
+}
+[data-theme="dark"] .chat-item-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .chat-item-row.selected { background: var(--tm-hover) !important; }
+[data-theme="dark"] .chat-item-avatar       { background: var(--tm-accent) !important; color: #ffffff !important; }
+[data-theme="dark"] .chat-item-sender       { color: var(--tm-text) !important; }
+[data-theme="dark"] .chat-item-time         { color: var(--tm-body) !important; }
+[data-theme="dark"] .chat-item-text         { color: var(--tm-body-2) !important; }
+
+/* -- Calendar preview ------------------------------------------------ */
+[data-theme="dark"] .cal-event-header { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .cal-event-title  { color: var(--tm-text) !important; }
+[data-theme="dark"] .cal-badge {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-badge.online {
+  background: rgba(125, 199, 232, 0.18) !important;
+  color: #8CC4E8 !important;
+  border-color: rgba(125, 199, 232, 0.4) !important;
+}
+[data-theme="dark"] .cal-badge.recur  {
+  background: rgba(229, 180, 88, 0.18) !important;
+  color: var(--tm-warning) !important;
+  border-color: rgba(229, 180, 88, 0.4) !important;
+}
+[data-theme="dark"] .cal-badge.status {
+  background: rgba(125, 194, 138, 0.18) !important;
+  color: var(--tm-success) !important;
+  border-color: rgba(125, 194, 138, 0.4) !important;
+}
+
+/* Mini month */
+[data-theme="dark"] .cal-mini {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-mini-month { color: var(--tm-text) !important; }
+[data-theme="dark"] .cal-mini-dow   { color: var(--tm-body) !important; }
+[data-theme="dark"] .cal-mini-day   { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .cal-mini-day.event-day {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .cal-event-details,
+[data-theme="dark"] .cal-detail-row  { color: var(--tm-text) !important; }
+[data-theme="dark"] .cal-time        { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .cal-attendee-chip {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .cal-attendee-chip.resp-accepted {
+  background: rgba(125, 194, 138, 0.18) !important;
+  color: var(--tm-success) !important;
+  border-color: rgba(125, 194, 138, 0.4) !important;
+}
+[data-theme="dark"] .cal-attendee-chip.resp-declined {
+  background: rgba(184, 14, 56, 0.18) !important;
+  color: var(--tm-accent-soft) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .cal-attendee-chip.resp-tentative {
+  background: rgba(229, 180, 88, 0.18) !important;
+  color: var(--tm-warning) !important;
+  border-color: rgba(229, 180, 88, 0.4) !important;
+}
+[data-theme="dark"] .cal-attendee-more { color: var(--tm-body) !important; }
+[data-theme="dark"] .cal-event-body    { color: var(--tm-text) !important; }
+[data-theme="dark"] .cal-body-plain    { color: var(--tm-text) !important; }
+
+/* Calendar month-view + filter sidebar */
+[data-theme="dark"] .cal-full-view { background: var(--tm-surface) !important; }
+[data-theme="dark"] .cal-layout-mode {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .cal-filter-sidebar {
+  background: var(--tm-surface-2) !important;
+  border-right: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-filter-header       { color: var(--tm-text) !important; border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .cal-filter-section-label { color: var(--tm-body) !important; }
+[data-theme="dark"] .cal-filter-item {
+  background: transparent !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .cal-filter-item:hover {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .cal-filter-item.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .cal-filter-all {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .cal-filter-all.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .cal-filter-dot   { outline: 1px solid var(--tm-border) !important; }
+[data-theme="dark"] .cal-filter-label { color: inherit !important; }
+
+/* -- Resource group / kind filter / select-all row ------------------ */
+[data-theme="dark"] .resource-group-header {
+  background: var(--tm-surface-2) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .resource-search-row { background: var(--tm-surface-2) !important; }
+[data-theme="dark"] .kind-filter-wrap    { background: transparent !important; }
+[data-theme="dark"] .kind-filter-btn {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .kind-filter-btn:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .kind-filter-btn.active {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--tm-accent) !important;
+}
+[data-theme="dark"] .kind-filter-dropdown {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .kind-filter-option {
+  color: var(--tm-text) !important;
+  background: transparent !important;
+}
+[data-theme="dark"] .kind-filter-option:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .kind-filter-option.selected {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .select-all-wrap {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-body-2) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .item-pagination {
+  background: var(--tm-surface-2) !important;
+  border-top: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+
+/* -- Header name + email — pink reinforced (user request) ---------- */
+[data-theme="dark"] .recovery-page .resource-name,
+[data-theme="dark"] .recovery-page .resource-list-name {
+  color: var(--tm-accent-soft) !important;
+  font-weight: 600 !important;
+}
+[data-theme="dark"] .recovery-page .resource-email,
+[data-theme="dark"] .recovery-page .resource-list-email {
+  color: var(--tm-accent-soft) !important;
+  opacity: 0.82;
+}
+
+/* -- Scrollbars inside Recovery panels ------------------------------- */
+[data-theme="dark"] .recovery-page *::-webkit-scrollbar        { width: 10px; height: 10px; }
+[data-theme="dark"] .recovery-page *::-webkit-scrollbar-track  { background: var(--tm-surface); }
+[data-theme="dark"] .recovery-page *::-webkit-scrollbar-thumb  { background: var(--tm-hover); border-radius: 6px; }
+[data-theme="dark"] .recovery-page *::-webkit-scrollbar-thumb:hover { background: var(--tm-accent); }
+
+/* ─────────────────────────────────────────────────────────────────────
+   27. RecoveryToolbar component (.recovery-toolbar-*)
+   Separate from Recovery.css; contains the search pill + Version
+   dropdown + Download / Recover action buttons. Every surface was
+   white with a light-grey border — repaint for dark mode and give
+   Download/Recover visible hover effects.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .recovery-toolbar {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .recovery-toolbar-search        { background: var(--tm-surface) !important; border-right-color: var(--tm-border) !important; }
+[data-theme="dark"] .recovery-toolbar-search-field {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+[data-theme="dark"] .recovery-toolbar-search-field:hover,
+[data-theme="dark"] .recovery-toolbar-search-field:focus-within {
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 0 0 2px rgba(184, 14, 56, 0.15) !important;
+}
+[data-theme="dark"] .recovery-toolbar-search-input {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .recovery-toolbar-search-input::placeholder { color: var(--tm-muted) !important; }
+[data-theme="dark"] .recovery-toolbar-search-btn       { color: var(--tm-body) !important; }
+[data-theme="dark"] .recovery-toolbar-search-btn:hover { color: var(--tm-accent-soft) !important; }
+
+[data-theme="dark"] .recovery-toolbar-version-section,
+[data-theme="dark"] .recovery-toolbar-actions-section { border-right-color: var(--tm-border) !important; }
+[data-theme="dark"] .recovery-toolbar-version-label   { color: var(--tm-body) !important; }
+[data-theme="dark"] .recovery-toolbar-version-select {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .recovery-toolbar-version-select:hover:not(:disabled) { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .recovery-toolbar-version-select:disabled { color: var(--tm-muted) !important; }
+[data-theme="dark"] .recovery-toolbar-version-caret   { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .recovery-toolbar-version-menu {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5) !important;
+}
+[data-theme="dark"] .recovery-toolbar-version-opt {
+  color: var(--tm-text) !important;
+  background: transparent !important;
+}
+[data-theme="dark"] .recovery-toolbar-version-opt:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .recovery-toolbar-version-opt.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .recovery-toolbar-error { color: var(--tm-accent-soft) !important; }
+
+/* Download button — grey idle, pink border on hover + soft pink glow
+ * + subtle lift, per user ask for "effect". */
+[data-theme="dark"] .recovery-toolbar-btn {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.2s ease, transform 0.15s ease !important;
+}
+[data-theme="dark"] .recovery-toolbar-btn:hover:not(:disabled) {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+  box-shadow: 0 6px 18px rgba(184, 14, 56, 0.25) !important;
+  transform: translateY(-1px);
+}
+[data-theme="dark"] .recovery-toolbar-btn:disabled { opacity: 0.5 !important; }
+
+/* Recover button — solid pink idle, darker pink + pink glow + scale on
+ * hover so the primary CTA stands out. */
+[data-theme="dark"] .recovery-toolbar-btn-recover {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 2px 8px rgba(184, 14, 56, 0.35) !important;
+}
+[data-theme="dark"] .recovery-toolbar-btn-recover:hover:not(:disabled) {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(184, 14, 56, 0.55) !important;
+  transform: translateY(-1px) scale(1.02);
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   28. RoundedSelect component (.rsel-*) — custom dropdown used inside
+   AddSecretModal for "KMS key provider" and other in-modal selectors.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .rsel-btn {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+  padding: 8px 10px !important;
+  border-radius: 6px 6px 0 0 !important;
+}
+[data-theme="dark"] .rsel-btn:hover:not(:disabled),
+[data-theme="dark"] .rsel-btn:focus-visible { border-bottom-color: var(--tm-accent) !important; }
+[data-theme="dark"] .rsel-caret  { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .rsel-menu {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55) !important;
+}
+[data-theme="dark"] .rsel-opt {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .rsel-opt:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .rsel-opt.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .rsel-empty { color: var(--tm-body) !important; }
+
+/* Native <option> popups — hard to fully style, but setting bg/text
+ * on <option> helps in Chromium/Firefox so the drop-down list doesn't
+ * render as white in dark mode. */
+[data-theme="dark"] select option,
+[data-theme="dark"] select optgroup {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   29. Overview 24h status card — make the Success / Warning / Failure
+   row labels match their assigned dot colour (user ask). Counts stay
+   white so the numeric value still reads crisply.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .status-summary-row.success,
+[data-theme="dark"] .status-summary-row.success span { color: var(--tm-success) !important; }
+[data-theme="dark"] .status-summary-row.warning,
+[data-theme="dark"] .status-summary-row.warning span { color: var(--tm-warning) !important; }
+[data-theme="dark"] .status-summary-row.failure,
+[data-theme="dark"] .status-summary-row.failure span { color: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row.success strong,
+[data-theme="dark"] .status-summary-row.warning strong,
+[data-theme="dark"] .status-summary-row.failure strong { color: var(--tm-text) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   30. Remaining white surfaces across the project — sweep pass.
+   Catches AzureVmView (Recovery resource detail), BackupSizeSummary
+   root, Activity page misc surfaces, Auth pages.
+   ─────────────────────────────────────────────────────────────────── */
+/* AzureVmView — recovery resource detail cards + VM two-pane browser */
+[data-theme="dark"] .vm-card,
+[data-theme="dark"] .vm-two-pane {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .vm-left {
+  background: var(--tm-surface-2) !important;
+  border-right-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .vm-left-head,
+[data-theme="dark"] .vm-vol-sub-head {
+  background: var(--tm-hover) !important;
+  border-bottom-color: var(--tm-border) !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .vm-left-cols,
+[data-theme="dark"] .vm-left-row-fs,
+[data-theme="dark"] .vm-field-label,
+[data-theme="dark"] .vm-vol-head { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .vm-left-row {
+  background: transparent !important;
+  border-bottom-color: var(--tm-hover) !important;
+}
+[data-theme="dark"] .vm-left-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .vm-left-row.active {
+  background: var(--tm-hover) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .vm-left-row-title,
+[data-theme="dark"] .vm-field-val,
+[data-theme="dark"] .vm-section-title,
+[data-theme="dark"] .vm-vol-path,
+[data-theme="dark"] .vm-vol-row { color: var(--tm-text) !important; }
+[data-theme="dark"] .vm-left-row-sub,
+[data-theme="dark"] .vm-left-empty,
+[data-theme="dark"] .vm-pane-empty,
+[data-theme="dark"] .vm-vol-empty,
+[data-theme="dark"] .vm-muted { color: var(--tm-body) !important; }
+[data-theme="dark"] .vm-vol-row {
+  border-bottom-color: var(--tm-hover) !important;
+  background: transparent !important;
+}
+[data-theme="dark"] .vm-vol-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .vm-vol-search {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .vm-vol-search:focus { border-color: var(--tm-accent) !important; }
+[data-theme="dark"] .vm-vol-ico-folder,
+[data-theme="dark"] .vm-vol-ico-file { color: var(--tm-body-2) !important; }
+
+/* BackupSizeSummary root (already partly set earlier) */
+[data-theme="dark"] .bss-root { background: var(--tm-surface) !important; }
+
+/* Activity page — secondary white surfaces */
+[data-theme="dark"] .activity-page { background: var(--tm-bg) !important; }
+[data-theme="dark"] .activity-status.done,
+[data-theme="dark"] .activity-status.failed,
+[data-theme="dark"] .activity-status.warning,
+[data-theme="dark"] .activity-status.in-progress { border: 1px solid transparent !important; }
+
+/* Auth pages */
+[data-theme="dark"] .auth-page,
+[data-theme="dark"] .auth-card {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border-color: var(--tm-border) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   31. OneDrive tab (.od-*) — Google-Drive-style layout inside Recovery.
+   Left rail with "My Drive" / "Recent", middle table, breadcrumb
+   header, metadata-only bubble, owner/modified/size columns.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .od-panel-left {
+  background: var(--tm-surface) !important;
+  border-right: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .od-panel-middle {
+  background: var(--tm-surface) !important;
+}
+[data-theme="dark"] .od-left-section {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .od-left-section:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .od-left-section.active {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .od-left-icon-svg            { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .od-left-section.active .od-left-icon-svg { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .od-left-tree                { border-bottom: 1px solid var(--tm-border) !important; }
+
+/* Breadcrumb / main header row above the file table */
+[data-theme="dark"] .od-main-header { border-bottom: 1px solid var(--tm-border) !important; }
+[data-theme="dark"] .od-breadcrumb  { color: var(--tm-text) !important; }
+[data-theme="dark"] .od-breadcrumb-link {
+  color: var(--tm-accent-soft) !important;
+  background: none !important;
+}
+[data-theme="dark"] .od-breadcrumb-link:disabled {
+  color: var(--tm-text) !important;
+  text-decoration: none !important;
+}
+[data-theme="dark"] .od-breadcrumb-link:hover:not(:disabled) { color: var(--tm-accent) !important; }
+[data-theme="dark"] .od-breadcrumb-sep { color: var(--tm-body) !important; }
+[data-theme="dark"] .od-count          { color: var(--tm-body) !important; }
+
+/* Table head + rows */
+[data-theme="dark"] .od-table-head {
+  background: var(--tm-surface-2) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .od-th       { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .od-th-arrow { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .od-row {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-bottom: 1px solid var(--tm-hover) !important;
+}
+[data-theme="dark"] .od-row:hover,
+[data-theme="dark"] .od-row-folder:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .od-row.selected {
+  background: var(--tm-hover) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .od-row-icon { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .od-row-file:hover .od-row-icon,
+[data-theme="dark"] .od-row-file.selected .od-row-icon { color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .od-row-name { color: var(--tm-text) !important; }
+[data-theme="dark"] .od-row-link { color: var(--tm-accent-soft) !important; }
+
+/* Metadata-only bubble — warm grey pill with pink border + pink text */
+[data-theme="dark"] .od-row-tag {
+  background: var(--tm-hover) !important;
+  border: 1px solid var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+  padding: 1px 8px !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* Owner / Modified / Size columns */
+[data-theme="dark"] .od-td-owner,
+[data-theme="dark"] .od-td-modified,
+[data-theme="dark"] .od-td-size { color: var(--tm-body-2) !important; }
+
+/* Power BI files panel variant */
+[data-theme="dark"] .pbi-files-panel { background: var(--tm-surface) !important; }
+[data-theme="dark"] .pbi-empty       { color: var(--tm-body) !important; }
+[data-theme="dark"] .pbi-type        { color: var(--tm-body-2) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   32. Calendar month view (.cal-month-*, .cal-day-*, .cal-hover-*)
+   Previously all-white cells with dark text — repaint fully for dark.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .cal-month-dow-row {
+  background: var(--tm-surface-2) !important;
+  border-top: 1px solid var(--tm-border) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-month-grid { background: var(--tm-surface) !important; }
+[data-theme="dark"] .cal-dow-header {
+  color: var(--tm-body-2) !important;
+  border-right: 1px solid var(--tm-border) !important;
+}
+
+[data-theme="dark"] .cal-day-cell {
+  background: var(--tm-surface) !important;
+  border-right: 1px solid var(--tm-border) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-day-has-events:hover { background: var(--tm-hover) !important; }
+[data-theme="dark"] .cal-day-empty            { background: var(--tm-surface-2) !important; }
+
+[data-theme="dark"] .cal-day-today .cal-day-number {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .cal-day-number { color: var(--tm-text) !important; }
+
+[data-theme="dark"] .cal-day-event-label {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+  border-left: 3px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .cal-day-event-label.cancelled .cal-day-event-name,
+[data-theme="dark"] .cal-hover-row.cancelled .cal-hover-subject { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .cal-day-event-tag {
+  background: rgba(184, 14, 56, 0.2) !important;
+  color: var(--tm-accent-soft) !important;
+}
+
+[data-theme="dark"] .cal-hover-tooltip {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  color: var(--tm-text) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55) !important;
+}
+[data-theme="dark"] .cal-hover-header {
+  color: var(--tm-body-2) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-hover-row:hover  { background: var(--tm-hover) !important; }
+[data-theme="dark"] .cal-hover-row.checked { background: rgba(184, 14, 56, 0.15) !important; }
+[data-theme="dark"] .cal-hover-check      { accent-color: var(--tm-accent) !important; }
+[data-theme="dark"] .cal-hover-subject    { color: var(--tm-text) !important; }
+[data-theme="dark"] .cal-hover-time       { color: var(--tm-body) !important; }
+
+[data-theme="dark"] .cal-event-chip { color: #ffffff !important; }
+[data-theme="dark"] .cal-event-chip.previewing { outline-color: var(--tm-accent-soft) !important; }
+[data-theme="dark"] .cal-event-name { color: #ffffff !important; }
+[data-theme="dark"] .cal-event-overflow { color: var(--tm-body-2) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   33. Header data-source dropdown — make the "Active" / "Discovering"
+   status badges use the theme palette. User ask: pink bg + white font
+   for active. Also force the service-name row + dropdown-label to read
+   on the dark surface.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .header .dropdown-menu .status-badge.active {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+[data-theme="dark"] .header .dropdown-menu .status-badge.discovering {
+  background: rgba(229, 180, 88, 0.22) !important;
+  color: var(--tm-warning) !important;
+}
+
+/* SERVICES / TENANTS section label — pink eyebrow so the user sees
+ * the heading above each group clearly. */
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-label {
+  color: var(--tm-accent-soft) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+}
+
+/* Service name row inside dropdown (Microsoft 365 / Azure / etc.) */
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-item span {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-item.active span {
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-item .source-icon {
+  background: var(--tm-hover) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+
+/* "+ Add data source" item — pink-on-theme treatment */
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-item.add-source,
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-item.add-source span,
+[data-theme="dark"] .header .dropdown-menu .dropdown-section .dropdown-item.add-source .add-icon {
+  color: var(--tm-accent-soft) !important;
+}
+
+/* Data-source-selector search input */
+[data-theme="dark"] .header .dropdown-menu .dropdown-search input {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .header .dropdown-menu .dropdown-search input:focus {
+  border-color: var(--tm-accent) !important;
+  background: var(--tm-surface-2) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   34. "Add data source" modal — source tiles (Microsoft / Azure).
+   The grid items themselves stay grey; the coloured M365 / Azure logos
+   on the source-logo svg keep their brand colours. The outlined
+   "Microsoft" / "Azure" buttons get consistent pink-border-hover.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.microsoft,
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.azure {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.microsoft:hover:not(:disabled),
+[data-theme="dark"] .modal-overlay .modal-content .modal-body .data-sources-grid .data-source-item .source-btn.azure:hover:not(:disabled) {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--tm-accent) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   35. Calendar month toolbar — "Today" button, prev/next arrows, and
+   the current-month label (.cal-nav, .cal-nav-today, .cal-nav-arrow,
+   .cal-month-label, .cal-view-toggle).
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .cal-nav,
+[data-theme="dark"] .cal-month-nav,
+[data-theme="dark"] .cal-month-view {
+  background: var(--tm-surface) !important;
+  border-bottom-color: var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .cal-month-nav {
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-nav-today {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+[data-theme="dark"] .cal-nav-today:hover {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .cal-nav-arrow {
+  background: transparent !important;
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .cal-nav-arrow:hover {
+  background: var(--tm-hover) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .cal-month-label { color: var(--tm-text) !important; }
+
+/* View toggle (if rendered next to the nav — Month / Week / Day) */
+[data-theme="dark"] .cal-view-toggle {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .cal-view-toggle button {
+  background: transparent !important;
+  color: var(--tm-body-2) !important;
+  border: none !important;
+}
+[data-theme="dark"] .cal-view-toggle button:hover   { color: var(--tm-text) !important; }
+[data-theme="dark"] .cal-view-toggle button.active {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   36. Tenants / Data-sources list rows (Tenants.css)
+   .tenant-row / .tenant-name-cell / .service-icon / .tenant-name /
+   .service-badge.{m365,azure} / .status-badge.{success,warning,error}
+   Row hover = pink outline (bg stays). Badges retinted so the pastel
+   pills still carry their semantic colour but read on dark.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .tenant-row {
+  background: transparent !important;
+  border-bottom: 1px solid var(--tm-hover) !important;
+}
+[data-theme="dark"] .tenant-row:hover {
+  background: transparent !important;
+  outline: 1px solid var(--tm-accent) !important;
+  outline-offset: -1px !important;
+}
+[data-theme="dark"] .tenant-row td { color: var(--tm-text) !important; }
+[data-theme="dark"] .tenant-name   { color: var(--tm-text) !important; font-weight: 600 !important; }
+
+/* Service icon tile — warm grey backdrop behind the 4-square logo so
+ * the brand colours pop without a white box around them. */
+[data-theme="dark"] .service-icon {
+  background: var(--tm-surface-2) !important;
+  border: 1px solid var(--tm-border) !important;
+  border-radius: 6px !important;
+  padding: 4px !important;
+}
+
+/* Service type badges — M365 (gold) / Azure (blue), on-theme tiles */
+[data-theme="dark"] .service-badge {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .service-badge.m365 {
+  background: rgba(229, 180, 88, 0.18) !important;
+  color: var(--tm-warning) !important;
+  border: 1px solid rgba(229, 180, 88, 0.4) !important;
+}
+[data-theme="dark"] .service-badge.azure {
+  background: rgba(125, 199, 232, 0.18) !important;
+  color: #8CC4E8 !important;
+  border: 1px solid rgba(125, 199, 232, 0.4) !important;
+}
+
+/* Status badges (row-scoped — doesn't interfere with the header
+ * .status-badge.active rule already defined in section 33) */
+[data-theme="dark"] .tenant-row .status-badge.success,
+[data-theme="dark"] tr .status-badge.success {
+  background: rgba(125, 194, 138, 0.18) !important;
+  color: var(--tm-success) !important;
+  border: 1px solid rgba(125, 194, 138, 0.4) !important;
+}
+[data-theme="dark"] .tenant-row .status-badge.warning,
+[data-theme="dark"] tr .status-badge.warning {
+  background: rgba(229, 180, 88, 0.18) !important;
+  color: var(--tm-warning) !important;
+  border: 1px solid rgba(229, 180, 88, 0.4) !important;
+}
+[data-theme="dark"] .tenant-row .status-badge.error,
+[data-theme="dark"] tr .status-badge.error {
+  background: rgba(232, 96, 122, 0.18) !important;
+  color: var(--tm-failure) !important;
+  border: 1px solid rgba(232, 96, 122, 0.4) !important;
+}
+
+/* Empty-tenants fallback panel */
+[data-theme="dark"] .empty-tenants {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .empty-tenants-title { color: var(--tm-text) !important; }
+[data-theme="dark"] .empty-tenants-text  { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .empty-tenants-btn {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .empty-tenants-btn:hover {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   37. Tenants page — .tenants-page container, actions toolbar, search
+   input, add-source button, and the tenants-table (container / thead /
+   headers). Row-level rules live in section 36.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .tenants-page { background: var(--tm-bg) !important; color: var(--tm-text) !important; }
+
+[data-theme="dark"] .tenants-page .tenants-actions { background: transparent !important; }
+
+[data-theme="dark"] .tenants-page .search-input {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .tenants-page .search-input:focus { border-color: var(--tm-accent) !important; }
+[data-theme="dark"] .tenants-page .search-input::placeholder { color: var(--tm-muted) !important; }
+
+[data-theme="dark"] .tenants-page .add-source-btn {
+  background: var(--tm-accent) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--tm-accent) !important;
+}
+[data-theme="dark"] .tenants-page .add-source-btn:hover {
+  background: var(--tm-accent-dark) !important;
+  border-color: var(--tm-accent-dark) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .tenants-table-container {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+[data-theme="dark"] .tenants-table thead {
+  background: var(--tm-surface-2) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .tenants-table th {
+  color: var(--tm-body-2) !important;
+  border-bottom: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .tenants-table td {
+  color: var(--tm-text) !important;
+  border-bottom: 1px solid var(--tm-hover) !important;
+}
+[data-theme="dark"] .loading-cell { color: var(--tm-body) !important; }
