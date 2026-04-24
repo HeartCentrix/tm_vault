@@ -49,7 +49,7 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   const [destination, setDestination] = useState<Destination>('original');
   const [originalSub, setOriginalSub] = useState<OriginalSubOption>('separate_folder');
   const [folderName, setFolderName] = useState(
-    `Restored by AFI/${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
+    `Restored by/${new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', '-')}`
   );
   const [targetUserId, setTargetUserId] = useState('');
   const [targetResourceId, setTargetResourceId] = useState('');
