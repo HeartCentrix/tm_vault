@@ -151,14 +151,32 @@ export default function RecoveryToolbar({
   onSearchSubmit,
   searchPlaceholder = 'Search',
 }: RecoveryToolbarProps) {
-  const completed = (snapshots || [])
-    .filter(s => (s.status || '').toUpperCase() === 'COMPLETED')
-    .slice()
-    .sort((a, b) => {
+  // Dedup sibling-resource snapshots that share the same backup run.
+  // An ENTRA_USER backup fans out to USER_MAIL / USER_CALENDAR / etc.;
+  // each child gets its own snapshot row started milliseconds apart,
+  // all rendering to the same minute. Group by minute-bucket and keep
+  // the row with the most items as canonical (so the user can still
+  // pick "this backup" and the resolver expands to all siblings).
+  const completed = (() => {
+    const all = (snapshots || [])
+      .filter(s => (s.status || '').toUpperCase() === 'COMPLETED');
+    const buckets = new Map<string, SnapshotItem>();
+    for (const s of all) {
+      const t = s.createdAt ? new Date(
+        /Z|[+-]\d{2}:?\d{2}$/.test(s.createdAt) ? s.createdAt : s.createdAt + 'Z'
+      ).getTime() : 0;
+      const key = String(Math.floor(t / 60000));
+      const prev = buckets.get(key);
+      if (!prev || (s.itemCount || 0) > (prev.itemCount || 0)) {
+        buckets.set(key, s);
+      }
+    }
+    return Array.from(buckets.values()).sort((a, b) => {
       const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return tb - ta;
     });
+  })();
 
   // If the parent didn't pre-seed `selectedSnapshotId` (Azure DB / VM /
   // SharePoint don't flow through the M365 content-snapshot resolver),
