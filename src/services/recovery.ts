@@ -57,7 +57,7 @@ export interface RecoveryItemListResponse {
 }
 
 export interface RecoveryRequest {
-  restoreType: 'IN_PLACE' | 'CROSS_USER' | 'CROSS_RESOURCE' | 'EXPORT_ZIP' | 'DOWNLOAD';
+  restoreType: 'IN_PLACE' | 'CROSS_USER' | 'CROSS_RESOURCE' | 'EXPORT_ZIP' | 'EXPORT_PST' | 'DOWNLOAD';
   snapshotIds: string[];
   itemIds: string[];
   // Files folder-select v2 — folders ticked by the user; server expands
@@ -88,6 +88,9 @@ export interface RecoveryRequest {
   entraSections?: string[];
   format?: string;
   includeNestedDetail?: boolean;
+  // PST-specific fields (restoreType === 'EXPORT_PST' only)
+  pstGranularity?: 'MAILBOX' | 'FOLDER' | 'ITEM';
+  pstIncludeTypes?: string[];
 }
 
 export interface RecoveryResponse {

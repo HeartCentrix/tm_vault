@@ -25,5 +25,4 @@ tests/
 *.sw?
 .env
 
-CLAUDE.md
-.claude/
+ 

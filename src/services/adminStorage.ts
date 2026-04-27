@@ -44,7 +44,10 @@ const getAuthHeaders = (): Record<string, string> => {
 
 export const AdminStorageService = {
   async status(): Promise<ToggleStatus> {
-    const r = await fetch(API.ADMIN_STORAGE.STATUS, { headers: getAuthHeaders() });
+    // cache: 'no-store' + a cache-buster query so neither the browser
+    // disk cache nor any intermediate proxy can serve a stale status.
+    const url = `${API.ADMIN_STORAGE.STATUS}?_t=${Date.now()}`;
+    const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
     if (!r.ok) throw new Error(`status: ${r.status}`);
     return r.json();
   },

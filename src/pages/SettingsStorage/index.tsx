@@ -20,6 +20,8 @@ export default function SettingsStoragePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
   const refresh = async () => {
     try {
       const [s, bs, es] = await Promise.all([
@@ -30,6 +32,11 @@ export default function SettingsStoragePage() {
       setStatus(s);
       setBackends(bs);
       setEvents(es);
+      setLastUpdated(new Date());
+      // Clear any prior error once a refresh succeeds — without this,
+      // an early failure (CORS outage, transient 401) wedges the page
+      // into the error UI even after the backend recovers.
+      setError(null);
     } catch (e) {
       setError(String(e));
     }
@@ -69,6 +76,27 @@ export default function SettingsStoragePage() {
     );
   }
 
+  // Defensive: a malformed status payload (e.g. orchestrator returned
+  // an empty active_backend during a DB-reset window) used to crash
+  // the page when StateCard accessed `status.active_backend.name` —
+  // unmounting the whole tree and showing a blank screen. Render an
+  // explicit error placeholder instead so the operator can hit Retry.
+  if (!status.active_backend || !status.active_backend.name) {
+    return (
+      <div className="storage-error">
+        <span className="storage-eyebrow">System</span>
+        <h1 className="storage-title">Storage</h1>
+        <div className="storage-error-msg">
+          Backend metadata missing — system_config may not be seeded.
+          Run the on-prem storage migration and retry.
+        </div>
+        <button className="storage-switch-btn" onClick={refresh}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="storage-page">
       <header className="storage-header">
@@ -81,7 +109,7 @@ export default function SettingsStoragePage() {
         </p>
       </header>
 
-      <StateCard status={status} />
+      <StateCard status={status} lastUpdated={lastUpdated} onRefresh={refresh} />
 
       <div className="storage-actions">
         {targetBackend ? (
@@ -114,7 +142,15 @@ export default function SettingsStoragePage() {
   );
 }
 
-function StateCard({ status }: { status: ToggleStatus }) {
+function StateCard({
+  status,
+  lastUpdated,
+  onRefresh,
+}: {
+  status: ToggleStatus;
+  lastUpdated: Date | null;
+  onRefresh: () => void;
+}) {
   const pillClass =
     status.transition_state === 'stable'
       ? 'stable'
@@ -141,6 +177,28 @@ function StateCard({ status }: { status: ToggleStatus }) {
         <span>
           Inflight jobs: <strong>{status.inflight_jobs_count}</strong>
         </span>
+        {lastUpdated && (
+          <span style={{ marginLeft: 12, fontSize: 11, opacity: 0.65 }}>
+            (updated {lastUpdated.toLocaleTimeString()})
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onRefresh}
+          style={{
+            marginLeft: 12,
+            padding: '2px 10px',
+            fontSize: 11,
+            background: 'transparent',
+            border: '1px solid currentColor',
+            borderRadius: 4,
+            cursor: 'pointer',
+            opacity: 0.75,
+          }}
+          title="Force refresh storage status"
+        >
+          ↻ Refresh
+        </button>
       </div>
       {status.cooldown_until && (
         <div className="storage-state-cooldown">
