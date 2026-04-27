@@ -25,6 +25,7 @@ export interface SnapshotItem {
   itemCount: number;
   label?: string;
   durationSecs?: number;
+  jobId?: string;
 }
 
 export interface SnapshotItemDetail {
