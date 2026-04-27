@@ -259,6 +259,46 @@
 [data-theme="dark"] .progress-ring-bg       { stroke: var(--tm-border) !important; }
 [data-theme="dark"] .progress-ring-progress { stroke: var(--tm-accent) !important; }
 
+/* Configuration page — text inside .config-section was authored with
+   light-mode-only greys (#2d3748, #4a5568, #718096). Override every
+   text class so labels, helps, and toggle captions stay readable on
+   the dark surface. Keeps the existing typography weight/size. */
+[data-theme="dark"] .config-section .section-title {
+  color: var(--tm-text) !important;
+  border-bottom-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .config-section .config-label,
+[data-theme="dark"] .config-section .toggle-text,
+[data-theme="dark"] .config-section .toggle-label {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .config-section .config-help,
+[data-theme="dark"] .config-section .config-description,
+[data-theme="dark"] .config-section .config-hint {
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .config-section .config-select,
+[data-theme="dark"] .config-section .config-input,
+[data-theme="dark"] .config-section input[type="text"],
+[data-theme="dark"] .config-section input[type="email"],
+[data-theme="dark"] .config-section input[type="number"],
+[data-theme="dark"] .config-section select,
+[data-theme="dark"] .config-section textarea {
+  background: var(--tm-surface-2, #1f2937) !important;
+  color: var(--tm-text) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .config-section input::placeholder,
+[data-theme="dark"] .config-section textarea::placeholder {
+  color: var(--tm-body) !important;
+  opacity: 0.7;
+}
+/* Toggle switch off-state track gets a darker neutral so the white
+   knob still pops against the dark card. */
+[data-theme="dark"] .config-section .toggle-slider {
+  background: var(--tm-border) !important;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    5. Tables — bg stays grey on row hover; pink outline replaces pink flood.
    ─────────────────────────────────────────────────────────────────── */

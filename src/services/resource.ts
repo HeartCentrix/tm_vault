@@ -218,7 +218,14 @@ export async function getResources(
   if (resourceFilter === 'active') url += `&status=ACTIVE`;
   if (resourceFilter === 'archived') url += `&status=ARCHIVED`;
 
-  const res = await fetch(url, { headers });
+  // Bust browser cache + add query param so any intermediate proxy can't
+  // serve a stale response. Without this, after a backfill / size
+  // correction on the backend the Protection page kept showing the old
+  // accumulated total (e.g. 6 GB when reality is 1.5 GB) for the
+  // browser-cache lifetime of the previous response.
+  const sep = url.includes('?') ? '&' : '?';
+  url = `${url}${sep}_t=${Date.now()}`;
+  const res = await fetch(url, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error(`Failed to fetch resources: ${res.statusText}`);
 
   const data = await res.json();

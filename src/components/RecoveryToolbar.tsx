@@ -151,14 +151,41 @@ export default function RecoveryToolbar({
   onSearchSubmit,
   searchPlaceholder = 'Search',
 }: RecoveryToolbarProps) {
-  const completed = (snapshots || [])
-    .filter(s => (s.status || '').toUpperCase() === 'COMPLETED')
-    .slice()
-    .sort((a, b) => {
+  // One "version" = one backup run = one jobId. An ENTRA_USER backup
+  // fans out per content type (USER_MAIL/CALENDAR/CONTACTS/ONEDRIVE/
+  // CHATS), producing one Snapshot row per child resource — all sharing
+  // the same job_id. Collapse them to a single dropdown entry so the
+  // user sees "the backup they ran", not the worker's internal fan-out.
+  // Fallback for legacy snapshots without jobId: minute-bucket.
+  const completed = (() => {
+    const all = (snapshots || [])
+      .filter(s => (s.status || '').toUpperCase() === 'COMPLETED');
+    const buckets = new Map<string, SnapshotItem>();
+    for (const s of all) {
+      let key: string;
+      if (s.jobId) {
+        key = `j:${s.jobId}`;
+      } else {
+        const t = s.createdAt ? new Date(
+          /Z|[+-]\d{2}:?\d{2}$/.test(s.createdAt) ? s.createdAt : s.createdAt + 'Z'
+        ).getTime() : 0;
+        key = `t:${Math.floor(t / 60000)}`;
+      }
+      const prev = buckets.get(key);
+      // Keep the row with the highest item_count as canonical — usually
+      // the largest content type (mail) — so the dropdown label reflects
+      // the run's "main" payload. Backend's newest-wins resolver still
+      // expands to all siblings on selection.
+      if (!prev || (s.itemCount || 0) > (prev.itemCount || 0)) {
+        buckets.set(key, s);
+      }
+    }
+    return Array.from(buckets.values()).sort((a, b) => {
       const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return tb - ta;
     });
+  })();
 
   // If the parent didn't pre-seed `selectedSnapshotId` (Azure DB / VM /
   // SharePoint don't flow through the M365 content-snapshot resolver),

@@ -6667,27 +6667,11 @@ export default function Recovery() {
                   {/* afi-style size panel: total + 1w/1m/1y deltas + 7-day sparkline
                       centered on today. All derived client-side from the `snapshots`
                       array already loaded for this resource. */}
-                  {/* Total bytes: parent's own storage_bytes is often tiny
-                      for ENTRA_USER rows (just metadata). The real content
-                      bytes are split across Tier 2 children; contentSnapshots
-                      has the per-tab latest-snapshot bytesTotal. Sum those
-                      plus the parent row itself so the headline "Backup
-                      size" reflects what the user actually has. */}
+                  {/* Backend computes the rollup (sum of bytes_added
+                      across the resource subtree's non-failed snapshots
+                      = true on-disk footprint). FE just renders. */}
                   <BackupSizeSummary
-                    snapshots={snapshots}
-                    totalBytes={(() => {
-                      const parentBytes = selectedResource.storage_bytes || 0;
-                      const childBytes = contentSnapshots
-                        ? Object.values(contentSnapshots.byContent).reduce(
-                            (sum, entry) => sum + (entry?.bytesTotal || 0),
-                            0,
-                          )
-                        : 0;
-                      // If child bytes are non-zero they're the source of
-                      // truth (contentSnapshots already rolls up per tab);
-                      // otherwise fall back to the parent's own size.
-                      return childBytes > 0 ? childBytes : parentBytes;
-                    })()}
+                    resourceId={selectedResource.id}
                   />
 
                   {/* Snapshot picker is gone — the user no longer chooses a

@@ -15,6 +15,7 @@ import Activity from './pages/Activity';
 import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
 import SettingsStoragePage from './pages/SettingsStorage';
+import ErrorBoundary from './components/ErrorBoundary';
 import GlobalSearch from './pages/GlobalSearch';
 import Configuration from './pages/Configuration';
 
@@ -147,7 +148,9 @@ export default function App() {
             path="/settings/storage"
             element={
               <ProtectedRoute>
-                <SettingsStoragePage />
+                <ErrorBoundary label="Storage">
+                  <SettingsStoragePage />
+                </ErrorBoundary>
               </ProtectedRoute>
             }
           />

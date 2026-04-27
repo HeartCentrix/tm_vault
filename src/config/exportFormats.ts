@@ -13,6 +13,7 @@ export const EXPORT_FORMATS: Record<ContentTab, ExportFormatOption[]> = {
   mail: [
     { value: 'MBOX', label: 'Export as MBOX' },
     { value: 'EML', label: 'Export as EML' },
+    { value: 'PST', label: 'Export as PST', hint: 'Outlook .pst archive — includes mail, calendar & contacts' },
   ],
   onedrive: [
     { value: 'ZIP', label: 'Export as ZIP' },
@@ -21,10 +22,12 @@ export const EXPORT_FORMATS: Record<ContentTab, ExportFormatOption[]> = {
   contacts: [
     { value: 'VCF', label: 'Export as VCF' },
     { value: 'CSV', label: 'Export as CSV' },
+    { value: 'PST', label: 'Export as PST', hint: 'Outlook .pst archive — contacts only' },
   ],
   calendar: [
     { value: 'ICS', label: 'Export as ICS' },
     { value: 'CSV', label: 'Export as CSV' },
+    { value: 'PST', label: 'Export as PST', hint: 'Outlook .pst archive — calendar events only' },
   ],
   chats: [
     { value: 'HTML', label: 'Export as HTML' },

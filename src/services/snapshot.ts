@@ -25,6 +25,24 @@ export interface SnapshotItem {
   itemCount: number;
   label?: string;
   durationSecs?: number;
+  jobId?: string;
+}
+
+/**
+ * Backend-computed "actually-used storage" rollup for a resource +
+ * its child subtree. Replaces client-side bytes_total summing which
+ * double-counted unchanged items across incremental snapshots.
+ */
+export interface StorageSummary {
+  resourceId: string;
+  subtreeSize: number;
+  totalBytes: number;
+  deltas: { week: number; month: number; year: number };
+  dailySeries: Array<{
+    date: string;
+    bytesAdded: number | null;
+    isFuture: boolean;
+  }>;
 }
 
 export interface SnapshotItemDetail {
@@ -149,6 +167,17 @@ const getAuthHeaders = (): Record<string, string> => {
 };
 
 export const SnapshotService = {
+  /** Backend-computed "actually-used storage" rollup for the protection
+   *  tab. The headline + 1w/1m/1y deltas + 7-day sparkline all come from
+   *  one call so the FE never re-sums snapshot bytes locally (which had
+   *  double-counted incremental fan-out). */
+  async getStorageSummary(resourceId: string): Promise<StorageSummary> {
+    const url = API.SNAPSHOTS.STORAGE_SUMMARY(resourceId);
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch storage summary');
+    return res.json();
+  },
+
   async listByResource(resourceId: string, page = 1, size = 20, includeChildren = false): Promise<SnapshotListResponse> {
     const url = API.SNAPSHOTS.LIST(resourceId);
     // `includeChildren` rolls in snapshots from Tier 2 child resources

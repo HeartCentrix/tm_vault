@@ -38,6 +38,87 @@ interface DownloadModalProps {
 
 type Scope = 'selected' | 'all';
 
+// PST-compatible workload → item type mapping.
+const WORKLOAD_TO_PST_TYPE: Partial<Record<DownloadWorkload, string>> = {
+  Mail: 'EMAIL',
+  Contacts: 'USER_CONTACT',
+  Calendar: 'CALENDAR_EVENT',
+  // OneDrive has no PST equivalent — intentionally omitted.
+};
+
+// True if at least one checked workload can produce PST output.
+function hasPstCompatibleWorkload(scope: Scope, workloads: Set<DownloadWorkload>): boolean {
+  if (scope === 'selected') return true;
+  return [...workloads].some(w => w in WORKLOAD_TO_PST_TYPE);
+}
+
+// Compute pstIncludeTypes from the current scope + workloads + contentType + resourceKind.
+// "selected" scope: driven by the active content tab (email tab → EMAIL only, etc.).
+// "all" scope: driven by whichever PST-compatible workloads are checked.
+// Resource-kind restrictions applied on top for shared/room/M365 mailboxes.
+function resolvePstIncludeTypes(
+  contentType: ContentTab,
+  resourceKind: string | undefined,
+  scope: Scope,
+  workloads: Set<DownloadWorkload>,
+): string[] {
+  let types: string[];
+
+  if (scope === 'selected') {
+    // Tab drives the type exactly — selected items on the mail tab are emails only.
+    if (contentType === 'contacts') types = ['USER_CONTACT'];
+    else if (contentType === 'calendar') types = ['CALENDAR_EVENT'];
+    else types = ['EMAIL'];
+  } else {
+    // Workload checkboxes drive the types.
+    types = [...workloads]
+      .map(w => WORKLOAD_TO_PST_TYPE[w])
+      .filter((t): t is string => Boolean(t));
+  }
+
+  // Restrict by resource kind (shared/room have no calendar or contacts).
+  if (resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox')
+    types = types.filter(t => t === 'EMAIL');
+  else if (resourceKind === 'm365_group')
+    types = types.filter(t => t !== 'USER_CONTACT');
+
+  return types;
+}
+
+// Auto-determines PST granularity from selection — no manual picker needed.
+// Download all  → MAILBOX (one PST per mailbox)
+// Folder paths  → FOLDER  (one PST per folder)
+// Individual items → ITEM (one PST per item)
+function autoGranularity(scope: Scope, folderPaths?: string[]): 'MAILBOX' | 'FOLDER' | 'ITEM' {
+  if (scope === 'all') return 'MAILBOX';
+  if (folderPaths && folderPaths.length > 0) return 'FOLDER';
+  return 'ITEM';
+}
+
+// Human-readable label for the auto-detected granularity + output files.
+function getPstAutoLabel(
+  scope: Scope,
+  folderPaths: string[] | undefined,
+  contentType: ContentTab,
+  resourceKind: string | undefined,
+  workloads: Set<DownloadWorkload>,
+  selectedCount: number,
+): string {
+  const gran = autoGranularity(scope, folderPaths);
+  const types = resolvePstIncludeTypes(contentType, resourceKind, scope, workloads);
+  if (types.length === 0) return 'No PST-compatible items in current selection.';
+
+  const typeLabels: string[] = [];
+  if (types.includes('EMAIL'))          typeLabels.push('mail');
+  if (types.includes('CALENDAR_EVENT')) typeLabels.push('calendar');
+  if (types.includes('USER_CONTACT'))   typeLabels.push('contacts');
+  const what = typeLabels.join(' + ');
+
+  if (gran === 'MAILBOX') return `Full mailbox exported as PST (${what}) — opens in Outlook`;
+  if (gran === 'FOLDER')  return `${folderPaths!.length} folder${folderPaths!.length > 1 ? 's' : ''} exported as PST (${what}) — opens in Outlook`;
+  return `${selectedCount} item${selectedCount !== 1 ? 's' : ''} exported as PST (${what}) — opens in Outlook`;
+}
+
 export function DownloadModal({
   isOpen,
   onClose,
@@ -70,6 +151,15 @@ export function DownloadModal({
   } | null>(null);
   const [progressPct, setProgressPct] = useState<number>(0);
   const [entraSelection, setEntraSelection] = useState<EntraDownloadSelection | null>(null);
+  // Granularity is auto-determined — no state needed.
+  const pstGranularity = autoGranularity(scope, folderPaths);
+
+  // Auto-deselect PST when workload mix changes to OneDrive-only.
+  useEffect(() => {
+    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads)) {
+      setExportFormat(DEFAULT_FORMAT[contentType]);
+    }
+  }, [scope, workloads, contentType, exportFormat]);
 
   // Contact folder subgroup state. Populated only when Contacts is checked
   // and scope === 'all' for a single-snapshot export. Default = all checked
@@ -274,6 +364,64 @@ export function DownloadModal({
         setError('Export timed out. Try again later.');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Download failed');
+      } finally {
+        setDownloading(false);
+      }
+      return;
+    }
+
+    if (exportFormat === 'PST') {
+      if (scope === 'selected' && itemIds.length === 0 && !(folderPaths && folderPaths.length > 0)) {
+        setError('No items selected.');
+        return;
+      }
+      setDownloading(true);
+      setError(null);
+      try {
+        const response = await RecoveryService.triggerExport({
+          restoreType: 'EXPORT_PST',
+          snapshotIds,
+          itemIds: scope === 'selected' ? itemIds : [],
+          folderPaths: scope === 'selected' && folderPaths?.length ? folderPaths : undefined,
+          exportFormat: 'PST',
+          pstGranularity,
+          pstIncludeTypes: resolvePstIncludeTypes(contentType, resourceKind, scope, workloads),
+          workloads: scope === 'all' ? Array.from(workloads) : undefined,
+          includeAttachments,
+        });
+        const jobId = response.jobId;
+        const token = localStorage.getItem('access_token');
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        for (let i = 0; i < 600; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
+          if (!statusRes.ok) continue;
+          const job = await statusRes.json();
+          if (job.status === 'COMPLETED') {
+            const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
+            if (!dlRes.ok) throw new Error('Download failed');
+            const blob = await dlRes.blob();
+            const cd = dlRes.headers.get('Content-Disposition') || '';
+            const m = cd.match(/filename="?([^"]+)"?/i);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = m ? m[1] : `pst-export-${jobId.slice(0, 8)}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            onClose();
+            return;
+          }
+          if (job.status === 'FAILED') {
+            setError('PST export failed. Please try again.');
+            return;
+          }
+        }
+        setError('Export timed out. Try again later.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'PST export failed');
       } finally {
         setDownloading(false);
       }
@@ -494,22 +642,37 @@ export function DownloadModal({
             {formats.length === 0 ? (
               <div className="modal-error">No export formats configured for “{contentType}”.</div>
             ) : (
-              formats.map(f => (
-                <label key={f.value} className="radio-row">
-                  <input
-                    type="radio"
-                    name="export-format"
-                    checked={exportFormat === f.value}
-                    onChange={() => setExportFormat(f.value)}
-                  />
-                  <span>
-                    {f.label}
-                    {f.hint && <span className="info-icon" title={f.hint}>ℹ</span>}
-                  </span>
-                </label>
-              ))
+              formats.map(f => {
+                const pstDisabled = f.value === 'PST' && !hasPstCompatibleWorkload(scope, workloads);
+                return (
+                  <label
+                    key={f.value}
+                    className="radio-row"
+                    style={pstDisabled ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                    title={pstDisabled ? 'No PST-compatible workload selected (OneDrive does not support PST)' : undefined}
+                  >
+                    <input
+                      type="radio"
+                      name="export-format"
+                      checked={exportFormat === f.value}
+                      onChange={() => !pstDisabled && setExportFormat(f.value)}
+                      disabled={pstDisabled}
+                    />
+                    <span>
+                      {f.label}
+                      {f.hint && <span className="info-icon" title={f.hint}>ℹ</span>}
+                      {pstDisabled && <span style={{ fontSize: 11, marginLeft: 6, color: '#9ca3af' }}>(not available)</span>}
+                    </span>
+                  </label>
+                );
+              })
             )}
-            {contentType === 'mail' && (
+            {exportFormat === 'PST' && (
+              <div style={{ marginTop: 14, fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
+                {getPstAutoLabel(scope, folderPaths, contentType, resourceKind, workloads, selectedCount)}
+              </div>
+            )}
+            {contentType === 'mail' && exportFormat !== 'PST' && (
               <label className="checkbox-row" style={{ marginTop: 16 }}>
                 <input
                   type="checkbox"
