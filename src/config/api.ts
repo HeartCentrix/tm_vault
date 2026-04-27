@@ -88,6 +88,7 @@ export const API = {
   SNAPSHOTS: {
     LIST: (resourceId: string) => `${API_URL}/resources/${resourceId}/snapshots`,
     CONTENT_SNAPSHOTS: (resourceId: string) => `${API_URL}/resources/${resourceId}/content-snapshots`,
+    STORAGE_SUMMARY: (resourceId: string) => `${API_URL}/resources/${resourceId}/storage-summary`,
     DETAIL: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}`,
     ITEMS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items`,
     ITEM_DETAIL: (snapshotId: string, itemId: string) => `${API_URL}/resources/snapshots/${snapshotId}/items/${itemId}`,
