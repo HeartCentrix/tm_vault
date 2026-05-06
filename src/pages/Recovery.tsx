@@ -2289,6 +2289,17 @@ function SharePointView({
   // Reset drill-down path whenever the snapshot changes.
   useEffect(() => { setSpPath([]); }, [latestSnapshot?.id]);
 
+  // SharePoint breadcrumb navigation (`spPath`) is local state and
+  // bypasses the parent's selectedFolder-based clear. Drop the parent's
+  // checked items whenever the user drills in/out so selections from one
+  // list/folder don't survive into another.
+  useEffect(() => {
+    onSelectAll([], false);
+    // onSelectAll is a stable handler from the parent; only spPath
+    // should drive this clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spPath]);
+
   // Derive the site_label prefix ("Communication site/lists/") from any
   // row — all rows share the same parent. Needed because folder_path
   // is ABSOLUTE and we strip it to site-relative for navigation.
@@ -5982,18 +5993,24 @@ export default function Recovery() {
     }
   }, [loadingMore, hasMore, activeContentType, selectedSnapshotId]);
 
-  // Clear preview + drop any checked items when the snapshot or tab changes.
-  // Without clearing selectedItems, ids from one tab leak into another
-  // (Download/Recover would act on stale ids). Folder changes deliberately
-  // keep the current selection — the user may be narrowing a subset.
-  // For Azure DB the "active tab" lives in `?tab=configuration|database|
-  // schema` (URL-synced inside AzureDbView), not in activeContentType —
+  // Clear preview + drop EVERY form of selection (item-level checkboxes
+  // AND folder-level bulk-select) when the snapshot, tab, or active
+  // folder changes. Without this, ids from one scope leak into another
+  // (Download/Recover would act on stale ids — e.g. Inbox ticks
+  // surviving a switch to Deleted, or OneDrive bulk-folder picks
+  // re-appearing when navigating back to a folder you'd left).
+  // For Azure DB the "active tab" lives in `?tab=configuration|database
+  // |schema` (URL-synced inside AzureDbView), not in activeContentType —
   // include that value so switching between Configuration / Database /
   // Schema also resets the checkbox state.
   useEffect(() => {
     setSelectedItem(null);
     setSelectedItems(new Set());
-  }, [selectedSnapshotId, activeContentType, searchParams.get('tab')]);
+    setOneDriveFolderSelected(new Set());
+    setOneDriveFolderBusy(new Set());
+    setGenericFolderSelected(new Set());
+    setGenericFolderBusy(new Set());
+  }, [selectedSnapshotId, activeContentType, searchParams.get('tab'), selectedFolder]);
 
   // Left-panel grouping is uniform across mail / onedrive / contacts /
   // chats — all driven by the active tab's snapshot's distinct folder_paths.
