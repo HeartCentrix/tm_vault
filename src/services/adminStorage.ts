@@ -35,25 +35,23 @@ export interface ToggleEvent {
   retried_job_count: number | null;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token');
-  return token
-    ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-    : { 'Content-Type': 'application/json' };
-};
+// Auth rides on the HttpOnly cookie set by /auth/callback. fetch() picks
+// it up automatically thanks to the credentials: 'include' default in
+// main.tsx, so no per-call header construction is needed.
+const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
 export const AdminStorageService = {
   async status(): Promise<ToggleStatus> {
     // cache: 'no-store' + a cache-buster query so neither the browser
     // disk cache nor any intermediate proxy can serve a stale status.
     const url = `${API.ADMIN_STORAGE.STATUS}?_t=${Date.now()}`;
-    const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
+    const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) throw new Error(`status: ${r.status}`);
     return r.json();
   },
 
   async backends(): Promise<StorageBackend[]> {
-    const r = await fetch(API.ADMIN_STORAGE.BACKENDS, { headers: getAuthHeaders() });
+    const r = await fetch(API.ADMIN_STORAGE.BACKENDS);
     if (!r.ok) throw new Error(`backends: ${r.status}`);
     return r.json();
   },
@@ -65,7 +63,7 @@ export const AdminStorageService = {
   }): Promise<{ event_id: string; status: string }> {
     const r = await fetch(API.ADMIN_STORAGE.TOGGLE, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: JSON_HEADERS,
       body: JSON.stringify(params),
     });
     if (!r.ok) {
@@ -76,18 +74,13 @@ export const AdminStorageService = {
   },
 
   async events(limit = 20): Promise<ToggleEvent[]> {
-    const r = await fetch(`${API.ADMIN_STORAGE.EVENTS}?limit=${limit}`, {
-      headers: getAuthHeaders(),
-    });
+    const r = await fetch(`${API.ADMIN_STORAGE.EVENTS}?limit=${limit}`);
     if (!r.ok) throw new Error(`events: ${r.status}`);
     return r.json();
   },
 
   async abort(eventId: string): Promise<void> {
-    const r = await fetch(API.ADMIN_STORAGE.ABORT(eventId), {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
+    const r = await fetch(API.ADMIN_STORAGE.ABORT(eventId), { method: 'POST' });
     if (!r.ok) throw new Error(`abort: ${r.status}`);
   },
 
@@ -96,12 +89,10 @@ export const AdminStorageService = {
     onStatus: (data: Record<string, unknown>) => void
   ): EventSource {
     const url = API.ADMIN_STORAGE.EVENT_STREAM(eventId);
-    // Native EventSource doesn't forward auth headers — token must be in URL
-    // or the endpoint must accept cookies. For this internal-only flow we
-    // pass the token as a query param and api-gateway accepts it.
-    const token = localStorage.getItem('access_token');
-    const withAuth = token ? `${url}?token=${encodeURIComponent(token)}` : url;
-    const es = new EventSource(withAuth);
+    // EventSource carries the HttpOnly cookie when withCredentials=true; the
+    // gateway translates that cookie to a Bearer header for the upstream
+    // service. Don't pass the token in the URL — that leaks it to logs.
+    const es = new EventSource(url, { withCredentials: true });
     es.addEventListener('status', (evt: MessageEvent) => {
       try {
         onStatus(JSON.parse(evt.data));

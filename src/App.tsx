@@ -19,9 +19,12 @@ import ErrorBoundary from './components/ErrorBoundary';
 import GlobalSearch from './pages/GlobalSearch';
 import Configuration from './pages/Configuration';
 
-// Simple auth check - replace with real auth logic
+// The access token lives in an HttpOnly cookie that JS can't read (so XSS
+// can't exfiltrate it). Use the non-credential `user` breadcrumb as a UX
+// hint — actual auth is enforced by the backend on every request, and a
+// stale breadcrumb just yields 401s that the API caller can react to.
 const isAuthenticated = () => {
-  return !!localStorage.getItem('access_token');
+  return !!localStorage.getItem('user');
 };
 
 function AutoRedirect() {
@@ -48,7 +51,7 @@ export default function App() {
       try {
         // Only redirect if user is authenticated — otherwise the
         // normal /signin flow handles it.
-        if (localStorage.getItem('access_token')) {
+        if (localStorage.getItem('user')) {
           window.location.assign('/tenants');
         }
       } catch {

@@ -16,10 +16,7 @@ export async function getDataSources(): Promise<DataSourceType[]> {
   if (fetchPromise) return fetchPromise;
 
   fetchPromise = (async () => {
-    const token = localStorage.getItem('access_token');
-    const res = await fetch(API.TENANTS.LIST, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await fetch(API.TENANTS.LIST);
     if (!res.ok) throw new Error(`Failed to fetch data sources: ${res.statusText}`);
     const tenants: any[] = await res.json();
     const sources: DataSourceType[] = [];

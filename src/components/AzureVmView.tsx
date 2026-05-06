@@ -70,10 +70,7 @@ function _cachedListItems(snapshotId: string): Promise<any[]> {
  *  useLiveDetail below. */
 async function fetchLiveDetail(itemId: string): Promise<any | null> {
   try {
-    const token = localStorage.getItem('access_token');
-    const res = await fetch(`${API.BASE_URL}/snapshot-items/${itemId}/azure-vm-detail`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const res = await fetch(`${API.BASE_URL}/snapshot-items/${itemId}/azure-vm-detail`);
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -110,12 +107,10 @@ async function _cachedVolumeFiles(itemId: string, path: string): Promise<VolEntr
   if (hit && hit.expiresAt > now) return hit;
   if (hit?.inflight) return hit.inflight;
 
-  const token = localStorage.getItem('access_token');
   const inflight = (async (): Promise<VolEntry> => {
     try {
       const res = await fetch(
         `${API.BASE_URL}/snapshot-items/${itemId}/vm-volume-files?path=${encodeURIComponent(path)}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -861,10 +856,7 @@ const AzureVmView = forwardRef<AzureVmViewHandle, Props>(function AzureVmView({
         // Pull the live ARM snapshot so the JSON matches what the
         // Virtual machine tab is rendering (same endpoint the pane
         // uses for its fields).
-        const token = localStorage.getItem('access_token');
-        const res = await fetch(`${API.BASE_URL}/snapshot-items/${configItem.id}/azure-vm-detail`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetch(`${API.BASE_URL}/snapshot-items/${configItem.id}/azure-vm-detail`);
         const payload = res.ok ? await res.json() : (configItem.metadata || {});
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         _triggerBlobDownload(blob, `${configItem.name || 'vm'}-config.json`, null);
@@ -876,15 +868,11 @@ const AzureVmView = forwardRef<AzureVmViewHandle, Props>(function AzureVmView({
         const sep = s.isWindows ? '\\' : '/';
         const base = s.path.endsWith(sep) ? s.path : `${s.path}${sep}`;
         const paths = s.selected.map(x => `${base}${x.name}`);
-        const token = localStorage.getItem('access_token');
         const res = await fetch(
           `${API.BASE_URL}/snapshot-items/${s.volumeItemId}/vm-volume-download`,
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paths }),
           },
         );
@@ -906,10 +894,7 @@ const AzureVmView = forwardRef<AzureVmViewHandle, Props>(function AzureVmView({
       const checkedIds = activeList.filter(i => selectedItems.has(i.id));
       const first = checkedIds[0] || activeList[0];
       if (!first) return;
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${API.BASE_URL}/snapshot-items/${first.id}/azure-vm-detail`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch(`${API.BASE_URL}/snapshot-items/${first.id}/azure-vm-detail`);
       const payload = res.ok ? await res.json() : (first.metadata || {});
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       _triggerBlobDownload(blob, `${first.name || activeTab}.json`, null);

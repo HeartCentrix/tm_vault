@@ -46,10 +46,7 @@ export interface WebhookConfig {
   createdAt: string;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
 export const AlertService = {
   async listAlerts(
@@ -61,47 +58,39 @@ export const AlertService = {
     if (options?.unresolvedOnly) url += '&unresolved=true';
     if (options?.tenantId) url += `&tenantId=${options.tenantId}`;
 
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch alerts');
     return res.json();
   },
 
   async getAlert(alertId: string): Promise<AlertItem> {
-    const url = `${API.ALERTS.LIST}/${alertId}`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(`${API.ALERTS.LIST}/${alertId}`);
     if (!res.ok) throw new Error('Failed to fetch alert');
     return res.json();
   },
 
   async resolveAlert(alertId: string): Promise<void> {
-    const url = API.ALERTS.RESOLVE(alertId);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
+    const res = await fetch(API.ALERTS.RESOLVE(alertId), { method: 'POST' });
     if (!res.ok) throw new Error('Failed to resolve alert');
   },
 
   async getNotificationSettings(): Promise<NotificationSettings> {
-    const url = `${API.ALERTS.LIST}/notifications/settings`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(`${API.ALERTS.LIST}/notifications/settings`);
     if (!res.ok) throw new Error('Failed to fetch notification settings');
     return res.json();
   },
 
   async updateNotificationSettings(settings: Partial<NotificationSettings>): Promise<void> {
-    const url = `${API.ALERTS.LIST}/notifications/settings`;
-    const res = await fetch(url, {
+    const res = await fetch(`${API.ALERTS.LIST}/notifications/settings`, {
       method: 'PUT',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(settings),
     });
     if (!res.ok) throw new Error('Failed to update notification settings');
   },
 
   async listWebhooks(): Promise<WebhookConfig[]> {
-    const url = `${API.ALERTS.LIST}/webhooks`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(`${API.ALERTS.LIST}/webhooks`);
     if (!res.ok) throw new Error('Failed to fetch webhooks');
     return res.json();
   },
@@ -109,7 +98,7 @@ export const AlertService = {
   async createWebhook(webhook: { name: string; url: string; enabled: boolean }): Promise<WebhookConfig> {
     const res = await fetch(`${API.ALERTS.LIST}/webhooks`, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(webhook),
     });
     if (!res.ok) throw new Error('Failed to create webhook');
@@ -117,20 +106,12 @@ export const AlertService = {
   },
 
   async deleteWebhook(webhookId: string): Promise<void> {
-    const url = `${API.ALERTS.LIST}/webhooks/${webhookId}`;
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
+    const res = await fetch(`${API.ALERTS.LIST}/webhooks/${webhookId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete webhook');
   },
 
   async testWebhook(webhookId: string): Promise<{ success: boolean; message: string }> {
-    const url = `${API.ALERTS.LIST}/webhooks/${webhookId}/test`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
+    const res = await fetch(`${API.ALERTS.LIST}/webhooks/${webhookId}/test`, { method: 'POST' });
     if (!res.ok) throw new Error('Failed to test webhook');
     return res.json();
   },

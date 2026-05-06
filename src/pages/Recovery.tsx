@@ -161,9 +161,7 @@ export function EmailPreview({ item }: { item: any }) {
     }
     let cancelled = false;
     const created: string[] = [];
-    const token = localStorage.getItem('access_token');
-    const headers: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` } : {};
+    const headers: Record<string, string> = {};
     (async () => {
       const out = new Map<string, string>();
       for (const a of attachments) {

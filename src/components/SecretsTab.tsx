@@ -43,10 +43,7 @@ export default function SecretsTab({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('access_token');
-      const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/secrets`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/secrets`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setSecrets(data.items || []);
@@ -62,10 +59,8 @@ export default function SecretsTab({ tenantId }: { tenantId: string }) {
   const deleteSecret = async (id: string) => {
     if (!window.confirm('Delete this secret?')) return;
     try {
-      const token = localStorage.getItem('access_token');
       await fetch(`${API.BASE_URL}/tenants/${tenantId}/secrets/${id}`, {
         method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       setSecrets(prev => prev.filter(s => s.id !== id));
       setDetailSecret(null);

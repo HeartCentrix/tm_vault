@@ -98,11 +98,7 @@ class AuthService {
   }
 
   async getPowerBIConnectUrl(tenantId: string): Promise<MicrosoftAuthUrlResponse> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.AUTH.POWER_BI_URL(tenantId), {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.AUTH.POWER_BI_URL(tenantId));
     if (!res.ok) throw new Error(`Failed to get Power BI connect URL: ${res.statusText}`);
     return res.json();
   }
@@ -120,11 +116,9 @@ class AuthService {
   }
 
   async handleDatasourceCallback(code: string, state?: string): Promise<any> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
     const res = await fetch(API.AUTH.DATASOURCE_CALLBACK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),
     });
     if (!res.ok) throw new Error(`Datasource callback failed: ${res.statusText}`);
@@ -132,11 +126,9 @@ class AuthService {
   }
 
   async handleDatasourceConsentCallback(externalTenantId: string, state?: string): Promise<any> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
     const res = await fetch(API.AUTH.DATASOURCE_CALLBACK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         external_tenant_id: externalTenantId,
         admin_consent: true,
@@ -151,11 +143,9 @@ class AuthService {
   }
 
   async handleAzureDatasourceCallback(code: string, state?: string): Promise<any> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
     const res = await fetch(API.AUTH.AZURE_DATASOURCE_CALLBACK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),
     });
     if (!res.ok) throw new Error(`Azure datasource callback failed: ${res.statusText}`);
@@ -163,11 +153,9 @@ class AuthService {
   }
 
   async handlePowerBICallback(tenantId: string, code: string, state?: string): Promise<any> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
     const res = await fetch(API.AUTH.POWER_BI_CALLBACK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenantId, code, state }),
     });
     if (!res.ok) {
@@ -177,47 +165,46 @@ class AuthService {
     return res.json();
   }
 
-  async refreshToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  async refreshToken(_refreshToken?: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    // The refresh token rides in an HttpOnly cookie now; the body is empty.
     const res = await fetch(API.AUTH.REFRESH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      body: '{}',
     });
     if (!res.ok) throw new Error(`Token refresh failed: ${res.statusText}`);
-    const data = await res.json();
-    this.storeTokens(data);
-    return data;
+    return res.json();
   }
 
   async logout(): Promise<void> {
-    const refreshToken = this.getRefreshToken();
     try {
       await fetch(API.AUTH.LOGOUT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
       });
     } catch {
-      // Ignore logout failures
+      // Ignore logout failures — clearing the breadcrumb below is what the UI cares about.
     }
     this.clearTokens();
   }
 
   async getCurrentUser(): Promise<User> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.AUTH.ME, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.AUTH.ME);
     if (!res.ok) throw new Error(`Failed to get user: ${res.statusText}`);
     const user = await res.json();
     this.storeUser(user);
     return user;
   }
 
-  storeTokens(data: { accessToken: string; refreshToken: string }): void {
-    localStorage.setItem('access_token', data.accessToken);
-    localStorage.setItem('refresh_token', data.refreshToken);
+  // Tokens live in HttpOnly cookies set by the backend — JS never sees them
+  // (XSS can no longer steal the access token from localStorage). The cookies
+  // travel automatically with every fetch() because main.tsx patches fetch
+  // to default `credentials: 'include'`. The methods below remain for
+  // backward compatibility with existing call sites; getToken returns null
+  // and the gateway picks the cookie up instead of the (junk) Bearer header.
+  storeTokens(_data: { accessToken: string; refreshToken: string }): void {
+    // No-op: backend Set-Cookie does the storage. Kept so existing callers
+    // that invoke this after handleOAuthCallback() / refreshToken() build.
   }
 
   storeUser(user: User): void {
@@ -225,11 +212,11 @@ class AuthService {
   }
 
   getToken(): string | null {
-    return localStorage.getItem('access_token');
+    return null;
   }
 
   getRefreshToken(): string | null {
-    return localStorage.getItem('refresh_token');
+    return null;
   }
 
   getCurrentUserStored(): User | null {
@@ -238,47 +225,39 @@ class AuthService {
   }
 
   clearTokens(): void {
+    // Legacy keys that may still be present from a pre-cookie session.
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
   }
 
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    // The cookie is HttpOnly, so we can't read it directly. Use the user
+    // breadcrumb as a UX hint — actual auth is enforced by the backend on
+    // every request, and a stale breadcrumb just produces a 401 that the
+    // app handles by redirecting to /signin.
+    return !!localStorage.getItem('user');
   }
 
   // ============ Admin Consent Methods ============
   // Uses existing datasource APIs for URL generation and callbacks
 
   async getM365AdminConsentUrl(): Promise<MicrosoftAuthUrlResponse> {
-    // Reuse existing datasource URL endpoint
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.AUTH.DATASOURCE_URL, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.AUTH.DATASOURCE_URL);
     if (!res.ok) throw new Error(`Failed to get M365 admin consent URL: ${res.statusText}`);
     return res.json();
   }
 
   async getAzureAdminConsentUrl(): Promise<MicrosoftAuthUrlResponse> {
-    // Reuse existing Azure datasource URL endpoint
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.AUTH.AZURE_DATASOURCE_URL, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.AUTH.AZURE_DATASOURCE_URL);
     if (!res.ok) throw new Error(`Failed to get Azure admin consent URL: ${res.statusText}`);
     return res.json();
   }
 
   async handleM365AdminConsentCallback(externalTenantId: string, state?: string): Promise<any> {
-    // Reuse existing datasource callback endpoint
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
     const res = await fetch(API.AUTH.DATASOURCE_CALLBACK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         external_tenant_id: externalTenantId,
         admin_consent: true,
@@ -293,12 +272,9 @@ class AuthService {
   }
 
   async handleAzureAdminConsentCallback(code: string, state?: string): Promise<any> {
-    // Reuse existing Azure datasource callback endpoint
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
     const res = await fetch(API.AUTH.AZURE_DATASOURCE_CALLBACK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),
     });
     if (!res.ok) {
@@ -309,33 +285,21 @@ class AuthService {
   }
 
   async getM365AdminConsentStatus(): Promise<AdminConsentStatus | null> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.ADMIN_CONSENT.M365_STATUS, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.ADMIN_CONSENT.M365_STATUS);
     if (!res.ok) throw new Error(`Failed to get M365 admin consent status: ${res.statusText}`);
     const data = await res.json();
     return this.normalizeAdminConsentStatus(data);
   }
 
   async getAzureAdminConsentStatus(): Promise<AdminConsentStatus | null> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.ADMIN_CONSENT.AZURE_STATUS, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.ADMIN_CONSENT.AZURE_STATUS);
     if (!res.ok) throw new Error(`Failed to get Azure admin consent status: ${res.statusText}`);
     const data = await res.json();
     return this.normalizeAdminConsentStatus(data);
   }
 
   async getPowerBIReadiness(tenantId: string): Promise<PowerBIReadiness> {
-    const token = this.getToken();
-    if (!token) throw new Error('Not authenticated');
-    const res = await fetch(API.ADMIN_CONSENT.POWER_BI_READINESS(tenantId), {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(API.ADMIN_CONSENT.POWER_BI_READINESS(tenantId));
     if (!res.ok) throw new Error(`Failed to get Power BI readiness: ${res.statusText}`);
     return res.json();
   }

@@ -331,8 +331,7 @@ export function DownloadModal({
           includeNestedDetail: entraSelection.includeNestedDetail,
         });
         const jobId = response.jobId;
-        const token = localStorage.getItem('access_token');
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers: Record<string, string> = {};
         for (let i = 0; i < 600; i++) {
           await new Promise(r => setTimeout(r, 2000));
           const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
@@ -390,8 +389,7 @@ export function DownloadModal({
           includeAttachments,
         });
         const jobId = response.jobId;
-        const token = localStorage.getItem('access_token');
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers: Record<string, string> = {};
         for (let i = 0; i < 600; i++) {
           await new Promise(r => setTimeout(r, 3000));
           const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
@@ -480,8 +478,7 @@ export function DownloadModal({
       });
       const jobId = response.jobId;
 
-      const token = localStorage.getItem('access_token');
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const headers: Record<string, string> = {};
       // Full-drive OneDrive ZIPs for a power user can need a few minutes
       // to assemble; 60 s (the old cap) timed out on real drives. Poll for
       // up to 20 min and surface the in-progress state clearly.
