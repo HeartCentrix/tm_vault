@@ -294,9 +294,15 @@
   opacity: 0.7;
 }
 /* Toggle switch off-state track gets a darker neutral so the white
-   knob still pops against the dark card. */
+   knob still pops against the dark card. The on-state rule below is
+   required because the off-state rule above is !important — without a
+   matching !important on-state rule, the light-mode `:checked` color
+   loses the cascade and the slider stays grey when toggled on. */
 [data-theme="dark"] .config-section .toggle-slider {
   background: var(--tm-border) !important;
+}
+[data-theme="dark"] .config-section .toggle-switch input:checked + .toggle-slider {
+  background: var(--tm-accent) !important;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -1637,6 +1643,22 @@
 [data-theme="dark"] .folder-count {
   background: var(--tm-hover) !important;
   color: var(--tm-text) !important;
+}
+
+/* Has-check folder rows (mail/contacts/chats) wrap a checkbox + an inner
+   .folder-name-btn button. The generic [data-theme="dark"] button rule
+   above paints a 1px border on every button — that bleeds through here
+   as a "sub border" inside Inbox/Deleted/etc., and turns red on hover.
+   Override so the inner button stays transparent and borderless in all
+   states; the parent .folder-item already owns the hover outline. */
+[data-theme="dark"] .folder-name-btn,
+[data-theme="dark"] .folder-name-btn:hover,
+[data-theme="dark"] .folder-name-btn:focus,
+[data-theme="dark"] .folder-name-btn:focus-visible {
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+  color: inherit !important;
 }
 
 /* Item list header (middle panel) */
