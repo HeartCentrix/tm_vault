@@ -60,12 +60,14 @@ export default function PowerBICallback() {
 
     const code = params.get('code');
     const state = params.get('state') || undefined;
-    const expectedState = readTransition('power_bi_oauth_state');
     const authError = params.get('error');
     sessionStorage.removeItem('consent_return_to');
     sessionStorage.removeItem('power_bi_tenant_id');
     sessionStorage.removeItem('power_bi_service_type');
+    // Legacy: a previous version stored the CSRF nonce here. The backend's
+    // HttpOnly state cookie is now authoritative — clean up any stragglers.
     sessionStorage.removeItem('power_bi_oauth_state');
+    localStorage.removeItem('power_bi_oauth_state');
 
     if (authError) {
       const errorDesc = params.get('error_description') || authError;
@@ -78,10 +80,11 @@ export default function PowerBICallback() {
       return;
     }
 
-    if (expectedState && state && expectedState !== state) {
-      setError('Power BI sign-in state did not match. Please try connecting again.');
-      return;
-    }
+    // CSRF state validation happens server-side: the backend compares the
+    // `state` we POST against the HttpOnly cookie it set when /power-bi/url
+    // was called. The check is authoritative there — no client-side
+    // comparison needed (and any client-side check would be defeatable by
+    // XSS that writes a known value to localStorage / sessionStorage).
 
     if (code) {
       (async () => {

@@ -192,8 +192,10 @@ export default function Settings() {
       if (serviceType) {
         sessionStorage.setItem('power_bi_service_type', serviceType);
       }
-      const { url, state } = await authService.getPowerBIConnectUrl(tenantId);
-      sessionStorage.setItem('power_bi_oauth_state', state);
+      // The CSRF state nonce now lives in an HttpOnly cookie that the
+      // backend sets on /auth/power-bi/url and validates on /callback. JS
+      // (and therefore XSS) can't read it, so we don't store it here.
+      const { url } = await authService.getPowerBIConnectUrl(tenantId);
       window.location.href = url;
     } catch (error) {
       console.error('Failed to get Power BI connect URL:', error);
