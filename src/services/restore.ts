@@ -70,17 +70,13 @@ export interface RestoreJobHistory {
   number: number;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
 export const RestoreService = {
   async triggerRestore(request: RestoreRequest): Promise<RestoreResponse> {
-    const url = API.RESTORE.TRIGGER;
-    const res = await fetch(url, {
+    const res = await fetch(API.RESTORE.TRIGGER, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('Failed to trigger restore');
@@ -90,7 +86,7 @@ export const RestoreService = {
   async triggerMailboxRestore(request: RestoreRequest): Promise<RestoreResponse> {
     const res = await fetch(API.RESTORE.MAILBOX, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('Failed to trigger mailbox restore');
@@ -100,7 +96,7 @@ export const RestoreService = {
   async triggerOnedriveRestore(request: RestoreRequest): Promise<RestoreResponse> {
     const res = await fetch(API.RESTORE.ONEDRIVE, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('Failed to trigger OneDrive restore');
@@ -110,7 +106,7 @@ export const RestoreService = {
   async triggerSharepointRestore(request: RestoreRequest): Promise<RestoreResponse> {
     const res = await fetch(API.RESTORE.SHAREPOINT, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('Failed to trigger SharePoint restore');
@@ -120,7 +116,7 @@ export const RestoreService = {
   async triggerEntraRestore(request: RestoreRequest): Promise<RestoreResponse> {
     const res = await fetch(API.RESTORE.ENTRA_OBJECT, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: JSON_HEADERS,
       body: JSON.stringify(request),
     });
     if (!res.ok) throw new Error('Failed to trigger Entra restore');
@@ -128,15 +124,13 @@ export const RestoreService = {
   },
 
   async getRestoreStatus(jobId: string): Promise<RestoreJobStatus> {
-    const url = API.RESTORE.STATUS(jobId);
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(API.RESTORE.STATUS(jobId));
     if (!res.ok) throw new Error('Failed to fetch restore status');
     return res.json();
   },
 
   async getRestoreHistory(page = 1, size = 20): Promise<RestoreJobHistory> {
-    const url = `${API.RESTORE.HISTORY}?page=${page}&size=${size}`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(`${API.RESTORE.HISTORY}?page=${page}&size=${size}`);
     if (!res.ok) throw new Error('Failed to fetch restore history');
     return res.json();
   },

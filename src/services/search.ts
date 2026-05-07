@@ -56,11 +56,6 @@ export interface SearchSuggestionsResponse {
   query: string;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 export const SearchService = {
   async search(
     query: string,
@@ -83,15 +78,13 @@ export const SearchService = {
     if (options?.page) params.append('page', String(options.page));
     if (options?.size) params.append('size', String(options.size));
 
-    const url = `${API.SEARCH.SEARCH}?${params.toString()}`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(`${API.SEARCH.SEARCH}?${params.toString()}`);
     if (!res.ok) throw new Error('Failed to perform search');
     return res.json();
   },
 
   async getSuggestions(query: string, limit = 10): Promise<SearchSuggestionsResponse> {
-    const url = `${API.SEARCH.SUGGESTIONS}?q=${encodeURIComponent(query)}&limit=${limit}`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(`${API.SEARCH.SUGGESTIONS}?q=${encodeURIComponent(query)}&limit=${limit}`);
     if (!res.ok) throw new Error('Failed to fetch suggestions');
     return res.json();
   },
@@ -99,7 +92,7 @@ export const SearchService = {
   async reindex(snapshotIds?: string[]): Promise<{ indexed: number }> {
     const res = await fetch(API.SEARCH.REINDEX, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snapshotIds || null),
     });
     if (!res.ok) throw new Error('Failed to reindex');

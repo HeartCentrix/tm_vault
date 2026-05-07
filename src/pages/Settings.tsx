@@ -149,10 +149,18 @@ export default function Settings() {
     }
   };
 
+  // OAuth transition state (return_to, CSRF state nonce, the chosen
+  // tenant/service the user was viewing) lives in sessionStorage rather
+  // than localStorage. It only needs to survive a top-level navigation to
+  // login.microsoftonline.com and back — the tab persists, so
+  // sessionStorage works. Closing the tab wipes the values, which means a
+  // later XSS payload can't read a stale CSRF nonce or hijack a
+  // half-finished onboarding flow days after the fact.
+
   const handleGrantM365Consent = async () => {
     try {
       setGrantingConsent('m365');
-      localStorage.setItem('consent_return_to', tenantSettingsPath);
+      sessionStorage.setItem('consent_return_to', tenantSettingsPath);
       const { url } = await authService.getM365AdminConsentUrl();
       window.location.href = url;
     } catch (error) {
@@ -165,7 +173,7 @@ export default function Settings() {
   const handleGrantAzureConsent = async () => {
     try {
       setGrantingConsent('azure');
-      localStorage.setItem('consent_return_to', tenantSettingsPath);
+      sessionStorage.setItem('consent_return_to', tenantSettingsPath);
       const { url } = await authService.getAzureAdminConsentUrl();
       window.location.href = url;
     } catch (error) {
@@ -179,13 +187,15 @@ export default function Settings() {
     if (!tenantId) return;
     try {
       setGrantingConsent('powerbi');
-      localStorage.setItem('consent_return_to', tenantSettingsPath);
-      localStorage.setItem('power_bi_tenant_id', tenantId);
+      sessionStorage.setItem('consent_return_to', tenantSettingsPath);
+      sessionStorage.setItem('power_bi_tenant_id', tenantId);
       if (serviceType) {
-        localStorage.setItem('power_bi_service_type', serviceType);
+        sessionStorage.setItem('power_bi_service_type', serviceType);
       }
-      const { url, state } = await authService.getPowerBIConnectUrl(tenantId);
-      localStorage.setItem('power_bi_oauth_state', state);
+      // The CSRF state nonce now lives in an HttpOnly cookie that the
+      // backend sets on /auth/power-bi/url and validates on /callback. JS
+      // (and therefore XSS) can't read it, so we don't store it here.
+      const { url } = await authService.getPowerBIConnectUrl(tenantId);
       window.location.href = url;
     } catch (error) {
       console.error('Failed to get Power BI connect URL:', error);

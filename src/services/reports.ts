@@ -65,55 +65,38 @@ export interface ReportConfigUpdate {
   googlechat_webhooks?: WebhookConfig[];
 }
 
+const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
+
 class ReportService {
-  private getHeaders(): HeadersInit {
-    const token = localStorage.getItem('access_token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
   async getConfig(): Promise<ReportConfig> {
-    const response = await fetch(API.REPORTS.CONFIG, {
-      headers: this.getHeaders(),
-    });
-
+    const response = await fetch(API.REPORTS.CONFIG);
     if (!response.ok) {
       throw new Error(`Failed to fetch report config: ${response.statusText}`);
     }
-
     return response.json();
   }
 
   async createConfig(config: ReportConfigCreate): Promise<ReportConfig> {
     const response = await fetch(API.REPORTS.CONFIG, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.getHeaders(),
-      },
+      headers: JSON_HEADERS,
       body: JSON.stringify(config),
     });
-
     if (!response.ok) {
       throw new Error(`Failed to create report config: ${response.statusText}`);
     }
-
     return response.json();
   }
 
   async updateConfig(config: ReportConfigUpdate): Promise<ReportConfig> {
     const response = await fetch(API.REPORTS.CONFIG, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.getHeaders(),
-      },
+      headers: JSON_HEADERS,
       body: JSON.stringify(config),
     });
-
     if (!response.ok) {
       throw new Error(`Failed to update report config: ${response.statusText}`);
     }
-
     return response.json();
   }
 
@@ -123,44 +106,30 @@ class ReportService {
       offset: offset.toString(),
       ...(reportType ? { report_type: reportType } : {}),
     });
-
-    const response = await fetch(`${API.REPORTS.HISTORY}?${params}`, {
-      headers: this.getHeaders(),
-    });
-
+    const response = await fetch(`${API.REPORTS.HISTORY}?${params}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch report history: ${response.statusText}`);
     }
-
     return response.json();
   }
 
   async sendReport(reportType: 'DAILY' | 'WEEKLY' | 'MONTHLY'): Promise<{ success: boolean; report_id: string | null; message: string }> {
     const response = await fetch(API.REPORTS.SEND, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.getHeaders(),
-      },
+      headers: JSON_HEADERS,
       body: JSON.stringify({ report_type: reportType }),
     });
-
     if (!response.ok) {
       throw new Error(`Failed to send report: ${response.statusText}`);
     }
-
     return response.json();
   }
 
   async getHistoryDetail(reportId: string): Promise<ReportHistory> {
-    const response = await fetch(API.REPORTS.HISTORY_DETAIL(reportId), {
-      headers: this.getHeaders(),
-    });
-
+    const response = await fetch(API.REPORTS.HISTORY_DETAIL(reportId));
     if (!response.ok) {
       throw new Error(`Failed to fetch report history detail: ${response.statusText}`);
     }
-
     return response.json();
   }
 }

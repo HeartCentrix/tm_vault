@@ -93,10 +93,7 @@ export default function AzurePgRecoverModal({ open, onClose, resource, snapshot 
     setTenantsLoading(true);
     (async () => {
       try {
-        const token = localStorage.getItem('access_token');
-        const res = await fetch(`${API.BASE_URL}/azure/tenants`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetch(`${API.BASE_URL}/azure/tenants`);
         if (!res.ok) return;
         const data = await res.json();
         const items = data.items || [];
@@ -117,10 +114,8 @@ export default function AzurePgRecoverModal({ open, onClose, resource, snapshot 
     setServersLoading(true);
     (async () => {
       try {
-        const token = localStorage.getItem('access_token');
         const res = await fetch(
           `${API.BASE_URL}/azure/tenants/${destTenant}/options?dbType=postgresql`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
         );
         if (!res.ok) return;
         const o = await res.json();
@@ -157,13 +152,9 @@ export default function AzurePgRecoverModal({ open, onClose, resource, snapshot 
     setSubmitting(true);
     setError(null);
     try {
-      const token = localStorage.getItem('access_token');
       const res = await fetch(`${API.BASE_URL}/jobs/restore`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           restoreType: 'OUT_OF_PLACE',
           snapshotIds: [snapshot.id],

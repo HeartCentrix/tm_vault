@@ -4,25 +4,56 @@ import { authService } from '../services/auth';
 import { refreshDataSources } from '../services/datasource';
 import './Auth.css';
 
+// OAuth transition state lives in sessionStorage now (dies with the tab).
+// Old in-flight redirects may still have data in localStorage — fall back
+// once and clean up.
+function readTransition(key: string): string | null {
+  const v = sessionStorage.getItem(key);
+  if (v !== null) return v;
+  const legacy = localStorage.getItem(key);
+  if (legacy !== null) localStorage.removeItem(key);
+  return legacy;
+}
+
+// Reject anything that isn't a same-origin in-app path. See
+// AzureDatasourceCallback for the open-redirect rationale.
+function safeInAppPath(raw: string | null | undefined, fallback: string): string {
+  if (!raw) return fallback;
+  if (!raw.startsWith('/')) return fallback;
+  if (raw.startsWith('//') || raw.startsWith('/\\')) return fallback;
+  return raw;
+}
+
 export default function DatasourceCallback() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const handled = useRef(false);
   const [error, setError] = useState('');
-  const returnTo = searchParams.get('return_to') || localStorage.getItem('consent_return_to') || '/tenants';
+  const returnTo = safeInAppPath(
+    searchParams.get('return_to') || readTransition('consent_return_to'),
+    '/tenants',
+  );
 
   useEffect(() => {
     if (handled.current) return;
     handled.current = true;
 
-    const tenant = searchParams.get('tenant');
-    const adminConsent = searchParams.get('admin_consent');
-    const state = searchParams.get('state') || undefined;
-    const authError = searchParams.get('error');
-    localStorage.removeItem('consent_return_to');
+    // The /adminconsent endpoint always returns its result on the query
+    // string (response_mode is not honored by that endpoint), so we can't
+    // route this through the URL fragment. Snapshot the params and purge
+    // the URL immediately so tenant id / admin_consent / state can't leak
+    // via history or Referer.
+    const params = new URLSearchParams(window.location.search);
+    window.history.replaceState({}, '', window.location.pathname);
+
+    const tenant = params.get('tenant');
+    const adminConsent = params.get('admin_consent');
+    const state = params.get('state') || undefined;
+    const authError = params.get('error');
+    sessionStorage.removeItem('consent_return_to');
 
     if (authError) {
-      const errorDesc = searchParams.get('error_description') || authError;
+      const errorDesc = params.get('error_description') || authError;
       setError(`Connection error: ${errorDesc}`);
       return;
     }

@@ -207,8 +207,7 @@ export default function Overview() {
   const [triggeringBackupAll, setTriggeringBackupAll] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const headers: Record<string, string> = {};
 
     let cancelled = false;
 

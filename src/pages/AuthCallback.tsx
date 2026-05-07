@@ -12,7 +12,22 @@ export default function AuthCallback() {
     if (handled.current) return;
     handled.current = true;
 
-    const params = new URLSearchParams(window.location.search);
+    // The OAuth code arrives in the URL fragment (response_mode=fragment),
+    // which is never sent to servers. Snapshot it, then immediately purge
+    // both the hash and the query string from history so the code can't
+    // leak via browser history, the back/forward cache, the Referer header,
+    // or any analytics that reads location.href on render. This must run
+    // before any await so the purge happens on the same tick as the load.
+    const rawHash = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const fragmentParams = new URLSearchParams(rawHash);
+    const queryParams = new URLSearchParams(window.location.search);
+    const params = fragmentParams.has('code') || fragmentParams.has('error')
+      ? fragmentParams
+      : queryParams;
+    window.history.replaceState({}, '', window.location.pathname);
+
     const code = params.get('code');
     const state = params.get('state') || undefined;
     const authError = params.get('error');

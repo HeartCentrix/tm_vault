@@ -7,19 +7,13 @@ export interface TenantInfo {
 }
 
 export async function getTenantInfo(tenantId: string): Promise<TenantInfo> {
-  const token = localStorage.getItem('access_token');
-  const res = await fetch(API.TENANTS.INFO(tenantId), {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetch(API.TENANTS.INFO(tenantId));
   if (!res.ok) throw new Error(`Failed to fetch tenant info: ${res.statusText}`);
   return res.json();
 }
 
 export async function downloadUsageReport(tenantId: string, tenantName: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
-  const res = await fetch(API.TENANTS.USAGE_REPORT(tenantId), {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetch(API.TENANTS.USAGE_REPORT(tenantId));
   if (!res.ok) throw new Error(`Failed to download usage report: ${res.statusText}`);
   
   const blob = await res.blob();

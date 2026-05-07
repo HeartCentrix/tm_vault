@@ -101,7 +101,6 @@ export default function Activity() {
     if (viewType !== 'tasks') return;
     const anyLive = activities.some(a => a.status === 'In Progress');
     if (!anyLive) return;
-    const token = localStorage.getItem('access_token');
     const t = setInterval(async () => {
       try {
         const params = new URLSearchParams({
@@ -111,9 +110,7 @@ export default function Activity() {
         if (endDate) params.set('end_date', endDate);
         if (taskOperation) params.set('operation', taskOperation);
         if (taskStatus) params.set('status', taskStatus);
-        const res = await fetch(`${API.ACTIVITY.LIST}?${params}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetch(`${API.ACTIVITY.LIST}?${params}`);
         if (!res.ok) return;
         const data = await res.json();
         setActivities(data.items || []);

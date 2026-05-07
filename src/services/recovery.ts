@@ -101,10 +101,10 @@ export interface RecoveryResponse {
   itemCount: number;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+// Auth rides on the HttpOnly cookie now — fetch picks it up automatically
+// thanks to the credentials: 'include' default in main.tsx. The shim below
+// is left as a no-op so we don't have to touch every call site.
+const getAuthHeaders = (): Record<string, string> => ({});
 
 export const RecoveryService = {
   /**
@@ -274,8 +274,10 @@ export const RecoveryService = {
     onError:    (e: any) => void;
   }): () => void {
     const url = API.EXPORT.CHAT.STATUS(jobId);
-    const token = localStorage.getItem('access_token');
-    const es = new EventSource(`${url}?access_token=${token ?? ''}`, { withCredentials: true });
+    // The HttpOnly access_token cookie travels because withCredentials=true.
+    // Don't pass the token in the URL — that leaks it into server logs and
+    // browser history, and it isn't readable from JS in any case now.
+    const es = new EventSource(url, { withCredentials: true });
     let fallback: number | null = null;
 
     es.addEventListener('progress', (e: MessageEvent) => {

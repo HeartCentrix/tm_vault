@@ -85,9 +85,6 @@ function mapAuditEvent(event: any): AuditItem {
 }
 
 export async function getAudits(params?: AuditListParams): Promise<AuditListResponse> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
   let url = API.AUDIT.LIST;
   const queryParams = new URLSearchParams();
 
@@ -102,7 +99,7 @@ export async function getAudits(params?: AuditListParams): Promise<AuditListResp
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch audits: ${res.statusText}`);
   const data = await res.json();
 
@@ -116,20 +113,13 @@ export async function getAudits(params?: AuditListParams): Promise<AuditListResp
 }
 
 export async function getAuditDetails(id: string): Promise<AuditDetailsResponse> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
-  const url = API.AUDIT.DETAILS(id);
-  const res = await fetch(url, { headers });
+  const res = await fetch(API.AUDIT.DETAILS(id));
   if (!res.ok) throw new Error(`Failed to fetch audit details: ${res.statusText}`);
   const event = await res.json();
   return mapAuditEvent(event);
 }
 
 export async function getRiskSignals(params?: RiskSignalParams): Promise<RiskSignalResponse> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
   let url = `${API.AUDIT.LIST.replace('/events', '')}/risk-signals`;
   const queryParams = new URLSearchParams();
 
@@ -143,7 +133,7 @@ export async function getRiskSignals(params?: RiskSignalParams): Promise<RiskSig
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch risk signals: ${res.statusText}`);
   const data = await res.json();
 
@@ -162,9 +152,6 @@ export async function getRiskSignals(params?: RiskSignalParams): Promise<RiskSig
 }
 
 export async function downloadAuditCSV(params?: AuditListParams): Promise<Blob> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
   let url = API.AUDIT.LIST.replace('/events', '/export');
   const queryParams = new URLSearchParams();
 
@@ -177,7 +164,7 @@ export async function downloadAuditCSV(params?: AuditListParams): Promise<Blob> 
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to download audits: ${res.statusText}`);
   return res.blob();
 }

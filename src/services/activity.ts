@@ -32,9 +32,6 @@ export interface ActivityListResponse {
 }
 
 export async function getActivities(params?: ActivityListParams): Promise<ActivityListResponse> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
   let url = API.ACTIVITY.LIST;
   const queryParams = new URLSearchParams();
 
@@ -50,7 +47,7 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch activities: ${res.statusText}`);
   const data = await res.json();
 
@@ -64,20 +61,13 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
 }
 
 export async function cancelJob(jobId: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
-  const res = await fetch(API.JOBS.CANCEL(jobId), {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetch(API.JOBS.CANCEL(jobId), { method: 'POST' });
   if (!res.ok && res.status !== 204) {
     throw new Error(`Failed to cancel job: ${res.statusText}`);
   }
 }
 
 export async function downloadActivityCSV(params?: ActivityListParams): Promise<Blob> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
   let url = `${API.ACTIVITY.LIST}/export`;
   const queryParams = new URLSearchParams();
 
@@ -91,7 +81,7 @@ export async function downloadActivityCSV(params?: ActivityListParams): Promise<
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to download activities: ${res.statusText}`);
   return res.blob();
 }

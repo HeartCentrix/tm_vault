@@ -101,11 +101,7 @@ export interface ResourceGroup {
   createdAt?: string;
 }
 
-function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = localStorage.getItem('access_token');
-  const base: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  return { ...base, ...(extra || {}) };
-}
+const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
 // ── SLA Policies ─────────────────────────────────────────────────────────────
 
@@ -114,7 +110,7 @@ export async function getSlaPolicies(tenantId: string, serviceType?: 'm365' | 'a
   if (tenantId) queryParams.set('tenantId', tenantId);
   if (serviceType) queryParams.set('serviceType', serviceType);
   const url = queryParams.size ? `${API.POLICIES.LIST}?${queryParams.toString()}` : API.POLICIES.LIST;
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch SLA policies: ${res.statusText}`);
   return res.json();
 }
@@ -122,7 +118,7 @@ export async function getSlaPolicies(tenantId: string, serviceType?: 'm365' | 'a
 export async function createSlaPolicy(data: Partial<SlaPolicy>): Promise<SlaPolicy> {
   const res = await fetch(API.POLICIES.CREATE, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: JSON_HEADERS,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to create SLA policy: ${res.statusText}`);
@@ -132,7 +128,7 @@ export async function createSlaPolicy(data: Partial<SlaPolicy>): Promise<SlaPoli
 export async function updateSlaPolicy(id: string, data: Partial<SlaPolicy>): Promise<SlaPolicy> {
   const res = await fetch(API.POLICIES.UPDATE(id), {
     method: 'PUT',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: JSON_HEADERS,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to update SLA policy: ${res.statusText}`);
@@ -140,17 +136,14 @@ export async function updateSlaPolicy(id: string, data: Partial<SlaPolicy>): Pro
 }
 
 export async function deleteSlaPolicy(id: string): Promise<void> {
-  const res = await fetch(API.POLICIES.DELETE(id), {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
+  const res = await fetch(API.POLICIES.DELETE(id), { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to delete SLA policy: ${res.statusText}`);
 }
 
 // ── Exclusions ───────────────────────────────────────────────────────────────
 
 export async function getExclusions(policyId: string): Promise<SlaExclusion[]> {
-  const res = await fetch(API.POLICIES.EXCLUSIONS(policyId), { headers: authHeaders() });
+  const res = await fetch(API.POLICIES.EXCLUSIONS(policyId));
   if (!res.ok) throw new Error(`Failed to fetch exclusions: ${res.statusText}`);
   return res.json();
 }
@@ -158,7 +151,7 @@ export async function getExclusions(policyId: string): Promise<SlaExclusion[]> {
 export async function createExclusion(policyId: string, data: Partial<SlaExclusion>): Promise<SlaExclusion> {
   const res = await fetch(API.POLICIES.EXCLUSIONS(policyId), {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: JSON_HEADERS,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to create exclusion: ${res.statusText}`);
@@ -166,18 +159,14 @@ export async function createExclusion(policyId: string, data: Partial<SlaExclusi
 }
 
 export async function deleteExclusion(policyId: string, exclusionId: string): Promise<void> {
-  const res = await fetch(API.POLICIES.EXCLUSION(policyId, exclusionId), {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
+  const res = await fetch(API.POLICIES.EXCLUSION(policyId, exclusionId), { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to delete exclusion: ${res.statusText}`);
 }
 
 // ── Resource Groups ──────────────────────────────────────────────────────────
 
 export async function listResourceGroups(tenantId: string): Promise<ResourceGroup[]> {
-  const url = `${API.RESOURCE_GROUPS.LIST}?tenantId=${encodeURIComponent(tenantId)}`;
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await fetch(`${API.RESOURCE_GROUPS.LIST}?tenantId=${encodeURIComponent(tenantId)}`);
   if (!res.ok) throw new Error(`Failed to list resource groups: ${res.statusText}`);
   return res.json();
 }
@@ -185,7 +174,7 @@ export async function listResourceGroups(tenantId: string): Promise<ResourceGrou
 export async function createResourceGroup(data: Partial<ResourceGroup>): Promise<ResourceGroup> {
   const res = await fetch(API.RESOURCE_GROUPS.CREATE, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: JSON_HEADERS,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to create resource group: ${res.statusText}`);
@@ -195,7 +184,7 @@ export async function createResourceGroup(data: Partial<ResourceGroup>): Promise
 export async function updateResourceGroup(id: string, data: Partial<ResourceGroup>): Promise<ResourceGroup> {
   const res = await fetch(API.RESOURCE_GROUPS.UPDATE(id), {
     method: 'PUT',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: JSON_HEADERS,
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to update resource group: ${res.statusText}`);
@@ -203,26 +192,20 @@ export async function updateResourceGroup(id: string, data: Partial<ResourceGrou
 }
 
 export async function deleteResourceGroup(id: string): Promise<void> {
-  const res = await fetch(API.RESOURCE_GROUPS.DELETE(id), {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
+  const res = await fetch(API.RESOURCE_GROUPS.DELETE(id), { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to delete resource group: ${res.statusText}`);
 }
 
 export async function attachPolicyToGroup(groupId: string, policyId: string): Promise<void> {
   const res = await fetch(API.RESOURCE_GROUPS.ATTACH_POLICY(groupId), {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ policyId }),
   });
   if (!res.ok) throw new Error(`Failed to attach policy: ${res.statusText}`);
 }
 
 export async function detachPolicyFromGroup(groupId: string, policyId: string): Promise<void> {
-  const res = await fetch(API.RESOURCE_GROUPS.DETACH_POLICY(groupId, policyId), {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
+  const res = await fetch(API.RESOURCE_GROUPS.DETACH_POLICY(groupId, policyId), { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to detach policy: ${res.statusText}`);
 }

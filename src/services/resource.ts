@@ -153,7 +153,6 @@ export async function getResources(
   resourceFilter?: string,
   serviceType?: string
 ): Promise<ResourceListResponse> {
-  const token = localStorage.getItem('access_token');
   const tabTypeMap = getTabTypeMap(serviceType);
   let types = tabTypeMap[tab] || [];
 
@@ -164,7 +163,7 @@ export async function getResources(
     types = M365_ALL_TYPES;
   }
 
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = {};
 
   // For tabs with multiple types (groups, entra, power), fetch each type separately
   if (types.length > 1) {
@@ -241,8 +240,7 @@ export async function getResourcesByType(
   resourceFilter?: string,
   includeHidden: boolean = false,
 ): Promise<ResourceListResponse> {
-  const token = localStorage.getItem('access_token');
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = {};
 
   let url = `${API.RESOURCES.BY_TYPE}?type=${encodeURIComponent(resourceType)}&tenantId=${tenantId}&page=${page}&size=${size}`;
   if (searchQuery) url += `&query=${encodeURIComponent(searchQuery)}`;
@@ -264,39 +262,27 @@ export async function getResourcesByType(
 }
 
 export async function assignPolicy(resourceId: string, policyId: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.ASSIGN_POLICY(resourceId)}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ policyId }),
   });
   if (!res.ok) throw new Error(`Failed to assign policy: ${res.statusText}`);
 }
 
 export async function unassignPolicy(resourceId: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.UNASSIGN_POLICY(resourceId)}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(`Failed to unassign policy: ${res.statusText}`);
 }
 
 export async function bulkAssignPolicy(resourceIds: string[], policyId: string): Promise<{ assigned: number; not_found: string[] }> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(API.RESOURCES.BULK_ASSIGN, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resourceIds, policyId }),
   });
   if (!res.ok) throw new Error(`Failed to bulk assign policy: ${res.statusText}`);
@@ -304,13 +290,9 @@ export async function bulkAssignPolicy(resourceIds: string[], policyId: string):
 }
 
 export async function bulkUnassignPolicy(resourceIds: string[]): Promise<{ unassigned: number; not_found: string[] }> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(API.RESOURCES.BULK_UNASSIGN, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resourceIds }),
   });
   if (!res.ok) throw new Error(`Failed to bulk unassign policy: ${res.statusText}`);
@@ -318,48 +300,35 @@ export async function bulkUnassignPolicy(resourceIds: string[]): Promise<{ unass
 }
 
 export async function archiveResource(resourceId: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.ARCHIVE(resourceId)}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(`Failed to archive resource: ${res.statusText}`);
 }
 
 export async function unarchiveResource(resourceId: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.UNARCHIVE(resourceId)}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(`Failed to unarchive resource: ${res.statusText}`);
 }
 
 export async function deleteResource(resourceId: string): Promise<void> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.RESOURCES.DELETE(resourceId)}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {},
   });
   if (!res.ok) throw new Error(`Failed to delete resource: ${res.statusText}`);
 }
 
 export async function triggerBackup(resourceId: string, fullBackup: boolean = false): Promise<{ jobId: string; status: string; resourceId: string }> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(API.JOBS.TRIGGER_BACKUP, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resourceId, fullBackup, priority: 1 }),
   });
   if (!res.ok) throw new Error(`Failed to trigger backup: ${res.statusText}`);
@@ -377,18 +346,16 @@ export interface ResourceProgress {
 }
 
 export async function getResourceProgress(resourceId: string): Promise<ResourceProgress> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.BASE_URL}/progress/resource/${resourceId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {},
   });
   if (!res.ok) throw new Error(`Failed to get progress: ${res.statusText}`);
   return res.json();
 }
 
 export async function getAllProgress(tenantId: string): Promise<ResourceProgress[]> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API.BASE_URL}/progress/resources?tenant_id=${tenantId}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {},
   });
   if (!res.ok) throw new Error(`Failed to get all progress: ${res.statusText}`);
   const data = await res.json();
@@ -396,13 +363,9 @@ export async function getAllProgress(tenantId: string): Promise<ResourceProgress
 }
 
 export async function triggerBatchBackup(resourceIds: string[]): Promise<{ jobId: string; status: string; resourceId: string }[]> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(API.JOBS.TRIGGER_BULK, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resourceIds, priority: 1 }),
   });
   if (!res.ok) throw new Error(`Failed to trigger batch backup: ${res.statusText}`);
@@ -414,13 +377,9 @@ export async function triggerDatasourceBackup(
   serviceType: 'm365' | 'azure',
   fullBackup: boolean = true
 ): Promise<{ jobId: string; status: string; resourceId: string; resourceCount?: number }[]> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(API.JOBS.TRIGGER_DATASOURCE, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tenantId, serviceType, fullBackup, priority: 1 }),
   });
 
@@ -436,7 +395,6 @@ export async function triggerDiscovery(
   tenantId: string,
   serviceType?: string,
 ): Promise<{ discoveryId: string; resourcesFound: number }> {
-  const token = localStorage.getItem('access_token');
   // Route by service type — AZURE tenants publish to discovery.azure
   // queue (VMs, SQL DBs, Postgres); M365 tenants publish to
   // discovery.m365 (users, groups, OneDrive, etc.). Sending every tenant
@@ -444,10 +402,7 @@ export async function triggerDiscovery(
   const path = serviceType === 'azure' ? 'discover-azure' : 'discover-m365';
   const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
   });
 
   if (!res.ok) {
@@ -473,15 +428,11 @@ export async function backupUserWithDiscovery(
   tenantId: string,
   userResourceId: string,
 ): Promise<{ accepted: boolean; message: string }> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(
     `${API.BASE_URL}/tenants/${tenantId}/users/${userResourceId}/backup`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
     },
   );
   if (!res.ok) {
@@ -500,15 +451,11 @@ export async function discoverUserContent(
   tenantId: string,
   userResourceId: string,
 ): Promise<{ contentDiscovered: number; categories: string[]; childResourceIds: string[] }> {
-  const token = localStorage.getItem('access_token');
   const res = await fetch(
     `${API.BASE_URL}/tenants/${tenantId}/users/${userResourceId}/discover-content`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
     },
   );
   if (!res.ok) {

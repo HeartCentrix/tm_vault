@@ -161,10 +161,11 @@ export interface ContentSnapshotsResponse {
   byContent: Record<ContentTab, ContentSnapshotEntry | null>;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('access_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+// Auth rides on the HttpOnly cookie set at login; fetch() picks it up via
+// the credentials: 'include' default in main.tsx. This shim is kept to
+// avoid touching every call-site below — it just adds Content-Type when
+// callers spread it.
+const getAuthHeaders = (): Record<string, string> => ({});
 
 export const SnapshotService = {
   /** Backend-computed "actually-used storage" rollup for the protection

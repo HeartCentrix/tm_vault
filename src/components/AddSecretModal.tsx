@@ -87,7 +87,6 @@ export default function AddSecretModal({
     setSubmitting(true);
     setError(null);
     try {
-      const token = localStorage.getItem('access_token');
       let body: any;
       if (variant === 'login') {
         body = {
@@ -109,10 +108,7 @@ export default function AddSecretModal({
       }
       const res = await fetch(`${API.BASE_URL}/tenants/${tenantId}/secrets`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) {
