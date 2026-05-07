@@ -69,7 +69,7 @@
   min-width: 0;
   border-radius: 6px 0 0 6px;
 }
-.recovery-toolbar-search-input::placeholder { color: #94a3b8; }
+.recovery-toolbar-search-input::placeholder { color: #6b7280; }
 .recovery-toolbar-search-btn {
   border: 0;
   background: transparent;
