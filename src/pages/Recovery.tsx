@@ -2287,6 +2287,17 @@ function SharePointView({
   // Reset drill-down path whenever the snapshot changes.
   useEffect(() => { setSpPath([]); }, [latestSnapshot?.id]);
 
+  // SharePoint breadcrumb navigation (`spPath`) is local state and
+  // bypasses the parent's selectedFolder-based clear. Drop the parent's
+  // checked items whenever the user drills in/out so selections from one
+  // list/folder don't survive into another.
+  useEffect(() => {
+    onSelectAll([], false);
+    // onSelectAll is a stable handler from the parent; only spPath
+    // should drive this clear.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spPath]);
+
   // Derive the site_label prefix ("Communication site/lists/") from any
   // row — all rows share the same parent. Needed because folder_path
   // is ABSOLUTE and we strip it to site-relative for navigation.
@@ -5980,18 +5991,24 @@ export default function Recovery() {
     }
   }, [loadingMore, hasMore, activeContentType, selectedSnapshotId]);
 
-  // Clear preview + drop any checked items when the snapshot or tab changes.
-  // Without clearing selectedItems, ids from one tab leak into another
-  // (Download/Recover would act on stale ids). Folder changes deliberately
-  // keep the current selection — the user may be narrowing a subset.
-  // For Azure DB the "active tab" lives in `?tab=configuration|database|
-  // schema` (URL-synced inside AzureDbView), not in activeContentType —
+  // Clear preview + drop EVERY form of selection (item-level checkboxes
+  // AND folder-level bulk-select) when the snapshot, tab, or active
+  // folder changes. Without this, ids from one scope leak into another
+  // (Download/Recover would act on stale ids — e.g. Inbox ticks
+  // surviving a switch to Deleted, or OneDrive bulk-folder picks
+  // re-appearing when navigating back to a folder you'd left).
+  // For Azure DB the "active tab" lives in `?tab=configuration|database
+  // |schema` (URL-synced inside AzureDbView), not in activeContentType —
   // include that value so switching between Configuration / Database /
   // Schema also resets the checkbox state.
   useEffect(() => {
     setSelectedItem(null);
     setSelectedItems(new Set());
-  }, [selectedSnapshotId, activeContentType, searchParams.get('tab')]);
+    setOneDriveFolderSelected(new Set());
+    setOneDriveFolderBusy(new Set());
+    setGenericFolderSelected(new Set());
+    setGenericFolderBusy(new Set());
+  }, [selectedSnapshotId, activeContentType, searchParams.get('tab'), selectedFolder]);
 
   // Left-panel grouping is uniform across mail / onedrive / contacts /
   // chats — all driven by the active tab's snapshot's distinct folder_paths.
@@ -6176,6 +6193,28 @@ export default function Recovery() {
       else next.add(folderPath);
       return next;
     });
+    // Immediately flip every currently-visible file under this folder
+    // (recursive prefix match) so the rows tick instantly — same
+    // rationale as the generic handler. The async fetch below
+    // augments with hidden-page ids.
+    const prefix = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+    const visibleIds = recoveryItems
+      .filter(it => {
+        const fp = it.folderPath || '';
+        return fp === folderPath || fp.startsWith(prefix);
+      })
+      .map(it => it.id);
+    if (visibleIds.length > 0) {
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        if (alreadySelected) {
+          for (const id of visibleIds) next.delete(id);
+        } else {
+          for (const id of visibleIds) next.add(id);
+        }
+        return next;
+      });
+    }
     setOneDriveFolderBusy(prev => new Set(prev).add(folderPath));
     try {
       const ids = await SnapshotService.getOneDriveIdsByPrefix(selectedSnapshotId, folderPath);
@@ -6215,7 +6254,7 @@ export default function Recovery() {
         return next;
       });
     }
-  }, [selectedSnapshotId, oneDriveFolderBusy, oneDriveFolderSelected]);
+  }, [selectedSnapshotId, oneDriveFolderBusy, oneDriveFolderSelected, recoveryItems]);
 
   // Generic folder check — used by Mail / Contacts / Calendar folder
   // rows. Toggles "every item in this folder" into/out of selectedItems
@@ -6232,6 +6271,27 @@ export default function Recovery() {
       else next.add(folderPath);
       return next;
     });
+    // Immediately flip every currently-visible row that matches this
+    // folder. Without this, the email checkboxes only update after
+    // the async searchItems walk below resolves — and that walk can
+    // return zero rows (backend folderPath indexing nuances), so the
+    // user would tick the folder and see no rows respond. Flipping
+    // visible ids up-front gives instant feedback; the walk then
+    // augments selectedItems with hidden-page ids.
+    const visibleIds = recoveryItems
+      .filter(it => (it.folderPath || '') === folderPath)
+      .map(it => it.id);
+    if (visibleIds.length > 0) {
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        if (alreadySelected) {
+          for (const id of visibleIds) next.delete(id);
+        } else {
+          for (const id of visibleIds) next.add(id);
+        }
+        return next;
+      });
+    }
     setGenericFolderBusy(prev => new Set(prev).add(folderPath));
     try {
       // Walk pages until we've collected every id under this folder.
@@ -6282,7 +6342,7 @@ export default function Recovery() {
         return next;
       });
     }
-  }, [selectedSnapshotId, selectedResource, genericFolderBusy, genericFolderSelected]);
+  }, [selectedSnapshotId, selectedResource, genericFolderBusy, genericFolderSelected, recoveryItems]);
 
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
@@ -7038,10 +7098,40 @@ export default function Recovery() {
                             selectedItems={selectedItems}
                             onToggleItem={toggleSelectItem}
                             onSelectAll={(checked) => {
+                              // Set selectedItems to the visible page
+                              // immediately so the toolbar count
+                              // shows "(N)" right on click — same as
+                              // the manual-select feel — without
+                              // waiting on the async folder-walk
+                              // (which may return 0 due to backend
+                              // folderPath indexing nuances).
                               if (checked) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
                               else setSelectedItems(new Set());
+
+                              // Sync the folder bulk-select state.
+                              // handleOneDriveFolderCheck flips
+                              // oneDriveFolderSelected immediately
+                              // (left-panel checkbox flips) AND
+                              // fetches every recursive file id under
+                              // the folder, merging into
+                              // selectedItems. Root / Recent has no
+                              // folder context, so visible-page only.
+                              const isFolderContext =
+                                !!selectedFolder
+                                && selectedFolder !== 'all'
+                                && selectedFolder !== '/';
+                              if (isFolderContext) {
+                                const inSet = oneDriveFolderSelected.has(selectedFolder);
+                                if (checked !== inSet) handleOneDriveFolderCheck(selectedFolder);
+                              }
                             }}
-                            allChecked={recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id))}
+                            allChecked={
+                              (!!selectedFolder
+                                && selectedFolder !== 'all'
+                                && selectedFolder !== '/'
+                                && oneDriveFolderSelected.has(selectedFolder))
+                              || (recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
+                            }
                             onFolderCheck={handleOneDriveFolderCheck}
                             folderBusy={oneDriveFolderBusy}
                             folderSelected={oneDriveFolderSelected}
@@ -7125,7 +7215,29 @@ export default function Recovery() {
                                 <input
                                   type="checkbox"
                                   className="folder-check"
-                                  checked={genericFolderSelected.has(folder.path)}
+                                  checked={
+                                    // Either: bulk-selected via this
+                                    // checkbox / via the master select-
+                                    // all (genericFolderSelected flips
+                                    // immediately), OR every item in
+                                    // this folder is currently in
+                                    // selectedItems — so manually
+                                    // ticking each row also lights up
+                                    // the folder. We only trust the
+                                    // derived check when the folder is
+                                    // the active view AND fully loaded
+                                    // (recoveryItems.length ===
+                                    // folder.count) — otherwise an
+                                    // unloaded page might hide unticked
+                                    // items and we'd lie to the user.
+                                    genericFolderSelected.has(folder.path)
+                                    || (
+                                      selectedFolder === folder.path
+                                      && folder.count > 0
+                                      && recoveryItems.length === folder.count
+                                      && recoveryItems.every(i => selectedItems.has(i.id))
+                                    )
+                                  }
                                   disabled={genericFolderBusy.has(folder.path)}
                                   onClick={(e) => e.stopPropagation()}
                                   onChange={() => handleGenericFolderCheck(folder.path)}
@@ -7163,10 +7275,54 @@ export default function Recovery() {
                     <label className="select-all-wrap" title="Select all">
                       <input
                         type="checkbox"
-                        checked={recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id))}
+                        checked={
+                          // Folder bulk-select drives the left-panel
+                          // folder checkbox; reflect it here so the
+                          // master checkbox flips immediately (no
+                          // flicker while the id-fetch resolves).
+                          (activeContentType !== 'chats'
+                            && selectedFolder
+                            && selectedFolder !== 'all'
+                            && genericFolderSelected.has(selectedFolder))
+                          || (recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
+                        }
                         onChange={e => {
-                          if (e.target.checked) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
+                          const want = e.target.checked;
+                          // (a) Set selectedItems to the visible page
+                          // immediately. Keeps the toolbar count
+                          // showing "(N)" the moment the user clicks
+                          // — same feel as manually ticking each row
+                          // — and doesn't depend on the async
+                          // searchItems walk, which can occasionally
+                          // return zero rows due to backend folderPath
+                          // indexing nuances and would otherwise leave
+                          // the count stuck at 0.
+                          if (want) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
                           else setSelectedItems(new Set());
+
+                          // (b) Sync the left-panel folder checkbox.
+                          // handleGenericFolderCheck flips
+                          // genericFolderSelected immediately AND
+                          // fetches every id under the folder
+                          // (paginated items not yet on screen),
+                          // which then merges into selectedItems.
+                          // Chats use a per-thread (threadPath) model
+                          // and skip this. OneDrive has its own
+                          // panel above with separate handling.
+                          if (activeContentType === 'chats') return;
+                          if (selectedFolder && selectedFolder !== 'all') {
+                            const inSet = genericFolderSelected.has(selectedFolder);
+                            if (want !== inSet) handleGenericFolderCheck(selectedFolder);
+                            return;
+                          }
+                          // "All" view: every folder containing items
+                          // should flip too, so each left-panel folder
+                          // checkbox reflects the master selection.
+                          for (const folder of folders) {
+                            if (!folder.path) continue;
+                            const inSet = genericFolderSelected.has(folder.path);
+                            if (want !== inSet) handleGenericFolderCheck(folder.path);
+                          }
                         }}
                       />
                     </label>
