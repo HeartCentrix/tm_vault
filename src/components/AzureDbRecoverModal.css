@@ -129,7 +129,7 @@
 }
 .azdb-rec-field input:focus { border-bottom-color: #0f172a; }
 .azdb-rec-field input[readonly] { color: #475569; }
-.azdb-rec-field input::placeholder { color: #94a3b8; }
+.azdb-rec-field input::placeholder { color: #6b7280; }
 .azdb-rec-select {
   appearance: none;
   -webkit-appearance: none;

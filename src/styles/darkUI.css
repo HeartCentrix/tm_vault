@@ -2882,3 +2882,224 @@
   color: var(--tm-text) !important;
   font-weight: 600 !important;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Activity page — compact audit detail modal. Uses .audit-modal-compact
+   instead of the shared .modal-content, so the section-11 rules above
+   miss it and the modal renders white-on-white with #1a1a1a text that
+   becomes invisible after the body sets color: var(--tm-text).
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .modal-overlay .audit-modal-compact {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact .compact-value,
+[data-theme="dark"] .modal-overlay .audit-modal-compact .modal-compact-content {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact .compact-label,
+[data-theme="dark"] .modal-overlay .audit-modal-compact .object-type-inline {
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact .modal-close-x {
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact .modal-close-x:hover {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact .view-raw-btn-compact {
+  background: transparent !important;
+  color: var(--tm-text) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact .view-raw-btn-compact:hover {
+  background: var(--tm-hover) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   <input type="date"> — the native ::-webkit-calendar-picker-indicator
+   is a black SVG, which disappears against dark surfaces. Invert it so
+   it reads as light-grey on dark backgrounds. Filter-based recolor
+   keeps the icon crisp without swapping in a custom asset.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.85);
+  cursor: pointer;
+  opacity: 0.9;
+}
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator:hover,
+[data-theme="dark"] input[type="week"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Activity page — raw JSON viewer modal. Uses .raw-json-modal, missed
+   by section-11. The <pre>.raw-json-content is already dark by design
+   (#1e1e1e/#d4d4d4) but the chrome around it (white modal + dark h3)
+   inverts to invisible in dark mode.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .modal-overlay .raw-json-modal {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .raw-json-modal .modal-header h3 { color: var(--tm-text) !important; }
+[data-theme="dark"] .raw-json-modal .modal-close { color: var(--tm-body) !important; }
+[data-theme="dark"] .raw-json-modal .modal-close:hover { color: var(--tm-text) !important; }
+[data-theme="dark"] .raw-json-content {
+  background: var(--tm-chrome) !important;
+  color: var(--tm-body-3) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Recovery page — Entra audit detail modal. Custom backdrop class
+   (.entra-audit-modal-backdrop) bypasses .modal-overlay, so even the
+   shared rules don't apply. Hardcoded #fff + #0f172a is invisible.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .entra-audit-modal-backdrop {
+  background: rgba(0, 0, 0, 0.7) !important;
+}
+[data-theme="dark"] .entra-audit-modal {
+  background: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border: 1px solid var(--tm-border) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="dark"] .entra-audit-modal-title { color: var(--tm-text) !important; }
+[data-theme="dark"] .entra-audit-field { color: var(--tm-text) !important; }
+[data-theme="dark"] .entra-audit-label,
+[data-theme="dark"] .entra-audit-sublabel,
+[data-theme="dark"] .entra-audit-initkind { color: var(--tm-body) !important; }
+[data-theme="dark"] .entra-audit-modal-close { color: var(--tm-body) !important; }
+[data-theme="dark"] .entra-audit-modal-close:hover {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Activity page — .reset-btn / .download-btn are already themed by the
+   shared rule at line 568+ (warm-dark surface, white text, pink-accent
+   hover border). Only .filter-btn and .audit-filter-row need the
+   border-color fix here so their light-grey #d1d5db doesn't vanish.
+   The selects in .inline-filters get a dark surface + pink hover to
+   match.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .filter-btn,
+[data-theme="dark"] .audit-filter-row {
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .inline-filters select {
+  background-color: var(--tm-surface) !important;
+  color: var(--tm-text) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .inline-filters select:hover {
+  border-color: var(--tm-accent) !important;
+}
+
+/* ResourceGroupManager (rgm-*) and SlaWizard (wiz-*) are fixed-dark
+   components — their backgrounds are #11151b/#1c1f26 regardless of
+   the [data-theme] attribute. Don't theme their text colors; #9ca3af
+   on #11151b already passes AA at 7.2:1 and rewriting to --tm-body
+   would shift the warm/cool grey balance and reduce contrast. */
+
+/* ─────────────────────────────────────────────────────────────────────
+   Component-local ::placeholder rules hardcode #94a3b8 with higher
+   specificity than the global rule, so they leak through. Map to
+   --tm-body in dark mode for legibility on dark inputs.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .recovery-toolbar-search-input::placeholder,
+[data-theme="dark"] .azdb-rec-field input::placeholder,
+[data-theme="dark"] .resource-search-input::placeholder,
+[data-theme="dark"] .col-settings-add::placeholder,
+[data-theme="dark"] .az-db-search-val::placeholder {
+  color: var(--tm-body) !important;
+  opacity: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   ::selection — OS blue is jarring on the warm dark palette.
+   ─────────────────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(184, 14, 56, 0.35);
+  color: inherit;
+}
+[data-theme="dark"] ::selection {
+  background: var(--tm-accent);
+  color: #ffffff;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   :-webkit-autofill — Chrome's yellow autofill background blasts
+   through dark inputs. Use a 1000px inset shadow to repaint the
+   surface and force the text-fill color to --tm-text.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] input:-webkit-autofill,
+[data-theme="dark"] input:-webkit-autofill:hover,
+[data-theme="dark"] input:-webkit-autofill:focus,
+[data-theme="dark"] textarea:-webkit-autofill,
+[data-theme="dark"] select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--tm-surface) inset !important;
+  -webkit-text-fill-color: var(--tm-text) !important;
+  caret-color: var(--tm-text) !important;
+  border-color: var(--tm-border) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Global scrollbars — webkit only (Firefox uses scrollbar-color).
+   The Recovery-page scoped rule covers that page; this is the global
+   fallback for everything else.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--tm-bg);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--tm-hover);
+  border-radius: 6px;
+  border: 2px solid var(--tm-bg);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--tm-muted);
+}
+[data-theme="dark"] ::-webkit-scrollbar-corner {
+  background: var(--tm-bg);
+}
+[data-theme="dark"] * {
+  scrollbar-color: var(--tm-hover) var(--tm-bg);
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   <input type="number"> spinner buttons — Chrome's default arrows
+   render dark-on-dark. Brighten them so they remain visible without
+   removing the affordance.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] input[type="number"]::-webkit-inner-spin-button,
+[data-theme="dark"] input[type="number"]::-webkit-outer-spin-button {
+  filter: invert(1) brightness(0.9);
+  opacity: 0.85;
+}
+[data-theme="dark"] input[type="number"]::-webkit-inner-spin-button:hover,
+[data-theme="dark"] input[type="number"]::-webkit-outer-spin-button:hover {
+  opacity: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   <textarea> resize handle — invert so the diagonal lines show.
+   ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] textarea::-webkit-resizer {
+  filter: invert(1) brightness(0.85);
+}

@@ -54,7 +54,7 @@
 }
 
 .resource-search-input::placeholder {
-  color: #94a3b8;
+  color: #6b7280;
 }
 
 .resource-list {
@@ -3048,7 +3048,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   outline: none;
   background: transparent;
 }
-.col-settings-add::placeholder { color: #94a3b8; }
+.col-settings-add::placeholder { color: #6b7280; }
 .col-settings-add:focus { border-bottom-color: #0f172a; }
 .col-settings-add-error {
   color: #dc2626; font-size: 12px; padding: 4px 4px 0;
@@ -3173,7 +3173,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   color: #0f172a;
   background: #fff;
 }
-.az-db-search-val::placeholder { color: #94a3b8; }
+.az-db-search-val::placeholder { color: #6b7280; }
 .az-db-search-val:focus { outline: none; }
 
 /* Icon-only button nested inside the search-field wrapper. No

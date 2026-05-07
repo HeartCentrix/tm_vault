@@ -74,6 +74,10 @@
   min-width: 130px;
 }
 
+.inline-filters select:hover {
+  border-color: #B80E38;
+}
+
 .inline-filters select:focus {
   outline: none;
   border-color: #10b981;
@@ -88,7 +92,7 @@
   border: 1px solid #e5e7eb;
   border-radius: 4px;
   background: #fff;
-  color: #6b7280;
+  color: #374151;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
@@ -96,8 +100,7 @@
 
 .reset-btn:hover {
   background: #f9fafb;
-  color: #374151;
-  border-color: #d1d5db;
+  border-color: #B80E38;
 }
 
 .download-btn {
