@@ -86,12 +86,18 @@ function resolvePstIncludeTypes(
 }
 
 // Auto-determines PST granularity from selection — no manual picker needed.
-// Download all  → MAILBOX (one PST per mailbox)
-// Folder paths  → FOLDER  (one PST per folder)
-// Individual items → ITEM (one PST per item)
+// Download all          → MAILBOX (one PST per mailbox, full source tree)
+// Multiple folder paths → MAILBOX (one PST containing the chosen folders;
+//                                  the pstwriter rebuilds the source
+//                                  folder hierarchy so users see their
+//                                  picks under the correct ancestors
+//                                  inside a single .pst — no more N
+//                                  separate files to import one at a
+//                                  time, no more lost hierarchy)
+// Individual items      → ITEM (one PST per item)
 function autoGranularity(scope: Scope, folderPaths?: string[]): 'MAILBOX' | 'FOLDER' | 'ITEM' {
   if (scope === 'all') return 'MAILBOX';
-  if (folderPaths && folderPaths.length > 0) return 'FOLDER';
+  if (folderPaths && folderPaths.length > 0) return 'MAILBOX';
   return 'ITEM';
 }
 
@@ -114,7 +120,12 @@ function getPstAutoLabel(
   if (types.includes('USER_CONTACT'))   typeLabels.push('contacts');
   const what = typeLabels.join(' + ');
 
-  if (gran === 'MAILBOX') return `Full mailbox exported as PST (${what}) — opens in Outlook`;
+  if (gran === 'MAILBOX') {
+    if (folderPaths && folderPaths.length > 0) {
+      return `${folderPaths.length} folder${folderPaths.length > 1 ? 's' : ''} exported as a single PST (${what}) — opens in Outlook`;
+    }
+    return `Full mailbox exported as PST (${what}) — opens in Outlook`;
+  }
   if (gran === 'FOLDER')  return `${folderPaths!.length} folder${folderPaths!.length > 1 ? 's' : ''} exported as PST (${what}) — opens in Outlook`;
   return `${selectedCount} item${selectedCount !== 1 ? 's' : ''} exported as PST (${what}) — opens in Outlook`;
 }
