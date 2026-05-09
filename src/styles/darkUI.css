@@ -872,62 +872,8 @@
 [data-theme="dark"] .azdb-rec-x:hover { color: var(--tm-text) !important; }
 [data-theme="dark"] .azdb-rec-section { color: var(--tm-text) !important; }
 
-/* ─────────────────────────────────────────────────────────────────────
-   11d. SlaWizard (.wiz-*) — was already dark slate with blue accents.
-   Retint blues → pink so it fits the TM palette.
-   ─────────────────────────────────────────────────────────────────── */
-[data-theme="dark"] .wiz-modal {
-  background: var(--tm-surface) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-border) !important;
-}
-[data-theme="dark"] .wiz-modal *,
-[data-theme="dark"] .wiz-modal h1,
-[data-theme="dark"] .wiz-modal h2,
-[data-theme="dark"] .wiz-modal h3 { color: var(--tm-text); }
-[data-theme="dark"] .wiz-header { border-bottom-color: var(--tm-border) !important; }
-[data-theme="dark"] .wiz-close { color: var(--tm-body) !important; }
-[data-theme="dark"] .wiz-close:hover { color: var(--tm-accent-soft) !important; }
-[data-theme="dark"] .wiz-stepper { border-bottom-color: var(--tm-border) !important; }
-[data-theme="dark"] .wiz-step-pill {
-  background: var(--tm-surface-2) !important;
-  color: var(--tm-body-2) !important;
-  border: 1px solid var(--tm-border) !important;
-}
-[data-theme="dark"] .wiz-step-pill.active {
-  background: var(--tm-accent) !important;
-  border-color: var(--tm-accent) !important;
-  color: #ffffff !important;
-}
-[data-theme="dark"] .wiz-step-pill.done {
-  color: var(--tm-success) !important;
-  border-color: var(--tm-success) !important;
-}
-[data-theme="dark"] .wiz-step-num { background: rgba(255, 255, 255, 0.1) !important; }
-[data-theme="dark"] .wiz-hint { color: var(--tm-body-2) !important; }
-[data-theme="dark"] .wiz-hint.warn { color: var(--tm-warning) !important; }
-[data-theme="dark"] .wiz-row > span { color: var(--tm-body-2) !important; }
-[data-theme="dark"] .wiz-row.inline > span { color: var(--tm-text) !important; }
-[data-theme="dark"] .wiz-row input[type="text"],
-[data-theme="dark"] .wiz-row input[type="number"],
-[data-theme="dark"] .wiz-row input[type="time"],
-[data-theme="dark"] .wiz-row select {
-  background: var(--tm-surface-2) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-border) !important;
-}
-[data-theme="dark"] .wiz-row input[type="checkbox"] { accent-color: var(--tm-accent) !important; }
-[data-theme="dark"] .wiz-tier-card {
-  background: var(--tm-surface-2) !important;
-  border: 1px solid var(--tm-border) !important;
-  color: var(--tm-text) !important;
-}
-[data-theme="dark"] .wiz-tier-card:hover {
-  background: var(--tm-surface-2) !important;
-  border-color: var(--tm-accent) !important;
-}
-[data-theme="dark"] .wiz-tier-name { color: var(--tm-text) !important; }
-[data-theme="dark"] .wiz-tier-meta { color: var(--tm-body-2) !important; }
+/* SlaWizard dark-mode rules now live inside src/components/SlaWizard.css
+   (theme variables drive both light and dark from one stylesheet). */
 
 /* ─────────────────────────────────────────────────────────────────────
    12. Recharts + chart tooltips — Overview palette (unchanged).

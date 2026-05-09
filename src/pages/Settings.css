@@ -62,6 +62,37 @@
 .sla-name-col { min-width: 100px; flex-shrink: 0; display: flex; align-items: center; }
 .sla-name-text { font-size: 15px; font-weight: 600; color: #334155; }
 
+/* Status badges in the SLA list — operator-facing summary of the policy's
+   compliance/encryption/protection state. Tooltip carries the actionable
+   detail (e.g. how to fix CMK access). */
+.sla-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #334155; }
+.sla-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.sla-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600;
+  padding: 2px 7px; border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: default; user-select: none;
+  letter-spacing: 0.02em;
+}
+.sla-badge-default { background: rgba(211,18,69,0.10); color: #b00f39; border-color: rgba(211,18,69,0.25); }
+.sla-badge-locked { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
+.sla-badge-unlocked { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
+.sla-badge-hold { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+.sla-badge-cmk-ok { background: #dcfce7; color: #166534; border-color: #86efac; }
+.sla-badge-cmk-denied { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.sla-badge-cmk-err { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
+.sla-badge-key-version { background: #f1f5f9; color: #475569; border-color: #cbd5e1; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+
+[data-theme="dark"] .sla-badge-default { background: rgba(184,14,56,0.18); color: #f0a8b9; border-color: rgba(184,14,56,0.45); }
+[data-theme="dark"] .sla-badge-locked { background: rgba(252,211,77,0.15); color: #fde68a; border-color: rgba(252,211,77,0.4); }
+[data-theme="dark"] .sla-badge-unlocked { background: rgba(255,255,255,0.06); color: #c2bdb5; border-color: rgba(255,255,255,0.15); }
+[data-theme="dark"] .sla-badge-hold { background: rgba(196,181,253,0.15); color: #ddd6fe; border-color: rgba(196,181,253,0.4); }
+[data-theme="dark"] .sla-badge-cmk-ok { background: rgba(34,197,94,0.15); color: #86efac; border-color: rgba(34,197,94,0.4); }
+[data-theme="dark"] .sla-badge-cmk-denied { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(239,68,68,0.45); }
+[data-theme="dark"] .sla-badge-cmk-err { background: rgba(251,146,60,0.15); color: #fdba74; border-color: rgba(251,146,60,0.4); }
+[data-theme="dark"] .sla-badge-key-version { background: rgba(255,255,255,0.06); color: #c2bdb5; border-color: rgba(255,255,255,0.15); }
+
 .sla-backups { display: flex; gap: 24px; flex: 1; }
 .sla-backup-col { display: flex; flex-direction: column; gap: 4px; }
 
