@@ -1328,10 +1328,60 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   // set = show events from every calendar.
   const [activeCalendarFilters, setActiveCalendarFilters] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date());
-  // Mouse-following tooltip state. `day` points at the cell's day number
-  // in the current month; x/y are clientX/clientY so the popover can be
-  // absolutely positioned relative to the viewport.
-  const [hovered, setHovered] = useState<{ day: number; x: number; y: number } | null>(null);
+  // Active popover state. Anchored to the day-cell's bounding rect (not
+  // the cursor) so the popover stays put while the user moves toward it.
+  // `pinned` flips to true on click — disables auto-close on mouseLeave.
+  // We store the full rect (left/right/top/bottom) so the popover can
+  // right-align with the cell when it would overflow the viewport on
+  // the right edge — last-2-columns case.
+  const [popover, setPopover] = useState<{
+    day: number;
+    cellLeft: number;
+    cellRight: number;
+    cellTop: number;
+    cellBottom: number;
+    pinned: boolean;
+  } | null>(null);
+
+  // Hover-bridge close timer. Cell-mouseLeave does NOT close immediately;
+  // it schedules a close in CLOSE_DELAY_MS so the cursor can travel from
+  // the cell to the popover without losing state. The popover's own
+  // mouseEnter cancels this timer; its mouseLeave reschedules it.
+  // Without this bridge, the popover repositioned to whatever day-cell
+  // sat underneath the popover area, breaking single-event selection.
+  const closeTimer = useRef<number | null>(null);
+  const CLOSE_DELAY_MS = 180;
+  const cancelClose = () => {
+    if (closeTimer.current != null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => {
+      setPopover(prev => (prev?.pinned ? prev : null));
+    }, CLOSE_DELAY_MS);
+  };
+
+  // Dismiss pinned popover on outside-click or Escape (menu-style).
+  useEffect(() => {
+    if (!popover?.pinned) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('.cal-hover-tooltip, .cal-day-cell')) return;
+      setPopover(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPopover(null);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [popover?.pinned]);
 
   // Load all events for this snapshot. viewDate stays on today's month
   // (the initial value passed to useState) so the user always lands on
@@ -1567,10 +1617,63 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
             return (
               <div
                 key={i}
-                className={`cal-day-cell${!day ? ' cal-day-empty' : ''}${day && isToday(day) ? ' cal-day-today' : ''}${hasEvents ? ' cal-day-has-events' : ''}`}
-                onMouseEnter={day && hasEvents ? (e) => setHovered({ day, x: e.clientX, y: e.clientY }) : undefined}
-                onMouseMove={day && hasEvents ? (e) => setHovered({ day, x: e.clientX, y: e.clientY }) : undefined}
-                onMouseLeave={() => setHovered(null)}
+                className={`cal-day-cell${!day ? ' cal-day-empty' : ''}${day && isToday(day) ? ' cal-day-today' : ''}${hasEvents ? ' cal-day-has-events' : ''}${popover?.day === day ? ' cal-day-pinned' : ''}`}
+                onMouseEnter={day && hasEvents ? (e) => {
+                  // While pinned, hovering other cells must NOT replace
+                  // the pinned popover.
+                  if (popover?.pinned && popover.day !== day) return;
+                  cancelClose();
+                  // Capture rect synchronously — see onClick comment.
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setPopover(prev => ({
+                    day,
+                    cellLeft: r.left,
+                    cellRight: r.right,
+                    cellTop: r.top,
+                    cellBottom: r.bottom,
+                    pinned: prev?.pinned && prev.day === day ? true : false,
+                  }));
+                } : undefined}
+                onMouseLeave={() => {
+                  // Schedule (don't immediately close) so cursor can
+                  // travel onto the popover within CLOSE_DELAY_MS.
+                  if (!popover?.pinned) scheduleClose();
+                }}
+                onClick={day && hasEvents ? (e) => {
+                  e.stopPropagation();
+                  cancelClose();
+                  // Capture rect BEFORE the state-updater callback —
+                  // React reuses synthetic events and `e.currentTarget`
+                  // is null by the time the updater runs asynchronously.
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setPopover(prev => {
+                    if (prev?.pinned && prev.day === day) {
+                      // Clicking the same pinned cell again closes.
+                      return null;
+                    }
+                    return {
+                      day,
+                      cellLeft: r.left, cellRight: r.right,
+                      cellTop: r.top, cellBottom: r.bottom,
+                      pinned: true,
+                    };
+                  });
+                } : undefined}
+                role={day && hasEvents ? 'button' : undefined}
+                tabIndex={day && hasEvents ? 0 : undefined}
+                onKeyDown={day && hasEvents ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    cancelClose();
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setPopover({
+                      day,
+                      cellLeft: r.left, cellRight: r.right,
+                      cellTop: r.top, cellBottom: r.bottom,
+                      pinned: true,
+                    });
+                  }
+                } : undefined}
               >
                 {day && (
                   <>
@@ -1600,20 +1703,26 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
           })}
         </div>
 
-        {/* Mouse-following event popover. Fixed positioning means the
-            offsets are viewport-relative. We clamp to the viewport edge
-            so it never clips off-screen when the user hovers a cell
-            near the right/bottom border. Width is computed client-side;
-            falls back to a sane default to avoid a flash on first
-            hover before the ref resolves. */}
-        {hovered && (eventsByDay[hovered.day]?.length ?? 0) > 0 && (
+        {/* Single popover anchored to the active day-cell's bounding rect.
+            Always interactive — checkboxes are clickable in both hover and
+            pinned modes. The hover bridge (onMouseEnter cancels the close
+            timer, onMouseLeave reschedules) keeps it visible while the
+            cursor travels between the cell and the popover. */}
+        {popover && (eventsByDay[popover.day]?.length ?? 0) > 0 && (
           <CalendarHoverTooltip
-            day={hovered.day}
-            x={hovered.x}
-            y={hovered.y}
-            events={eventsByDay[hovered.day] || []}
+            day={popover.day}
+            cellLeft={popover.cellLeft}
+            cellRight={popover.cellRight}
+            cellTop={popover.cellTop}
+            cellBottom={popover.cellBottom}
+            events={eventsByDay[popover.day] || []}
             selectedItems={selectedItems}
             onItemCheck={onItemCheck}
+            interactive={true}
+            pinned={popover.pinned}
+            onPopoverEnter={cancelClose}
+            onPopoverLeave={() => { if (!popover.pinned) scheduleClose(); }}
+            onClose={() => setPopover(null)}
           />
         )}
       </div>
@@ -1621,35 +1730,91 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   );
 }
 
-function CalendarHoverTooltip({ day, x, y, events, selectedItems, onItemCheck }: {
+function CalendarHoverTooltip({
+  day, cellLeft, cellRight, cellTop, cellBottom,
+  events, selectedItems, onItemCheck,
+  interactive = false, pinned = false,
+  onClose, onPopoverEnter, onPopoverLeave,
+}: {
   day: number;
-  x: number;
-  y: number;
+  // Full day-cell rect — needed so popover can right-align with cell
+  // when it would overflow the viewport on the right (last 2 columns).
+  cellLeft: number;
+  cellRight: number;
+  cellTop: number;
+  cellBottom: number;
   events: CalendarEvent[];
   selectedItems: Set<string>;
   onItemCheck: (id: string) => void;
+  interactive?: boolean;
+  pinned?: boolean;
+  onClose?: () => void;
+  onPopoverEnter?: () => void;
+  onPopoverLeave?: () => void;
 }) {
-  // Offset the popover off the cursor so it doesn't flicker when the
-  // mouse moves onto it. Clamp to viewport so late-month / bottom-row
-  // cells don't push it off-screen.
-  const GAP = 14;
+  // Offset the popover so it doesn't sit on top of the trigger. Clamp
+  // to viewport so cells in the right column / bottom row don't push it
+  // off-screen.
+  const GAP = 6;
   const PAD = 8;
-  const maxW = 320;
+  const maxW = 280;
   const estimatedH = Math.min(360, 56 + events.length * 22);
-  let left = x + GAP;
-  let top = y + GAP;
-  if (typeof window !== 'undefined') {
-    if (left + maxW > window.innerWidth - PAD) left = Math.max(PAD, x - GAP - maxW);
-    if (top + estimatedH > window.innerHeight - PAD) top = Math.max(PAD, y - GAP - estimatedH);
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1920;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 1080;
+
+  // Default: popover sits just below the cell, left-aligned with it.
+  let left = cellLeft;
+  let top = cellBottom + GAP;
+
+  // Right-overflow → shift left only by the OVERFLOW amount (not
+  // right-aligning to the cell's right edge). Right-aligning made the
+  // popover land on the 3rd-last column visually because the popover
+  // is wider than a cell; a small viewport-clamping shift keeps it
+  // attached to the originating cell.
+  const overflow = (left + maxW) - (vw - PAD);
+  if (overflow > 0) {
+    left = Math.max(PAD, left - overflow);
   }
+  // Bottom-overflow → flip above the cell.
+  let placeAbove = false;
+  if (top + estimatedH > vh - PAD) {
+    top = Math.max(PAD, cellTop - GAP - estimatedH);
+    placeAbove = true;
+  }
+
+  // Arrow position — points at the source cell's center. Computed in
+  // popover-local coordinates so the arrow stays glued to the cell
+  // even when the popover shifts left to avoid right-overflow. Clamped
+  // so the arrow never sits outside the popover's visible area.
+  const cellCenter = (cellLeft + cellRight) / 2;
+  const arrowX = Math.max(14, Math.min(maxW - 14, cellCenter - left));
   return (
     <div
-      className="cal-hover-tooltip"
-      style={{ left, top, maxWidth: maxW }}
+      className={`cal-hover-tooltip${pinned ? ' cal-hover-tooltip-pinned' : ''}${placeAbove ? ' cal-hover-tooltip-above' : ''}`}
+      style={{
+        left, top, maxWidth: maxW,
+        // CSS custom prop drives the arrow ::after positioning so it
+        // always points at the source cell, even when the popover
+        // shifted left to fit the viewport.
+        ['--cal-arrow-x' as any]: `${arrowX}px`,
+      }}
+      role={interactive ? 'dialog' : undefined}
+      aria-label={interactive ? `Day ${day} events` : undefined}
       onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+      onMouseEnter={onPopoverEnter}
+      onMouseLeave={onPopoverLeave}
     >
       <div className="cal-hover-header">
-        Day {day} · {events.length} event{events.length === 1 ? '' : 's'}
+        <span>Day {day} · {events.length} event{events.length === 1 ? '' : 's'}</span>
+        {interactive && onClose && (
+          <button
+            className="cal-hover-close"
+            onClick={onClose}
+            aria-label="Close"
+            type="button"
+          >×</button>
+        )}
       </div>
       <div className="cal-hover-list">
         {events.map(ev => {

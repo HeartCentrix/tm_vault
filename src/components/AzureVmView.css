@@ -83,8 +83,8 @@
   cursor: pointer;
   background: #fff;
 }
-.vm-left-row:hover { background: #f1f5f9; }
-.vm-left-row.active { background: #ccfbf1; }
+.vm-left-row:hover { background: var(--row-hover-bg); }
+.vm-left-row.active { background: var(--row-selected-bg); box-shadow: inset 3px 0 0 var(--row-selected-accent); }
 .vm-left-row input[type="checkbox"] { margin-top: 2px; }
 .vm-left-row-body { flex: 1; min-width: 0; }
 .vm-left-row-title { font-size: 13px; color: #0f172a; word-break: break-word; }
@@ -144,7 +144,7 @@
   font-size: 13px;
   color: #0f172a;
 }
-.vm-vol-row:hover { background: #f1f5f9; }
+.vm-vol-row:hover { background: var(--row-hover-bg); }
 .vm-vol-ico {
   display: inline-flex;
   align-items: center;

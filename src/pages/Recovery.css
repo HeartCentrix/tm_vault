@@ -1,3 +1,6 @@
+/* Row-state tokens (--row-hover-bg, --row-selected-bg, --row-selected-accent,
+   --row-selected-fg) live in src/styles/global.css :root so components
+   outside this page can reuse them. */
 .recovery-page {
   padding: 0 24px 24px;
   background: #fff;
@@ -5,6 +8,73 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Unified row interaction language
+ *
+ * Every interactive row in the Recovery page (every resource type) shares
+ * the same hover/selected feedback. The shared selector list is kept in
+ * one place so adding a new resource list = adding one selector.
+ *
+ *   :hover      → warm-cream bg + faint 1px brand-tinted left accent
+ *                 (the "boundary" cue the user asked to be consistent).
+ *   .selected   → deeper cream bg + solid 3px brand-red left accent.
+ *   transition  → 120ms ease-out so the bar slides in instead of snapping.
+ * ────────────────────────────────────────────────────────────────────── */
+.recovery-page .resource-list-item,
+.recovery-page .item-row,
+.recovery-page .chat-item-row,
+.recovery-page .email-item-row,
+.recovery-page .od-row,
+.recovery-page .od-row-folder,
+.recovery-page .od-left-section,
+.recovery-page .entra-user-row,
+.recovery-page .az-db-tree-row,
+.recovery-page .az-db-schema-folder,
+.recovery-page .cal-day-has-events,
+.recovery-page .cal-hover-row,
+.recovery-page .folder-item,
+.recovery-page .folder-tree-item,
+.recovery-page .az-db-data-table tbody tr {
+  transition: background 120ms ease-out, box-shadow 120ms ease-out;
+}
+.recovery-page .resource-list-item:hover,
+.recovery-page .item-row:hover,
+.recovery-page .chat-item-row:hover,
+.recovery-page .email-item-row:hover,
+.recovery-page .od-row:hover,
+.recovery-page .od-row-folder:hover,
+.recovery-page .od-left-section:hover,
+.recovery-page .entra-user-row:hover,
+.recovery-page .az-db-tree-row:hover,
+.recovery-page .az-db-schema-folder:hover,
+.recovery-page .cal-day-has-events:hover,
+.recovery-page .cal-hover-row:hover,
+.recovery-page .folder-item:hover,
+.recovery-page .folder-tree-item:hover,
+.recovery-page .az-db-data-table tbody tr:hover td {
+  /* Solid 2px brand-red left accent on hover. Selected (.selected) below
+     overrides with a 3px bar of the same red so it reads thicker. No
+     alpha — keeps it red, never pink. */
+  box-shadow: inset 2px 0 0 var(--row-selected-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .recovery-page .resource-list-item,
+  .recovery-page .item-row,
+  .recovery-page .chat-item-row,
+  .recovery-page .email-item-row,
+  .recovery-page .od-row,
+  .recovery-page .od-row-folder,
+  .recovery-page .od-left-section,
+  .recovery-page .entra-user-row,
+  .recovery-page .az-db-tree-row,
+  .recovery-page .az-db-schema-folder,
+  .recovery-page .cal-day-has-events,
+  .recovery-page .cal-hover-row,
+  .recovery-page .folder-item,
+  .recovery-page .folder-tree-item,
+  .recovery-page .az-db-data-table tbody tr { transition: none; }
 }
 
 /* Two-panel layout */
@@ -78,12 +148,12 @@
 }
 
 .resource-list-item:hover {
-  background: #e2e8f0;
+  background: var(--row-hover-bg);
 }
 
 .resource-list-item.selected {
-  background: #fde1e7;
-  border-left: 3px solid #D31245;
+  background: var(--row-selected-bg);
+  border-left: 3px solid var(--row-selected-accent);
   padding-left: 13px;
 }
 
@@ -527,12 +597,13 @@
   width: 100%;
 }
 .folder-tree-item:hover {
-  background: #f1f5f9;
+  background: var(--row-hover-bg);
 }
 .folder-tree-item.active {
-  background: #ccfbf1;
-  color: #b00f39;
+  background: var(--row-selected-bg);
+  color: var(--row-selected-fg);
   font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent);
 }
 .folder-tree-toggle {
   display: inline-block;
@@ -776,14 +847,15 @@
 }
 
 .folder-item:hover {
-  background: #e2e8f0;
+  background: var(--row-hover-bg);
   color: #0f172a;
 }
 
 .folder-item.active {
-  background: #fff;
-  color: #0f172a;
+  background: var(--row-selected-bg);
+  color: var(--row-selected-fg);
   font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent);
 }
 
 .folder-name {
@@ -873,11 +945,14 @@
 }
 
 .item-row:hover {
-  background: #f8fafc;
+  background: var(--row-hover-bg);
 }
 
 .item-row.selected {
-  background: #fde1e7;
+  background: var(--row-selected-bg);
+  /* inset box-shadow avoids the 3px content shift a border-left would
+     introduce — keeps the row width identical between hover and selected. */
+  box-shadow: inset 3px 0 0 var(--row-selected-accent);
 }
 
 .item-row input[type="checkbox"] {
@@ -1488,8 +1563,8 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   overflow-wrap: anywhere;
 }
 
-.chat-item-row:hover { background: #f8fafc; }
-.chat-item-row.selected { background: #fde1e7; }
+.chat-item-row:hover { background: var(--row-hover-bg); }
+.chat-item-row.selected { background: var(--row-selected-bg); box-shadow: inset 3px 0 0 var(--row-selected-accent); }
 
 .chat-item-row input[type="checkbox"] {
   margin-top: 3px;
@@ -1585,8 +1660,8 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   transition: background 0.12s;
 }
 
-.email-item-row:hover { background: #f8fafc; }
-.email-item-row.selected { background: #fde1e7; border-left: 3px solid #D31245; padding-left: 11px; }
+.email-item-row:hover { background: var(--row-hover-bg); }
+.email-item-row.selected { background: var(--row-selected-bg); border-left: 3px solid var(--row-selected-accent); padding-left: 11px; }
 
 .email-item-row input[type="checkbox"] {
   margin-top: 3px;
@@ -2057,7 +2132,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   cursor: pointer;
 }
 .cal-day-has-events:hover {
-  background: #f8fafc;
+  background: var(--row-hover-bg);
 }
 .cal-day-cell:last-child { border-right: none; }
 .cal-day-cell:nth-child(7n) { border-right: none; }
@@ -2154,7 +2229,74 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   font-size: 12px;
   color: #0f172a;
   min-width: 200px;
+  /* Always interactive — the parent component owns hover-bridge timing
+     so the popover stays open while cursor travels between cell and
+     popover. Checkbox clicks need pointer-events: auto. */
   pointer-events: auto;
+}
+/* Pinned popover — opened by clicking a day cell. Interactive so the
+   user can tick checkboxes; sits at higher z-index than the hover
+   variant. Slightly stronger shadow so it reads as a "real" dialog. */
+.cal-hover-tooltip-pinned {
+  pointer-events: auto;
+  z-index: 1100;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.25);
+  border-color: var(--row-selected-accent, #D31245);
+}
+
+/* Arrow pointing from the popover to the source day-cell. Position is
+   driven by --cal-arrow-x (set inline by the React component) so it
+   stays glued to the cell's centre even when the popover shifts left
+   to fit the viewport — last 2 columns case. */
+.cal-hover-tooltip::before,
+.cal-hover-tooltip::after {
+  content: "";
+  position: absolute;
+  left: var(--cal-arrow-x, 50%);
+  width: 0;
+  height: 0;
+}
+/* Default: popover sits BELOW the cell → arrow points UP from the
+   popover's top edge. Two layers (border-color filler + slight white
+   inner) so the arrow has the same border colour as the popover. */
+.cal-hover-tooltip::before {
+  top: -7px;
+  margin-left: -7px;
+  border: 7px solid transparent;
+  border-bottom-color: #e2e8f0;
+}
+.cal-hover-tooltip::after {
+  top: -6px;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-bottom-color: #fff;
+}
+.cal-hover-tooltip-pinned::before { border-bottom-color: var(--row-selected-accent, #D31245); }
+
+/* Flipped (popover ABOVE the cell when bottom-overflow) → arrow points
+   DOWN from the popover's bottom edge. */
+.cal-hover-tooltip-above::before,
+.cal-hover-tooltip-above::after {
+  top: auto;
+}
+.cal-hover-tooltip-above::before {
+  bottom: -7px;
+  border: 7px solid transparent;
+  border-top-color: #e2e8f0;
+  border-bottom-color: transparent;
+}
+.cal-hover-tooltip-above::after {
+  bottom: -6px;
+  border: 6px solid transparent;
+  border-top-color: #fff;
+  border-bottom-color: transparent;
+}
+.cal-hover-tooltip-pinned.cal-hover-tooltip-above::before { border-top-color: var(--row-selected-accent, #D31245); }
+/* Day cell that owns the pinned popover — visually mark it so the user
+   sees which cell the popover refers to. */
+.cal-day-pinned {
+  background: var(--row-selected-bg) !important;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent) !important;
 }
 
 .cal-hover-header {
@@ -2165,6 +2307,31 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cal-hover-close {
+  pointer-events: auto;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 18px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: 8px;
+}
+.cal-hover-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .cal-hover-list {
@@ -2183,10 +2350,11 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   min-width: 0;
 }
 .cal-hover-row:hover {
-  background: #f8fafc;
+  background: var(--row-hover-bg);
 }
 .cal-hover-row.checked {
-  background: #ccfbf1;
+  background: var(--row-selected-bg);
+  box-shadow: inset 3px 0 0 var(--row-selected-accent);
 }
 
 .cal-hover-check {
@@ -2309,11 +2477,15 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   text-align: left;
   transition: background 0.1s;
 }
-.od-left-section:hover { background: #f1f5f9; }
+.od-left-section:hover { background: var(--row-hover-bg); }
 .od-left-section.active {
-  background: #e0f2fe;
-  color: #0c4a6e;
+  background: var(--row-selected-bg);
+  /* --row-selected-fg is the readable brand-pink TEXT colour. In light
+     mode it's a deeper rose (#9a0d33) on light-pink bg; in dark mode it
+     flips to a lighter pink (#F4B6C5) on dark-rose bg — both ≥4.5:1. */
+  color: var(--row-selected-fg);
   font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent);
 }
 
 .od-left-icon { font-size: 14px; }
@@ -2326,7 +2498,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   color: #475569;
 }
 .od-left-icon-svg svg { width: 18px; height: 18px; }
-.od-left-section.active .od-left-icon-svg { color: #0c4a6e; }
+.od-left-section.active .od-left-icon-svg { color: var(--row-selected-fg); }
 .od-left-label { flex: 1; }
 
 .od-left-tree {
@@ -2459,11 +2631,11 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   cursor: default;
   transition: background 0.08s;
 }
-.od-row:hover { background: #f8fafc; }
-.od-row.selected { background: #e0f2fe; }
+.od-row:hover { background: var(--row-hover-bg); }
+.od-row.selected { background: var(--row-selected-bg); box-shadow: inset 3px 0 0 var(--row-selected-accent); }
 
 .od-row-folder { cursor: pointer; }
-.od-row-folder:hover { background: #f1f5f9; }
+.od-row-folder:hover { background: var(--row-hover-bg); }
 
 .od-td {
   min-width: 0;
@@ -2589,8 +2761,8 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   cursor: pointer;
   border-bottom: 1px solid #f1f5f9;
 }
-.entra-user-row:hover { background: #f8fafc; }
-.entra-user-row.selected { background: #eef6ff; }
+.entra-user-row:hover { background: var(--row-hover-bg); }
+.entra-user-row.selected { background: var(--row-selected-bg); box-shadow: inset 3px 0 0 var(--row-selected-accent); }
 .entra-user-check { margin: 0; justify-self: start; }
 .entra-user-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .entra-user-name {
@@ -2712,7 +2884,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   grid-template-columns: 40px minmax(180px, 2fr) minmax(170px, 1.5fr) minmax(220px, 2fr) minmax(160px, 1fr) minmax(120px, 1fr);
   font-size: 13px;
 }
-.od-row.entra-audit-row:hover { background: #f8fafc; }
+.od-row.entra-audit-row:hover { background: var(--row-hover-bg); }
 
 /* Audit detail modal. */
 .entra-audit-modal-backdrop {
@@ -2854,7 +3026,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .od-table-head .az-db-th-check { width: 40px; }
 .az-db-schema-row { display: grid; grid-template-columns: 40px 1fr; align-items: center; }
 .az-db-schema-folder { cursor: pointer; }
-.az-db-schema-folder:hover { background: #f8fafc; }
+.az-db-schema-folder:hover { background: var(--row-hover-bg); }
 .az-db-schema-folder .od-row-name { font-weight: 500; }
 .az-db-schema-file-nested .od-td:not(.od-td-check) { padding-left: 28px; }
 .az-db-folder-caret { display: inline-flex; align-items: center; color: #64748b; margin-right: 4px; }
@@ -2872,10 +3044,10 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   color: #1e293b;
   cursor: pointer;
 }
-.az-db-tree-row:hover { background: #f8fafc; }
+.az-db-tree-row:hover { background: var(--row-hover-bg); }
 .az-db-tree-row.active {
-  background: #e0f7fa;
-  box-shadow: inset 3px 0 0 #e8607a;
+  background: var(--row-selected-bg);
+  box-shadow: inset 3px 0 0 var(--row-selected-accent);
 }
 .az-db-tree-check { margin: 0; justify-self: center; }
 .az-db-tree-caret {
@@ -3236,7 +3408,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.az-db-data-table tbody tr:hover td { background: #f8fafc; }
+.az-db-data-table tbody tr:hover td { background: var(--row-hover-bg); }
 .az-db-col-pk {
   display: inline-flex;
   align-items: center;

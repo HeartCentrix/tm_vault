@@ -182,7 +182,7 @@
   .wiz-skeleton-line::after, .wiz-skeleton-dot::after { animation: none; }
 }
 
-.wiz-section-label .wiz-info {
+.wiz-info {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -197,6 +197,19 @@
   cursor: help;
   border: 1px solid var(--wiz-border);
   text-transform: none;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.wiz-info:hover,
+.wiz-info:focus-visible {
+  background: var(--wiz-accent, #3b82f6);
+  color: #ffffff;
+  border-color: var(--wiz-accent, #3b82f6);
+  outline: none;
 }
 
 /* ── Field rows ───────────────────────────────────────────────────────── */
