@@ -287,8 +287,6 @@ export default function Settings() {
     }
     return 'Every day';
   };
-  const retentionLabel = (type: string) => type === 'INDEFINITE' ? 'Unlimited' : type;
-
   // Days summary derived from the new Phase-1 retention fields. Used in the
   // SLA list rows below — replaces the legacy retentionType which most
   // policies leave as INDEFINITE.
