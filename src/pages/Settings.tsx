@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { getSlaPolicies, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
+import { getSlaPoliciesPage, deleteSlaPolicy, type SlaPolicy } from '../services/sla';
 import { getTenantInfo, downloadUsageReport, type TenantInfo } from '../services/tenant-info';
 import { authService, type AdminConsentStatus, type PowerBIReadiness } from '../services/auth';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import SlaWizard from '../components/SlaWizard';
 import SecretsTab from '../components/SecretsTab';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { fmtLocalDate } from '../utils/datetime';
 import './Settings.css';
 
@@ -58,6 +59,14 @@ export default function Settings() {
   const [activeTab, setActiveTab] = usePersistentTab<SettingsTab>(subRouteKey, 'sla', settingsTabKeys);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
   const [loading, setLoading] = useState(true);
+  // Pagination — the policy list is bounded in practice (O(10) per tenant
+  // even at 5k-user scale) but the server now returns a paginated envelope
+  // so we honor it. Page size 50 is well above any realistic policy count
+  // while still capping the initial payload if a misconfigured tenant has
+  // accumulated cruft.
+  const POLICIES_PAGE_SIZE = 50;
+  const [policiesTotal, setPoliciesTotal] = useState(0);
+  const [policiesLoadingMore, setPoliciesLoadingMore] = useState(false);
 
   // Tenant info state
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
@@ -89,14 +98,35 @@ export default function Settings() {
     if (!tenantId) {
       setLoading(false);
       setPolicies([]);
+      setPoliciesTotal(0);
       return;
     }
     setLoading(true);
-    getSlaPolicies(tenantId, effectiveServiceType)
-      .then(setPolicies)
+    getSlaPoliciesPage(tenantId, effectiveServiceType, { limit: POLICIES_PAGE_SIZE, offset: 0 })
+      .then(page => {
+        setPolicies(page.items);
+        setPoliciesTotal(page.total);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [activeTab, tenantId, effectiveServiceType]);
+
+  const loadMorePolicies = async () => {
+    if (!tenantId || policiesLoadingMore) return;
+    setPoliciesLoadingMore(true);
+    try {
+      const page = await getSlaPoliciesPage(tenantId, effectiveServiceType, {
+        limit: POLICIES_PAGE_SIZE,
+        offset: policies.length,
+      });
+      setPolicies(prev => [...prev, ...page.items]);
+      setPoliciesTotal(page.total);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setPoliciesLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     if (activeTab !== 'info') return;
@@ -259,6 +289,21 @@ export default function Settings() {
   };
   const retentionLabel = (type: string) => type === 'INDEFINITE' ? 'Unlimited' : type;
 
+  // Days summary derived from the new Phase-1 retention fields. Used in the
+  // SLA list rows below — replaces the legacy retentionType which most
+  // policies leave as INDEFINITE.
+  const daysLabel = (days: number | null | undefined) => {
+    if (days == null) return 'Unlimited';
+    if (days >= 365 * 99) return 'Unlimited';
+    if (days % 365 === 0) { const y = days / 365; return `${y} year${y === 1 ? '' : 's'}`; }
+    return `${days} day${days === 1 ? '' : 's'}`;
+  };
+  const policyRetentionLabel = (p: SlaPolicy) => {
+    if (p.retentionMode === 'GFS') return 'GFS';
+    return daysLabel(p.retentionHotDays);
+  };
+  const policyArchivingLabel = (p: SlaPolicy) => daysLabel(p.retentionArchiveDays);
+
   return (
     <div className="settings-page">
       {/* Tabs */}
@@ -298,7 +343,40 @@ export default function Settings() {
               {policies.map((policy, idx) => (
                 <div key={policy.id} className={`sla-entry ${idx > 0 ? 'sla-entry-divider' : ''}`}>
                   <div className="sla-entry-row">
-                    <div className="sla-name">{policy.name}</div>
+                    <div className="sla-name">
+                      {policy.name}
+                      <span className="sla-badges">
+                        {policy.isDefault && (
+                          <span className="sla-badge sla-badge-default" title="Default policy for this tenant">★ Default</span>
+                        )}
+                        {policy.immutabilityMode === 'Locked' && (
+                          <span className="sla-badge sla-badge-locked" title="WORM-Locked. Cannot be deleted until immutability period expires.">🔒 Locked</span>
+                        )}
+                        {policy.immutabilityMode === 'Unlocked' && (
+                          <span className="sla-badge sla-badge-unlocked" title="WORM applied; user-managed (extendable).">Unlocked</span>
+                        )}
+                        {policy.legalHoldEnabled && (
+                          <span className="sla-badge sla-badge-hold" title="Legal hold — all deletions blocked.">⚖ Hold</span>
+                        )}
+                        {policy.encryptionMode === 'CUSTOMER_KEY' && policy.encryptionStatus === 'OK' && (
+                          <span className="sla-badge sla-badge-cmk-ok" title="Customer-managed key applied to all containers.">CMK</span>
+                        )}
+                        {policy.encryptionMode === 'CUSTOMER_KEY' && policy.encryptionStatus === 'KEY_VAULT_ACCESS_DENIED' && (
+                          <span
+                            className="sla-badge sla-badge-cmk-denied"
+                            title="Storage account lacks Get/WrapKey/UnwrapKey on the configured Key Vault key. Grant the 'Key Vault Crypto Service Encryption User' role to the storage account managed identity."
+                          >● CMK access denied</span>
+                        )}
+                        {policy.encryptionMode === 'CUSTOMER_KEY' && policy.encryptionStatus === 'ERROR' && (
+                          <span className="sla-badge sla-badge-cmk-err" title="CMK reconcile encountered an error. See policy audit trail for details.">● CMK error</span>
+                        )}
+                        {policy.encryptionMode === 'CUSTOMER_KEY' && policy.keyVersionResolved && (
+                          <span className="sla-badge sla-badge-key-version" title={`Key version applied: ${policy.keyVersionResolved}`}>
+                            v{policy.keyVersionResolved.slice(0, 8)}
+                          </span>
+                        )}
+                      </span>
+                    </div>
                     <div className="sla-backups">
                       <div className="sla-backup-col">
                         {backupItemsLeft.map(item => (
@@ -329,8 +407,8 @@ export default function Settings() {
                       )}
                     </div>
                     <div className="sla-retention">
-                      <div className="sla-sched-row"><span className="sla-sched-label">Retention:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType || '')}</span></div>
-                      <div className="sla-sched-row"><span className="sla-sched-label">Archiving:</span><span className="sla-sched-value">{retentionLabel(policy.retentionType || '')}</span></div>
+                      <div className="sla-sched-row"><span className="sla-sched-label">Retention:</span><span className="sla-sched-value">{policyRetentionLabel(policy)}</span></div>
+                      <div className="sla-sched-row"><span className="sla-sched-label">Archiving:</span><span className="sla-sched-value">{policyArchivingLabel(policy)}</span></div>
                     </div>
                     <div className="sla-actions">
                       <button className="sla-action-btn" title="Edit (advanced)" onClick={() => { setWizardEditing(policy); setShowWizard(true); }}>
@@ -347,6 +425,19 @@ export default function Settings() {
                   </div>
                 </div>
               ))}
+              {policies.length < policiesTotal && (
+                <div className="sla-load-more">
+                  <button
+                    className="sla-action-btn"
+                    onClick={loadMorePolicies}
+                    disabled={policiesLoadingMore}
+                  >
+                    {policiesLoadingMore
+                      ? 'Loading…'
+                      : `Load more (${policies.length} of ${policiesTotal})`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -582,21 +673,26 @@ export default function Settings() {
       )}
 
 
-      {/* Phase 3: Advanced wizard (multi-step, all SLA fields + exclusions) */}
+      {/* SLA wizard. Wrapped in ErrorBoundary so a render-time exception
+          inside a single field (corrupt extra_data, bad date) doesn't
+          take down the whole Settings page or strand the modal in a
+          half-open state. */}
       {showWizard && tenantId && (
-        <SlaWizard
-          tenantId={tenantId}
-          serviceType={effectiveServiceType}
-          initialPolicy={wizardEditing}
-          onClose={() => { setShowWizard(false); setWizardEditing(null); }}
-          onSaved={(p) => {
-            setPolicies(prev => {
-              const idx = prev.findIndex(x => x.id === p.id);
-              if (idx >= 0) { const next = [...prev]; next[idx] = p; return next; }
-              return [...prev, p];
-            });
-          }}
-        />
+        <ErrorBoundary label="SLA wizard">
+          <SlaWizard
+            tenantId={tenantId}
+            serviceType={effectiveServiceType}
+            initialPolicy={wizardEditing}
+            onClose={() => { setShowWizard(false); setWizardEditing(null); }}
+            onSaved={(p) => {
+              setPolicies(prev => {
+                const idx = prev.findIndex(x => x.id === p.id);
+                if (idx >= 0) { const next = [...prev]; next[idx] = p; return next; }
+                return [...prev, p];
+              });
+            }}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

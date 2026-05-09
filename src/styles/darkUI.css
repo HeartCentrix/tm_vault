@@ -345,20 +345,30 @@
 [data-theme="dark"] .storage-table tbody tr:hover td,
 [data-theme="dark"] .resources-table tbody tr:hover td { color: var(--tm-text) !important; }
 
-/* Generic clickable rows — outline pink only. */
-[data-theme="dark"] .tenant-row:hover,
-[data-theme="dark"] .resource-list-item:hover,
+/* Card-shaped containers — keep the full outline-on-hover, since cards
+   read as bounded rectangles and an outline is the right affordance. */
 [data-theme="dark"] .alert-card:hover,
-[data-theme="dark"] .clickable-row:hover,
-[data-theme="dark"] .folder-tree-item:hover,
 [data-theme="dark"] .content-tab:hover,
-[data-theme="dark"] .sla-modal-check:hover,
-[data-theme="dark"] .item-row:hover,
-[data-theme="dark"] .chat-item-row:hover,
-[data-theme="dark"] .email-item-row:hover {
+[data-theme="dark"] .sla-modal-check:hover {
   background: transparent !important;
   outline: 1px solid var(--tm-accent) !important;
   outline-offset: -1px !important;
+  color: var(--tm-text) !important;
+}
+
+/* List-row classes — use the unified red left-bar from
+   src/pages/Recovery.css instead of a full-row outline. The outline
+   pattern was visually heavy and inconsistent with light mode. Background
+   comes from --row-hover-bg, accent bar from --row-selected-accent. */
+[data-theme="dark"] .tenant-row:hover,
+[data-theme="dark"] .resource-list-item:hover,
+[data-theme="dark"] .clickable-row:hover,
+[data-theme="dark"] .folder-tree-item:hover,
+[data-theme="dark"] .item-row:hover,
+[data-theme="dark"] .chat-item-row:hover,
+[data-theme="dark"] .email-item-row:hover {
+  background: var(--row-hover-bg) !important;
+  box-shadow: inset 2px 0 0 var(--row-selected-accent) !important;
   color: var(--tm-text) !important;
 }
 
@@ -872,62 +882,8 @@
 [data-theme="dark"] .azdb-rec-x:hover { color: var(--tm-text) !important; }
 [data-theme="dark"] .azdb-rec-section { color: var(--tm-text) !important; }
 
-/* ─────────────────────────────────────────────────────────────────────
-   11d. SlaWizard (.wiz-*) — was already dark slate with blue accents.
-   Retint blues → pink so it fits the TM palette.
-   ─────────────────────────────────────────────────────────────────── */
-[data-theme="dark"] .wiz-modal {
-  background: var(--tm-surface) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-border) !important;
-}
-[data-theme="dark"] .wiz-modal *,
-[data-theme="dark"] .wiz-modal h1,
-[data-theme="dark"] .wiz-modal h2,
-[data-theme="dark"] .wiz-modal h3 { color: var(--tm-text); }
-[data-theme="dark"] .wiz-header { border-bottom-color: var(--tm-border) !important; }
-[data-theme="dark"] .wiz-close { color: var(--tm-body) !important; }
-[data-theme="dark"] .wiz-close:hover { color: var(--tm-accent-soft) !important; }
-[data-theme="dark"] .wiz-stepper { border-bottom-color: var(--tm-border) !important; }
-[data-theme="dark"] .wiz-step-pill {
-  background: var(--tm-surface-2) !important;
-  color: var(--tm-body-2) !important;
-  border: 1px solid var(--tm-border) !important;
-}
-[data-theme="dark"] .wiz-step-pill.active {
-  background: var(--tm-accent) !important;
-  border-color: var(--tm-accent) !important;
-  color: #ffffff !important;
-}
-[data-theme="dark"] .wiz-step-pill.done {
-  color: var(--tm-success) !important;
-  border-color: var(--tm-success) !important;
-}
-[data-theme="dark"] .wiz-step-num { background: rgba(255, 255, 255, 0.1) !important; }
-[data-theme="dark"] .wiz-hint { color: var(--tm-body-2) !important; }
-[data-theme="dark"] .wiz-hint.warn { color: var(--tm-warning) !important; }
-[data-theme="dark"] .wiz-row > span { color: var(--tm-body-2) !important; }
-[data-theme="dark"] .wiz-row.inline > span { color: var(--tm-text) !important; }
-[data-theme="dark"] .wiz-row input[type="text"],
-[data-theme="dark"] .wiz-row input[type="number"],
-[data-theme="dark"] .wiz-row input[type="time"],
-[data-theme="dark"] .wiz-row select {
-  background: var(--tm-surface-2) !important;
-  color: var(--tm-text) !important;
-  border: 1px solid var(--tm-border) !important;
-}
-[data-theme="dark"] .wiz-row input[type="checkbox"] { accent-color: var(--tm-accent) !important; }
-[data-theme="dark"] .wiz-tier-card {
-  background: var(--tm-surface-2) !important;
-  border: 1px solid var(--tm-border) !important;
-  color: var(--tm-text) !important;
-}
-[data-theme="dark"] .wiz-tier-card:hover {
-  background: var(--tm-surface-2) !important;
-  border-color: var(--tm-accent) !important;
-}
-[data-theme="dark"] .wiz-tier-name { color: var(--tm-text) !important; }
-[data-theme="dark"] .wiz-tier-meta { color: var(--tm-body-2) !important; }
+/* SlaWizard dark-mode rules now live inside src/components/SlaWizard.css
+   (theme variables drive both light and dark from one stylesheet). */
 
 /* ─────────────────────────────────────────────────────────────────────
    12. Recharts + chart tooltips — Overview palette (unchanged).
@@ -1313,13 +1269,13 @@
   border-bottom-color: var(--tm-hover) !important;
 }
 [data-theme="dark"] .resource-list-item:hover {
-  background: transparent !important;
-  outline: 1px solid var(--tm-accent) !important;
-  outline-offset: -1px !important;
+  background: var(--row-hover-bg) !important;
+  box-shadow: inset 2px 0 0 var(--row-selected-accent) !important;
 }
 [data-theme="dark"] .resource-list-item.selected {
-  background: var(--tm-hover) !important;
-  border-left: 3px solid var(--tm-accent) !important;
+  background: var(--row-selected-bg) !important;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent) !important;
+  border-left: none !important;
 }
 [data-theme="dark"] .identity-group { border-bottom-color: var(--tm-hover) !important; }
 [data-theme="dark"] .identity-group.has-selection,
@@ -1327,8 +1283,9 @@
 [data-theme="dark"] .identity-surfaces { background: var(--tm-surface-2) !important; }
 [data-theme="dark"] .identity-surfaces .surface-indent { background: var(--tm-border) !important; }
 [data-theme="dark"] .identity-surfaces .resource-list-item.surface-item.selected {
-  background: var(--tm-hover) !important;
-  border-left: 3px solid var(--tm-accent) !important;
+  background: var(--row-selected-bg) !important;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent) !important;
+  border-left: none !important;
 }
 [data-theme="dark"] .resource-kind-pill,
 [data-theme="dark"] .kind-badge {
@@ -2430,6 +2387,24 @@
   color: var(--tm-text) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55) !important;
 }
+[data-theme="dark"] .cal-hover-tooltip-pinned {
+  border-color: var(--tm-accent) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+}
+/* Arrow tips — match the popover's surface + border in dark mode. */
+[data-theme="dark"] .cal-hover-tooltip::before { border-bottom-color: var(--tm-border) !important; }
+[data-theme="dark"] .cal-hover-tooltip::after  { border-bottom-color: var(--tm-surface) !important; }
+[data-theme="dark"] .cal-hover-tooltip-pinned::before { border-bottom-color: var(--tm-accent) !important; }
+[data-theme="dark"] .cal-hover-tooltip-above::before { border-top-color: var(--tm-border) !important; border-bottom-color: transparent !important; }
+[data-theme="dark"] .cal-hover-tooltip-above::after  { border-top-color: var(--tm-surface) !important; border-bottom-color: transparent !important; }
+[data-theme="dark"] .cal-hover-tooltip-pinned.cal-hover-tooltip-above::before { border-top-color: var(--tm-accent) !important; }
+[data-theme="dark"] .cal-hover-close {
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .cal-hover-close:hover {
+  background: var(--tm-hover) !important;
+  color: var(--tm-text) !important;
+}
 [data-theme="dark"] .cal-hover-header {
   color: var(--tm-body-2) !important;
   border-bottom: 1px solid var(--tm-border) !important;
@@ -3102,4 +3077,215 @@
    ─────────────────────────────────────────────────────────────────── */
 [data-theme="dark"] textarea::-webkit-resizer {
   filter: invert(1) brightness(0.85);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Dark-mode row state tokens
+ *
+ * Mirrors the neutral light-mode design (warm-grey hover/selected with a
+ * brand-pink accent bar) — not rose-tinted backgrounds, those wash out
+ * text in dark mode.
+ *
+ *   --row-hover-bg: same as the existing --tm-hover (#2E2924) — the
+ *     same warm dark surface used for sidebar-nav hover, so list rows
+ *     match the rest of the chrome.
+ *   --row-hover-accent: brand-soft accent at low alpha — gives the same
+ *     subtle left-edge boundary cue as light mode, visible on dark.
+ *   --row-selected-bg: a half-step deeper warm dark.
+ *   --row-selected-accent: #E8607A (--tm-accent-soft) — readable on dark.
+ *   --row-selected-fg: --tm-text — body white for selected-state labels.
+ * ────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --row-hover-bg: #2E2924;
+  --row-selected-bg: #3A332B;
+  /* Use the same dark-mode brand red used elsewhere in this theme
+     (--tm-accent #B80E38), not the softer pink #E8607A. The 2px hover
+     bar and the 3px selected bar both become true red, matching the
+     Sidebar and primary-button accent the rest of the dark UI uses. */
+  --row-selected-accent: var(--tm-accent);
+  --row-selected-fg: #F0EDE8;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Entra user/group detail panel (right side of Recovery → Entra)
+ *
+ * The light-mode rules in src/pages/Recovery.css use:
+ *   .entra-user-detail-header { background: #f1f5f9; }
+ *   .entra-user-detail-title  { color: #0f172a; }
+ *   .entra-user-detail-body   { color: #0f172a; }
+ *   .entra-user-section-header { color: #0f172a; }
+ *   .entra-user-avatar { background: #e0e7ff; color: #4338ca; }
+ *
+ * In dark mode these produced "All Company" heading → dark slate text
+ * on warm-dark page background = invisible. The header band stayed
+ * light-grey-blue while the rest of the panel went dark = no contrast.
+ *
+ * Override every hardcoded color so the panel reads correctly on dark.
+ * ────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .entra-user-detail {
+  background: var(--tm-bg);
+  color: var(--tm-text);
+}
+[data-theme="dark"] .entra-user-detail-header {
+  background: var(--tm-surface);
+  border-bottom-color: var(--tm-border);
+}
+[data-theme="dark"] .entra-user-detail-title {
+  color: var(--tm-text);
+}
+[data-theme="dark"] .entra-user-detail-body {
+  color: var(--tm-body-2);
+}
+[data-theme="dark"] .entra-user-section-header {
+  color: var(--tm-text);
+}
+[data-theme="dark"] .entra-user-avatar {
+  background: var(--tm-surface-2);
+  color: var(--tm-accent-soft);
+}
+/* Field labels and copy controls within the detail body */
+[data-theme="dark"] .entra-user-field-label,
+[data-theme="dark"] .entra-user-field-value,
+[data-theme="dark"] .entra-user-upn,
+[data-theme="dark"] .entra-user-name {
+  color: var(--tm-body-2);
+}
+[data-theme="dark"] .entra-user-detail-body .entra-user-name,
+[data-theme="dark"] .entra-user-detail-body strong,
+[data-theme="dark"] .entra-user-detail-body b {
+  color: var(--tm-text);
+}
+/* Audit modal had the same hardcoded #f1f5f9 close button hover */
+[data-theme="dark"] .entra-audit-modal {
+  background: var(--tm-surface);
+  color: var(--tm-text);
+  border: 1px solid var(--tm-border);
+}
+[data-theme="dark"] .entra-audit-modal-title {
+  color: var(--tm-text);
+}
+[data-theme="dark"] .entra-audit-modal-close { color: var(--tm-body); }
+[data-theme="dark"] .entra-audit-modal-close:hover {
+  background: var(--tm-hover);
+  color: var(--tm-text);
+}
+[data-theme="dark"] .entra-audit-label { color: var(--tm-body); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Row dividers — dark mode
+ *
+ * Light-mode row classes use hardcoded #f1f5f9 / #e2e8f0 border-bottom
+ * to separate items (Entra users, emails, chats, OneDrive rows, etc.).
+ * In dark mode those near-white lines glare as bright stripes between
+ * dark rows. Override them all to --tm-border (#38332C) so the dividers
+ * recede and the content reads first.
+ *
+ * Includes table-cell borders (Azure DB data table) and the header
+ * strips above each list, since they also use the same near-white tones.
+ * ────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .resource-list-item,
+[data-theme="dark"] .item-row,
+[data-theme="dark"] .chat-item-row,
+[data-theme="dark"] .email-item-row,
+[data-theme="dark"] .od-row,
+[data-theme="dark"] .od-row-folder,
+[data-theme="dark"] .od-left-section,
+[data-theme="dark"] .entra-user-row,
+[data-theme="dark"] .entra-user-list-header,
+[data-theme="dark"] .item-list-header,
+[data-theme="dark"] .od-table-head,
+[data-theme="dark"] .az-db-tree-row,
+[data-theme="dark"] .az-db-schema-folder,
+[data-theme="dark"] .az-db-section,
+[data-theme="dark"] .az-db-breadcrumb,
+[data-theme="dark"] .cal-day-has-events,
+[data-theme="dark"] .cal-day-cell,
+[data-theme="dark"] .cal-hover-row,
+[data-theme="dark"] .vm-left-row,
+[data-theme="dark"] .vm-vol-row,
+[data-theme="dark"] .identity-group,
+[data-theme="dark"] .recovery-content-panel,
+[data-theme="dark"] .three-panel-layout,
+[data-theme="dark"] .panel-left,
+[data-theme="dark"] .panel-middle {
+  border-color: var(--tm-border) !important;
+}
+/* Azure DB / OneDrive data tables — every cell border too */
+[data-theme="dark"] .az-db-data-table,
+[data-theme="dark"] .az-db-data-table th,
+[data-theme="dark"] .az-db-data-table td,
+[data-theme="dark"] .od-table th,
+[data-theme="dark"] .od-table td {
+  border-color: var(--tm-border) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Unified dark-mode row hover/selected language — final cascade override
+ *
+ * This file accumulated many duplicate rules over time using the old
+ * "background: transparent + outline: 1px solid --tm-accent" hover
+ * pattern (full-row outline) plus inconsistent selected styles
+ * (border-left vs box-shadow vs nothing). This block lives last in the
+ * cascade and wins over them all so every list-row in dark mode gets:
+ *
+ *   :hover    → --row-hover-bg    + 2px solid red left bar
+ *   .selected → --row-selected-bg + 3px solid red left bar
+ *   .active   → same as .selected (some lists use .active for current)
+ *
+ * Both bars use --row-selected-accent which in dark mode resolves to
+ * --tm-accent (#B80E38) — the same red used by sidebar, primary buttons,
+ * etc. No more outlines, no pink, no transparent backgrounds.
+ * ────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .resource-list-item:hover,
+[data-theme="dark"] .item-row:hover,
+[data-theme="dark"] .chat-item-row:hover,
+[data-theme="dark"] .email-item-row:hover,
+[data-theme="dark"] .tenant-row:hover,
+[data-theme="dark"] .secrets-row:hover,
+[data-theme="dark"] .folder-tree-item:hover,
+[data-theme="dark"] .folder-item:hover,
+[data-theme="dark"] .vm-left-row:hover,
+[data-theme="dark"] .vm-vol-row:hover,
+[data-theme="dark"] .od-row:hover,
+[data-theme="dark"] .od-row-folder:hover,
+[data-theme="dark"] .od-left-section:hover,
+[data-theme="dark"] .entra-user-row:hover,
+[data-theme="dark"] .az-db-tree-row:hover,
+[data-theme="dark"] .az-db-schema-folder:hover,
+[data-theme="dark"] .cal-day-has-events:hover,
+[data-theme="dark"] .cal-hover-row:hover,
+[data-theme="dark"] .clickable-row:hover {
+  background: var(--row-hover-bg) !important;
+  outline: none !important;
+  box-shadow: inset 2px 0 0 var(--row-selected-accent) !important;
+  color: var(--tm-text) !important;
+}
+
+[data-theme="dark"] .resource-list-item.selected,
+[data-theme="dark"] .item-row.selected,
+[data-theme="dark"] .chat-item-row.selected,
+[data-theme="dark"] .email-item-row.selected,
+[data-theme="dark"] .od-row.selected,
+[data-theme="dark"] .entra-user-row.selected,
+[data-theme="dark"] .vm-left-row.active,
+[data-theme="dark"] .od-left-section.active,
+[data-theme="dark"] .az-db-tree-row.active,
+[data-theme="dark"] .folder-tree-item.active,
+[data-theme="dark"] .folder-item.active,
+[data-theme="dark"] .cal-hover-row.checked {
+  background: var(--row-selected-bg) !important;
+  outline: none !important;
+  border-left: none !important;
+  box-shadow: inset 3px 0 0 var(--row-selected-accent) !important;
+  color: var(--tm-text) !important;
+}
+
+/* Azure DB data-table body rows — table cells need the bar on the
+   first cell rather than the row, otherwise it renders inside the cell
+   border. Apply hover bg to all cells, bar to the first only. */
+[data-theme="dark"] .az-db-data-table tbody tr:hover td {
+  background: var(--row-hover-bg) !important;
+}
+[data-theme="dark"] .az-db-data-table tbody tr:hover td:first-child {
+  box-shadow: inset 2px 0 0 var(--row-selected-accent) !important;
 }

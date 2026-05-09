@@ -1,5 +1,42 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Shared row-state tokens
+ *
+ * Used by every list of backed-up resources (emails, files, OneDrive,
+ * Entra users/groups/audit logs, Azure DB tables, Azure VM volumes,
+ * sidebar users, calendar events, etc.) so hover/selected feedback is
+ * identical across resource types. Scoped at :root so components
+ * outside src/pages/Recovery.css (e.g. AzureVmView) can reuse them.
+ *
+ * Design choice: neutral warm-grey hover (NOT pink-tinted). The brand
+ * pink/red is reserved as the selected-state ACCENT (3px left bar) so
+ * "selected" reads at a glance without painting whole rows pink.
+ *
+ *   --row-hover-bg: #F2EDE6 — warm cream, the same neutral we already
+ *     use for sidebar nav hover. Visible against #fff AND #f8fafc
+ *     parents while staying calm enough to scan a long list.
+ *   --row-hover-accent: 1px brand-tinted inset shadow on hover so every
+ *     row gets a clear "you are here" boundary — the user-requested
+ *     parity with Entra-user-style hover feedback.
+ *   --row-selected-bg: #EAE2D2 — deeper cream, distinct from hover.
+ *   --row-selected-accent: #D31245 — brand red, drawn as 3px inset
+ *     box-shadow on the left edge so colour-blind users still see
+ *     selection (a11y rule color-not-only).
+ *   --row-selected-fg: text colour for "selected highlight" labels.
+ *
+ * Dark mode overrides live in darkUI.css with the same semantics.
+ * ────────────────────────────────────────────────────────────────────── */
+:root {
+  --row-hover-bg: #F2EDE6;
+  /* Hover and selected share the SAME solid brand-red accent bar — the
+     thickness is what differentiates them (2px hover, 3px selected).
+     No alpha-blending, so it reads as a real red line, not a pink tint. */
+  --row-selected-accent: #D31245;
+  --row-selected-bg: #EAE2D2;
+  --row-selected-fg: #231F20;
+}
+
 /* Global Styles */
 * {
   box-sizing: border-box;
@@ -616,3 +653,80 @@ button.storage-switch-btn:hover:not(:disabled) {
 .recharts-tooltip-item,
 .recharts-tooltip-item-name,
 .recharts-tooltip-item-value { color: #231F20 !important; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Shared info-icon tooltip
+ *
+ * Renders via the <GlobalTooltip /> component (mounted once at the app
+ * root) which portals the tooltip to document.body. This is essential
+ * because pseudo-element tooltips on info icons inside a modal get
+ * clipped by the modal's overflow/transform containing block. Portaling
+ * to body lifts the tooltip out of every parent, so it sits at the
+ * top of the stacking context regardless of where the icon lives.
+ *
+ * The component watches mouseover/focus on `.wiz-info[title]`,
+ * `.info-icon[title]`, `.secrets-info-icon[title]` globally and
+ * temporarily strips the native `title` attribute while showing ours
+ * (so the OS tooltip doesn't duplicate over our styled one).
+ * ────────────────────────────────────────────────────────────────────── */
+.gl-tooltip {
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-style: normal;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.4;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  /* z-index high enough to clear modal overlays (~9999) and any fixed
+     headers/banners. Portal to body bypasses parent stacking entirely. */
+  z-index: 100000;
+  /* Fade-in only — leave is instant (no exit animation; the React node is
+     unmounted on hide). 90ms ease-out matches Material micro-interaction
+     range (150–300ms total user-perceived: 150ms delay + 90ms fade). */
+  animation: gl-tip-in 90ms ease-out;
+  animation-fill-mode: both;
+}
+.gl-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  transform: translateX(-50%);
+}
+.gl-tooltip--top::after {
+  top: 100%;
+  border-top-color: #1f2937;
+}
+.gl-tooltip--bottom::after {
+  bottom: 100%;
+  border-bottom-color: #1f2937;
+}
+@keyframes gl-tip-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Honor system preference — no fade, just appear. */
+  .gl-tooltip { animation: none; }
+}
+[data-theme="dark"] .gl-tooltip {
+  background: #f3f4f6;
+  color: #111827;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+[data-theme="dark"] .gl-tooltip--top::after {
+  border-top-color: #f3f4f6;
+}
+[data-theme="dark"] .gl-tooltip--bottom::after {
+  border-bottom-color: #f3f4f6;
+}

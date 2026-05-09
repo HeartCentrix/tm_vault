@@ -54,12 +54,18 @@ export interface SlaPolicy {
   legalHoldUntil?: string | null;
   immutabilityMode?: 'None' | 'Unlocked' | 'Locked';
 
-  // Storage / encryption (BYOK)
-  storageRegion?: string | null;
+  // Encryption (BYOK on Azure backend only)
   encryptionMode?: 'VAULT_MANAGED' | 'CUSTOMER_KEY';
   keyVaultUri?: string | null;
   keyName?: string | null;
   keyVersion?: string | null;
+  // Resolved version (filled by the reconciler after looking up "latest"
+  // in Key Vault, or after rotation). Lets the UI show what's actually
+  // applied right now even when the operator left key_version blank.
+  keyVersionResolved?: string | null;
+  // Reconciler-set: '', 'OK', 'KEY_VAULT_ACCESS_DENIED', 'ERROR'.
+  // Empty when encryption mode is VAULT_MANAGED.
+  encryptionStatus?: string;
 
   // Auto-apply hook
   autoApplyToMatching?: boolean;
@@ -105,33 +111,102 @@ const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json
 
 // ── SLA Policies ─────────────────────────────────────────────────────────────
 
-export async function getSlaPolicies(tenantId: string, serviceType?: 'm365' | 'azure'): Promise<SlaPolicy[]> {
+export interface PoliciesPage {
+  items: SlaPolicy[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Returns the policies list. Server now returns a paginated envelope
+// `{items,total,limit,offset}` — we accept both that and the legacy
+// unwrapped array for any older deployment.
+export async function getSlaPolicies(
+  tenantId: string,
+  serviceType?: 'm365' | 'azure',
+  opts?: { limit?: number; offset?: number },
+): Promise<SlaPolicy[]> {
+  const page = await getSlaPoliciesPage(tenantId, serviceType, opts);
+  return page.items;
+}
+
+export async function getSlaPoliciesPage(
+  tenantId: string,
+  serviceType?: 'm365' | 'azure',
+  opts?: { limit?: number; offset?: number },
+): Promise<PoliciesPage> {
   const queryParams = new URLSearchParams();
   if (tenantId) queryParams.set('tenantId', tenantId);
   if (serviceType) queryParams.set('serviceType', serviceType);
+  if (opts?.limit != null) queryParams.set('limit', String(opts.limit));
+  if (opts?.offset != null) queryParams.set('offset', String(opts.offset));
   const url = queryParams.size ? `${API.POLICIES.LIST}?${queryParams.toString()}` : API.POLICIES.LIST;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch SLA policies: ${res.statusText}`);
-  return res.json();
+  const body: any = await res.json();
+  if (Array.isArray(body)) {
+    // Legacy server — wrap to match the new shape.
+    return { items: body as SlaPolicy[], total: body.length, limit: body.length, offset: 0 };
+  }
+  return body as PoliciesPage;
 }
 
-export async function createSlaPolicy(data: Partial<SlaPolicy>): Promise<SlaPolicy> {
+// Crypto-strong opaque key used by the server to deduplicate retried
+// POSTs (operator double-click Save, network flake). Generated once per
+// "Save" attempt — the same retry should reuse it; a brand-new save
+// gets a fresh key.
+function newIdempotencyKey(): string {
+  // crypto.randomUUID is ubiquitous in modern browsers + Vite tooling.
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return (crypto as any).randomUUID();
+  }
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function createSlaPolicy(
+  data: Partial<SlaPolicy>,
+  opts?: { idempotencyKey?: string },
+): Promise<SlaPolicy> {
+  const headers: Record<string, string> = {
+    ...JSON_HEADERS,
+    'Idempotency-Key': opts?.idempotencyKey ?? newIdempotencyKey(),
+  };
   const res = await fetch(API.POLICIES.CREATE, {
     method: 'POST',
-    headers: JSON_HEADERS,
+    headers,
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to create SLA policy: ${res.statusText}`);
+  if (!res.ok) {
+    // Surface the server's typed validation error so the wizard can
+    // show field-level guidance instead of generic "failed".
+    const detail = await res.text().catch(() => res.statusText);
+    throw new Error(`Failed to create SLA policy: ${res.status} ${detail}`);
+  }
   return res.json();
 }
 
-export async function updateSlaPolicy(id: string, data: Partial<SlaPolicy>): Promise<SlaPolicy> {
+export async function updateSlaPolicy(
+  id: string,
+  data: Partial<SlaPolicy>,
+  opts?: { ifMatch?: string },
+): Promise<SlaPolicy> {
+  const headers: Record<string, string> = { ...JSON_HEADERS };
+  if (opts?.ifMatch) headers['If-Match'] = opts.ifMatch;
   const res = await fetch(API.POLICIES.UPDATE(id), {
     method: 'PUT',
-    headers: JSON_HEADERS,
+    headers,
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to update SLA policy: ${res.statusText}`);
+  if (res.status === 412) {
+    throw new Error(
+      'This policy was changed by someone else after you loaded it. ' +
+      'Reload and re-apply your changes.'
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText);
+    throw new Error(`Failed to update SLA policy: ${res.status} ${detail}`);
+  }
   return res.json();
 }
 
