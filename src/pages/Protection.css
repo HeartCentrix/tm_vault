@@ -425,6 +425,11 @@
 .sla-dropdown {
   position: relative;
   display: inline-block;
+  /* Without this, the inline-block aligns to the line baseline and
+     sits a few px higher than the plain-text size/date/action cells
+     in the same row (td.vertical-align:middle centers the line box,
+     not the inline-block within it). */
+  vertical-align: middle;
 }
 
 .sla-header {

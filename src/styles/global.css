@@ -363,9 +363,12 @@ tbody tr:hover td { color: #231F20 !important; }
   transition: color 0.2s ease, border-color 0.2s ease !important;
 }
 .service-nav .nav-tab:hover { color: #231F20 !important; }
+/* Active underline is painted by .nav-tab.active::after in ServiceNav.css
+   (slide-in animated bar inset 22px from each side). Don't also set
+   border-bottom-color here — it produced a second, full-width red line
+   sitting 1px below the pseudo bar (the "double underline" bug). */
 .service-nav .nav-tab.active {
   color: #D31245 !important;
-  border-bottom-color: #D31245 !important;
 }
 
 /* Checkboxes / radios — brand red */

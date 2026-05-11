@@ -174,12 +174,6 @@ export const API = {
       `${API_URL}/resource-groups/${id}/policies/${policyId}`,
   },
 
-  // Alerts
-  ALERTS: {
-    LIST: `${API_URL}/alerts`,
-    RESOLVE: (id: string) => `${API_URL}/alerts/${id}/resolve`,
-  },
-
   // Access Groups
   ACCESS_GROUPS: {
     LIST: `${API_URL}/access-groups`,

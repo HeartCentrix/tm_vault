@@ -391,7 +391,7 @@
 [data-theme="dark"] .service-nav .nav-tab.active::after { background: var(--tm-accent) !important; }
 [data-theme="dark"] .service-nav .nav-tab.active {
   color: var(--tm-text) !important;
-  border-bottom-color: var(--tm-accent) !important;
+  /* Underline is painted by ::after; don't double it via border-bottom. */
 }
 
 /* ─────────────────────────────────────────────────────────────────────
