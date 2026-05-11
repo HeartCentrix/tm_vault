@@ -422,8 +422,11 @@
   font-size: 16px;
   font-weight: 600;
   color: #2d3748;
-  padding: 20px 24px 0;
-  margin-bottom: 0;
+  /* Match the table cell padding-left (24px) so the heading lines up
+     with the OBJECT column. Bottom padding gives breathing room above
+     the gray table-header row instead of butting into it. */
+  margin: 0;
+  padding: 20px 24px 16px;
 }
 
 .activity-table-container {

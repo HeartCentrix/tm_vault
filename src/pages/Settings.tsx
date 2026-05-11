@@ -7,6 +7,7 @@ import { usePersistentTab } from '../hooks/usePersistentTab';
 import SlaWizard from '../components/SlaWizard';
 import SecretsTab from '../components/SecretsTab';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { MicrosoftLogo, AzureLogo } from '../components/BrandLogos';
 import { fmtLocalDate } from '../utils/datetime';
 import './Settings.css';
 
@@ -499,12 +500,7 @@ export default function Settings() {
               <div className="admin-consent-card">
                 <div className="admin-consent-header">
                   <div className="admin-consent-icon">
-                    <svg viewBox="0 0 24 24" fill="currentColor" style={{width: 20, height: 20}}>
-                      <rect x="3" y="3" width="7" height="7" rx="1"/>
-                      <rect x="14" y="3" width="7" height="7" rx="1"/>
-                      <rect x="3" y="14" width="7" height="7" rx="1"/>
-                      <rect x="14" y="14" width="7" height="7" rx="1"/>
-                    </svg>
+                    <MicrosoftLogo size={20} />
                   </div>
                   <span className="admin-consent-title">Microsoft 365 admin consent</span>
                 </div>
@@ -537,9 +533,7 @@ export default function Settings() {
               <div className="admin-consent-card">
                 <div className="admin-consent-header">
                   <div className="admin-consent-icon">
-                    <svg viewBox="0 0 24 24" fill="currentColor" style={{width: 20, height: 20}}>
-                      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                    </svg>
+                    <AzureLogo size={20} />
                   </div>
                   <span className="admin-consent-title">Azure admin consent</span>
                 </div>

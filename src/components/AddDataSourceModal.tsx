@@ -1,4 +1,5 @@
 import { authService } from '../services/auth';
+import { MicrosoftLogo, AzureLogo } from './BrandLogos';
 
 interface AddDataSourceModalProps {
   onClose: () => void;
@@ -41,12 +42,7 @@ export default function AddDataSourceModal({ onClose }: AddDataSourceModalProps)
           <div className="data-sources-grid">
             <div className="data-source-item">
               <div className="source-logo microsoft365">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-                  <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
-                  <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
-                  <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
-                </svg>
+                <MicrosoftLogo size={48} />
               </div>
               <span className="source-name">Microsoft 365</span>
               <button className="source-btn microsoft" onClick={handleM365Connect}>Connect</button>
@@ -54,9 +50,7 @@ export default function AddDataSourceModal({ onClose }: AddDataSourceModalProps)
 
             <div className="data-source-item">
               <div className="source-logo azure">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L2 19h20L12 2z"/>
-                </svg>
+                <AzureLogo size={48} />
               </div>
               <span className="source-name">Azure</span>
               <button className="source-btn azure" onClick={handleAzureConnect}>Connect</button>

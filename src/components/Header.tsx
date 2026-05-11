@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDataSources } from '../services/datasource';
 import type { DataSourceType } from '../services/datasource';
+import { MicrosoftLogo, AzureLogo } from './BrandLogos';
 import './Header.css';
 
 interface HeaderProps {
@@ -96,13 +97,8 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
               <div className="dropdown-menu">
                 {selectedSource && (
                   <div className="dropdown-header">
-                    <div className="header-icon microsoft">
-                      <svg viewBox="0 0 24 24" fill="currentColor">
-                        <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-                        <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
-                        <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
-                        <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
-                      </svg>
+                    <div className={`header-icon ${selectedSource.type === 'azure' ? 'azure' : 'microsoft'}`}>
+                      {selectedSource.type === 'azure' ? <AzureLogo /> : <MicrosoftLogo />}
                     </div>
                     <span className="header-tenant-name">{selectedSource.name}</span>
                     <button className="collapse-btn" onClick={selectAllDataSources}>
@@ -146,18 +142,11 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                       >
                         {source.type === 'm365' ? (
                           <div className="source-icon microsoft">
-                            <svg viewBox="0 0 24 24" fill="currentColor">
-                              <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-                              <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
-                              <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
-                              <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
-                            </svg>
+                            <MicrosoftLogo />
                           </div>
                         ) : source.type === 'azure' ? (
                           <div className="source-icon azure">
-                            <svg viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 2L2 19h20L12 2z"/>
-                            </svg>
+                            <AzureLogo />
                           </div>
                         ) : null}
                         <span>{source.name}</span>
@@ -206,13 +195,6 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
               </svg>
             )}
-          </button>
-
-          <button className="icon-btn notification-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
           </button>
 
           <div className="user-menu" ref={userMenuRef}>

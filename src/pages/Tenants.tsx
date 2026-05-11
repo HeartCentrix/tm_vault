@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AddDataSourceModal from '../components/AddDataSourceModal';
 import { getDataSources, type DataSourceType } from '../services/datasource';
+import { MicrosoftLogo, AzureLogo } from '../components/BrandLogos';
 import './Tenants.css';
 
 export default function Tenants() {
@@ -94,18 +95,11 @@ export default function Tenants() {
                   <td className="tenant-name-cell">
                     {tenant.type === 'm365' ? (
                       <div className="service-icon microsoft">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                          <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
-                          <rect x="13" y="1" width="10" height="10" fill="#7fba00"/>
-                          <rect x="1" y="13" width="10" height="10" fill="#00a4ef"/>
-                          <rect x="13" y="13" width="10" height="10" fill="#ffb900"/>
-                        </svg>
+                        <MicrosoftLogo />
                       </div>
                     ) : tenant.type === 'azure' ? (
                       <div className="service-icon azure">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2L2 19h20L12 2z"/>
-                        </svg>
+                        <AzureLogo />
                       </div>
                     ) : null}
                     <span className="tenant-name">{tenant.name}</span>

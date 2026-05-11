@@ -12,7 +12,6 @@ import Overview from './pages/Overview';
 import Protection from './pages/Protection';
 import Recovery from './pages/Recovery';
 import Activity from './pages/Activity';
-import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
 import SettingsStoragePage from './pages/SettingsStorage';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -130,14 +129,6 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Activity />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/alerts"
-            element={
-              <ProtectedRoute>
-                <Alerts />
               </ProtectedRoute>
             }
           />
