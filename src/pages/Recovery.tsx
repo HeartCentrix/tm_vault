@@ -7334,14 +7334,26 @@ export default function Recovery() {
                     - Chats → list of chats (display name + message count).
                     Clicking a row filters the items list via the `group`
                     parameter. "All" resets the filter. */}
-                <div className="panel-left">
-                  <div className="folder-list" ref={folderListRef} onScroll={handleFolderListScroll}>
+                <div className="panel-left" ref={folderListRef} onScroll={handleFolderListScroll}>
+                  <div className="folder-list">
                     {/* "All" aggregates across every folder — useful on mail /
                         onedrive / contacts to see the flat stream. On the
                         chats tab we skip it: each chat is a standalone
                         conversation, so "all messages from every chat mixed
                         together" isn't useful — the top chat is auto-
-                        selected in the folders-load effect instead. */}
+                        selected in the folders-load effect instead.
+
+                        Scroll handler note: this used to live on .folder-list,
+                        but .folder-list is a non-scrolling content wrapper —
+                        the actual scroll viewport is .panel-left
+                        (overflow-y: auto in Recovery.css). React onScroll
+                        doesn't bubble, so attaching the handler to the
+                        non-scrolling child meant it never fired, and the
+                        infinite-scroll page advancement was dead. Moving it
+                        up to the real scroller restores the loading-more
+                        indicator + page fetch at the rail bottom. With the
+                        first-load size also bumped to 500, this code path is
+                        now mostly a safety net for >500-folder tenants. */}
                     {activeContentType !== 'chats' && (
                       <button
                         className={`folder-item ${selectedFolder === 'all' ? 'active' : ''}`}
