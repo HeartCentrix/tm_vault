@@ -6237,9 +6237,18 @@ export default function Recovery() {
     };
     const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
 
+    // First-load size. 500 is the server's hard cap and is still small
+    // bytes-wise (just folder name + count per row). Applied across every
+    // tab — chats routinely break 100, and mail with deep custom-folder
+    // hierarchies can also exceed 50 on power users. With this in place
+    // virtually every tenant sees their full folder list without needing
+    // to scroll the left rail. Infinite-scroll stays wired up as a safety
+    // net for the rare tenant with >500 folders.
+    const firstPageSize = 500;
+
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, 50)
+    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, firstPageSize)
       .then((resp) => {
         if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
         const data = resp.content;
@@ -6288,8 +6297,11 @@ export default function Recovery() {
     };
     const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
 
+    // Match the first-page size on subsequent infinite-scroll fetches.
+    // Mostly a safety net since 500 covers virtually every tenant.
+    const nextPageSize = 500;
     setFoldersLoadingMore(true);
-    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, 50)
+    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, nextPageSize)
       .then((resp) => {
         setFolders((prev) => {
           const seen = new Set(prev.map(f => f.path));
