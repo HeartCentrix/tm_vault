@@ -924,6 +924,21 @@
   font-size: 12px;
 }
 
+/* Sticky variant used by the chats tab — pins the loader at the top of the
+   scroll viewport while older pages stream in. Background must follow the
+   active theme; previously the inline style referenced an undefined
+   --surface token and fell back to opaque white, which was unreadable in
+   dark mode. Use the real project token (--tm-surface) with a sane light-
+   mode fallback. */
+.item-list-loading-more--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--tm-surface, rgba(255, 255, 255, 0.96));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
 /* End-of-list marker — shown when hasMore is false but the visible count is
    still below the server's total (page-count cap reached). Signals "nothing
    more to auto-load" without looking like an aborted request. */

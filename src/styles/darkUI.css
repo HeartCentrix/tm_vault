@@ -1624,8 +1624,13 @@
   color: var(--tm-body-2) !important;
   border-bottom-color: var(--tm-border) !important;
 }
-[data-theme="dark"] .item-list-loading-more { color: var(--tm-body) !important; }
+[data-theme="dark"] .item-list-loading-more { color: var(--tm-body-2) !important; }
 [data-theme="dark"] .item-list-end          { color: var(--tm-body) !important; }
+[data-theme="dark"] .item-list-loading-more--sticky {
+  background: var(--tm-surface) !important;
+  border-bottom: 1px solid var(--tm-border);
+}
+[data-theme="dark"] .item-list-loading-more--sticky span { color: var(--tm-body-2) !important; }
 
 /* Item rows */
 [data-theme="dark"] .item-row {
@@ -2236,12 +2241,52 @@
 [data-theme="dark"] .activity-status.warning,
 [data-theme="dark"] .activity-status.in-progress { border: 1px solid transparent !important; }
 
-/* Auth pages */
-[data-theme="dark"] .auth-page,
+/* Auth pages (Signin, OAuth callbacks, "Connecting data source…" loaders).
+   Auth.css uses hardcoded warm-cream backgrounds and near-black text — fine
+   for light mode, unreadable on dark. Override the surfaces + every text
+   token that Auth.css pins literally. */
+[data-theme="dark"] .auth-page {
+  background: var(--tm-bg) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .auth-page::before {
+  background: linear-gradient(135deg, transparent 60%, rgba(232, 96, 122, 0.06) 100%) !important;
+}
 [data-theme="dark"] .auth-card {
   background: var(--tm-surface) !important;
   color: var(--tm-text) !important;
   border-color: var(--tm-border) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35) !important;
+}
+[data-theme="dark"] .auth-title    { color: var(--tm-text) !important; }
+[data-theme="dark"] .auth-subtitle { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .auth-divider  { color: var(--tm-body) !important; }
+[data-theme="dark"] .auth-divider::before,
+[data-theme="dark"] .auth-divider::after { background: var(--tm-border) !important; }
+
+/* Ghost SSO buttons — flip white-bg/dark-text to dark-surface/light-text. */
+[data-theme="dark"] .microsoft-btn,
+[data-theme="dark"] .sso-option-btn {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .microsoft-btn:hover:not(:disabled),
+[data-theme="dark"] .sso-option-btn:hover {
+  background: var(--tm-hover) !important;
+  border-color: var(--tm-accent) !important;
+  color: var(--tm-text) !important;
+}
+
+/* Spinner ring on callback "Connecting…" pages — give the three non-top
+   sides a visible track against the dark card. We deliberately do NOT
+   override border-top-color: each callback sets it inline to the source's
+   brand color (Microsoft red, Power BI amber, Azure blue) and that should
+   win in both themes. */
+[data-theme="dark"] .spinner-large {
+  border-right-color: var(--tm-border) !important;
+  border-bottom-color: var(--tm-border) !important;
+  border-left-color: var(--tm-border) !important;
 }
 
 /* ─────────────────────────────────────────────────────────────────────

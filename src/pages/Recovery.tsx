@@ -7509,14 +7509,7 @@ export default function Recovery() {
                         appearing — there's no layout shift. */}
                     {activeContentType === 'chats' && loadingMore && (
                       <div
-                        className="item-list-loading-more"
-                        style={{
-                          position: 'sticky',
-                          top: 0,
-                          zIndex: 5,
-                          background: 'var(--surface, rgba(255,255,255,0.96))',
-                          backdropFilter: 'blur(4px)',
-                        }}
+                        className="item-list-loading-more item-list-loading-more--sticky"
                       >
                         <div className="spinner-sm" />
                         <span>Loading older messages…</span>

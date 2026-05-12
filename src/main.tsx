@@ -4,6 +4,25 @@ import './styles/global.css'
 import './styles/darkUI.css'
 import App from './App.tsx'
 
+// Bootstrap data-theme on <html> BEFORE React renders. Previously this lived
+// in <Header>'s mount effect, but full-screen routes that skip the app shell
+// (signin, OAuth callbacks, "Connecting data source…" loaders) never render
+// Header — so [data-theme="dark"] was unset and those pages flashed/stayed
+// light even when the user had dark mode on. Doing it here covers every
+// route and avoids a flash-of-wrong-theme on first paint.
+;(() => {
+  try {
+    const saved = localStorage.getItem('tm-theme')
+    const theme = (saved === 'light' || saved === 'dark')
+      ? saved
+      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    document.documentElement.setAttribute('data-theme', theme)
+  } catch {
+    // localStorage / matchMedia unavailable (e.g. SSR-like contexts) — leave
+    // the attribute unset; CSS falls back to light, which is the safe default.
+  }
+})()
+
 // Auth runs on an HttpOnly cookie set by the backend (so XSS can't read the
 // access token from localStorage anymore). Cross-origin fetch() drops cookies
 // by default — patch it once globally so every existing call site sends the
