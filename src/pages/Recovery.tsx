@@ -6237,9 +6237,16 @@ export default function Recovery() {
     };
     const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
 
+    // First-load size. Chats tab is the heavy one — production tenants
+    // routinely have 100+ chat threads, and at size=50 the user only sees
+    // page 1 unless they scroll the folder rail (easy to miss). 500 is
+    // the server cap and is still small bytes-wise (folder names + counts).
+    // Mail / calendar / contacts stay at 50 since those rarely exceed it.
+    const firstPageSize = activeContentType === 'chats' ? 500 : 50;
+
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, 50)
+    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, firstPageSize)
       .then((resp) => {
         if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
         const data = resp.content;
@@ -6288,8 +6295,12 @@ export default function Recovery() {
     };
     const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
 
+    // Match the first-page size so the chats tab keeps its bigger page
+    // when infinite-scrolling. (Currently the first 500 covers virtually
+    // every tenant, so this code path is mostly a safety net.)
+    const nextPageSize = activeContentType === 'chats' ? 500 : 50;
     setFoldersLoadingMore(true);
-    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, 50)
+    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, nextPageSize)
       .then((resp) => {
         setFolders((prev) => {
           const seen = new Set(prev.map(f => f.path));
