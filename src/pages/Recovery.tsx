@@ -1312,13 +1312,19 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   'Appointment':    '#16a34a',
 };
 
-function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredIdsChange }: {
+function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredIdsChange, onCalendarFilterChange }: {
   snapshotId: string;
   selectedItems: Set<string>;
   onItemCheck: (itemId: string) => void;
   // Emitted whenever the sidebar filter set changes so the parent can
   // scope Download to just those event IDs.
   onFilteredIdsChange?: (ids: string[]) => void;
+  // Emitted whenever the per-calendar filter set changes (the
+  // "Calendar" section of the sidebar — values are folderPath strings
+  // like "Calendar/United States holidays"). Parent passes these to
+  // DownloadModal as ``folderPaths`` so PST export becomes available
+  // and the backend gets the right calendar-source scope.
+  onCalendarFilterChange?: (paths: string[]) => void;
 }) {
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1422,6 +1428,16 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
     if (!onFilteredIdsChange) return;
     onFilteredIdsChange(visibleEvents.map(e => e.id));
   }, [allEvents, activeFilters, activeCalendarFilters, onFilteredIdsChange]);
+
+  // Notify parent whenever the "Calendar" filter section selection
+  // changes. The DownloadModal uses this to enable PST export — PST
+  // only makes sense when the user has picked a calendar source from
+  // the sidebar (a real folder), not when they're just filtering by
+  // event-type or browsing all events.
+  useEffect(() => {
+    if (!onCalendarFilterChange) return;
+    onCalendarFilterChange(Array.from(activeCalendarFilters));
+  }, [activeCalendarFilters, onCalendarFilterChange]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -6581,6 +6597,12 @@ export default function Recovery() {
   // Scopes Download on the calendar tab so the ZIP only contains the
   // events matching the sidebar checkboxes.
   const [filteredCalendarIds, setFilteredCalendarIds] = useState<string[]>([]);
+  // Per-calendar folder paths the user ticked in the "Calendar" filter
+  // section of the calendar sidebar (e.g. "Calendar/Default",
+  // "Calendar/United States holidays"). Forwarded to DownloadModal as
+  // ``folderPaths`` so PST export becomes available and the backend
+  // produces one PST per selected source-calendar.
+  const [selectedCalendarPaths, setSelectedCalendarPaths] = useState<string[]>([]);
 
   const handleDownload = () => {
     if (!selectedSnapshotId) return;
@@ -7214,6 +7236,7 @@ export default function Recovery() {
                         selectedItems={selectedItems}
                         onItemCheck={toggleSelectItem}
                         onFilteredIdsChange={setFilteredCalendarIds}
+                        onCalendarFilterChange={setSelectedCalendarPaths}
                       />
                     )}
                   </div>
@@ -7678,7 +7701,9 @@ export default function Recovery() {
               contentType={effectiveContentType}
               preserveTree={oneDriveFolderSelected.size > 0 || genericFolderSelected.size > 0}
               folderPaths={
-                activeContentType !== 'chats' && genericFolderSelected.size > 0
+                activeContentType === 'calendar' && selectedCalendarPaths.length > 0
+                  ? selectedCalendarPaths
+                  : activeContentType !== 'chats' && genericFolderSelected.size > 0
                   ? Array.from(genericFolderSelected)
                   : undefined
               }
