@@ -63,6 +63,25 @@ function isMessageReferenceAttachment(att: any): boolean {
   return MESSAGE_REF_TYPES.has((att?.contentType || '').trim());
 }
 
+/** Teams "Fluid Embed Cards" / Loop components / meeting cards are inline
+ *  UI elements (rendered via a `<span itemtype="...">` placeholder in the
+ *  message body), not file attachments. Their `name` field is just the
+ *  GUID `itemid`, which surfaces as a useless "9185cd56-..." chip when we
+ *  render them in the attachment row. Filter them out — the body
+ *  placeholder already conveys "there was a card here". */
+const INLINE_CARD_CONTENT_TYPE_PREFIX = 'application/vnd.microsoft.card.';
+function isInlineCardAttachment(att: any): boolean {
+  const ct = (att?.contentType || '').trim().toLowerCase();
+  return ct.startsWith(INLINE_CARD_CONTENT_TYPE_PREFIX);
+}
+
+/** A chat attachment row only makes sense to render as a chip if it
+ *  represents real downloadable content (file reference, image, etc.)
+ *  rather than a quoted message reply or an inline card. */
+function isRenderableChatAttachment(att: any): boolean {
+  return !isMessageReferenceAttachment(att) && !isInlineCardAttachment(att);
+}
+
 /** Extract Teams quoted-reply metadata from `attachments`. Graph stores
  *  the quoted message as a JSON string in `attachment.content` with
  *  shape `{ messageId, messagePreview, messageSender: { user: { displayName } } }`. */
@@ -1179,11 +1198,23 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
           </div>
         )}
         <div className="chat-item-text">{displayBody || (quotedRefs.length > 0 ? '' : '\u00a0')}</div>
-        {rawAttachments.filter(a => !isMessageReferenceAttachment(a)).length > 0 && (
+        {rawAttachments.filter(isRenderableChatAttachment).length > 0 && (
           <div className="chat-item-attachments" onClick={(e) => e.stopPropagation()}>
             {chatAttachments.length === 0
               ? <span className="email-ol-attach-chip">Attachment{rawAttachments.length === 1 ? '' : 's'} (capturing…)</span>
-              : chatAttachments.map((a) => {
+              : chatAttachments
+                  .filter(a => {
+                    // Mirror the rawAttachments filter so cards that
+                    // sneak through the backend's CHAT_ATTACHMENT row don't
+                    // render a bare GUID chip. The backend persists card
+                    // rows as metadata-only (no blob) and stores the card
+                    // GUID in `name`; the row should not surface as a
+                    // downloadable artefact.
+                    if (!a.contentType) return true;
+                    const ct = a.contentType.trim().toLowerCase();
+                    return !ct.startsWith(INLINE_CARD_CONTENT_TYPE_PREFIX);
+                  })
+                  .map((a) => {
                   const label = a.size ? `${a.name} · ${fmtBytes(a.size)}` : a.name;
                   // CHAT_ATTACHMENT with resolved=true → real blob-backed
                   // download. Else fall back to the source contentUrl if
