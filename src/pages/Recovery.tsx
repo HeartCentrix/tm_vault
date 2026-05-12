@@ -6237,12 +6237,14 @@ export default function Recovery() {
     };
     const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
 
-    // First-load size. Chats tab is the heavy one — production tenants
-    // routinely have 100+ chat threads, and at size=50 the user only sees
-    // page 1 unless they scroll the folder rail (easy to miss). 500 is
-    // the server cap and is still small bytes-wise (folder names + counts).
-    // Mail / calendar / contacts stay at 50 since those rarely exceed it.
-    const firstPageSize = activeContentType === 'chats' ? 500 : 50;
+    // First-load size. 500 is the server's hard cap and is still small
+    // bytes-wise (just folder name + count per row). Applied across every
+    // tab — chats routinely break 100, and mail with deep custom-folder
+    // hierarchies can also exceed 50 on power users. With this in place
+    // virtually every tenant sees their full folder list without needing
+    // to scroll the left rail. Infinite-scroll stays wired up as a safety
+    // net for the rare tenant with >500 folders.
+    const firstPageSize = 500;
 
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
@@ -6295,10 +6297,9 @@ export default function Recovery() {
     };
     const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
 
-    // Match the first-page size so the chats tab keeps its bigger page
-    // when infinite-scrolling. (Currently the first 500 covers virtually
-    // every tenant, so this code path is mostly a safety net.)
-    const nextPageSize = activeContentType === 'chats' ? 500 : 50;
+    // Match the first-page size on subsequent infinite-scroll fetches.
+    // Mostly a safety net since 500 covers virtually every tenant.
+    const nextPageSize = 500;
     setFoldersLoadingMore(true);
     SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, nextPageSize)
       .then((resp) => {
