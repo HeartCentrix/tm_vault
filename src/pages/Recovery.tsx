@@ -7501,6 +7501,30 @@ export default function Recovery() {
                   </div>
 
                   <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
+                    {/* Chats load older messages ABOVE the visible list when
+                        the user scrolls up. Loader is sticky-positioned at
+                        the top of the scroll viewport (not flow) so the
+                        scroll-anchor math in the page-append effect doesn't
+                        need to compensate for the loader appearing/dis-
+                        appearing — there's no layout shift. */}
+                    {activeContentType === 'chats' && loadingMore && (
+                      <div
+                        className="item-list-loading-more"
+                        style={{
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 5,
+                          background: 'var(--surface, rgba(255,255,255,0.96))',
+                          backdropFilter: 'blur(4px)',
+                        }}
+                      >
+                        <div className="spinner-sm" />
+                        <span>Loading older messages…</span>
+                      </div>
+                    )}
+                    {activeContentType === 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && (
+                      <div className="item-list-end">Start of conversation</div>
+                    )}
                     {itemsLoading ? (
                       <div className="loading-container">
                         <div className="spinner" />
@@ -7574,10 +7598,10 @@ export default function Recovery() {
                         });
                       })()
                     )}
-                    {/* Infinite-scroll bottom indicator — only while appending
-                        a page. When hasMore is false we render nothing (the
-                        list is fully loaded). */}
-                    {loadingMore && (
+                    {/* Bottom indicator — only for non-chat tabs, where new
+                        pages append below the visible list. Chats render
+                        their indicator at the top (above this block). */}
+                    {activeContentType !== 'chats' && loadingMore && (
                       <div className="item-list-loading-more">
                         <div className="spinner-sm" />
                         <span>Loading more…</span>
@@ -7587,7 +7611,7 @@ export default function Recovery() {
                         the visible count trails the total — happens when
                         the server caps page count. Lets the user know we
                         hit the end rather than looking like a stuck load. */}
-                    {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                    {activeContentType !== 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
                       <div className="item-list-end">End of list</div>
                     )}
                   </div>
