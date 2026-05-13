@@ -2,6 +2,7 @@ import { API } from '../config/api';
 
 export interface ActivityItem {
   id: string;
+  jobIds?: string[];
   start_time: string;
   operation: string;
   object: string;
