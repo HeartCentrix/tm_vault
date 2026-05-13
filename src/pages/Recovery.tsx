@@ -6096,6 +6096,15 @@ export default function Recovery() {
             const el = itemListRef.current;
             if (el) el.scrollTop = el.scrollHeight;
             chatsAutoScrolledRef.current = `${selectedSnapshotId}|${activeContentType}`;
+            // If page-1 content is too short to overflow the viewport
+            // (e.g. system-event rows got filtered, leaving <50 visible),
+            // the user can never scroll-up to trigger page 2 — the list
+            // isn't scrollable at all. Auto-bump to page 2 so older
+            // messages keep loading until the viewport actually fills.
+            if (el && (data.totalPages || 1) > 1 &&
+                el.scrollHeight <= el.clientHeight + 200) {
+              setItemPage(p => Math.max(p, 2));
+            }
           });
         }
       })
@@ -6148,6 +6157,12 @@ export default function Recovery() {
           requestAnimationFrame(() => {
             const el2 = itemListRef.current;
             if (el2) el2.scrollTop = prevScrollTop + (el2.scrollHeight - prevScrollHeight);
+            // Keep auto-bumping while the list still doesn't overflow
+            // and more pages exist — otherwise scroll-up can never fire.
+            if (el2 && itemPage < (data.totalPages || 1) &&
+                el2.scrollHeight <= el2.clientHeight + 200) {
+              setItemPage(p => p + 1);
+            }
           });
         } else {
           setRecoveryItems(prev => [...prev, ...data.content]);
