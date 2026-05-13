@@ -7481,7 +7481,20 @@ export default function Recovery() {
                               )}
                               <button
                                 className="folder-name-btn"
-                                onClick={() => patchSearchParams({ folder: folder.path })}
+                                onClick={() => {
+                                  // Chats: clicking a thread from a search
+                                  // result should drop the search filter so
+                                  // the user sees the WHOLE conversation,
+                                  // not only the messages matching the
+                                  // body-search query. Matches Teams/Slack
+                                  // behavior. Other tabs keep the filter so
+                                  // "invoice in Inbox" -> click Inbox still
+                                  // narrows to invoices.
+                                  if (activeContentType === 'chats') {
+                                    setSearchQuery('');
+                                  }
+                                  patchSearchParams({ folder: folder.path });
+                                }}
                                 title={folder.path}
                               >
                                 <span className="folder-name">{folder.path}</span>
