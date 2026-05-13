@@ -63,6 +63,25 @@ function isMessageReferenceAttachment(att: any): boolean {
   return MESSAGE_REF_TYPES.has((att?.contentType || '').trim());
 }
 
+/** Teams "Fluid Embed Cards" / Loop components / meeting cards are inline
+ *  UI elements (rendered via a `<span itemtype="...">` placeholder in the
+ *  message body), not file attachments. Their `name` field is just the
+ *  GUID `itemid`, which surfaces as a useless "9185cd56-..." chip when we
+ *  render them in the attachment row. Filter them out — the body
+ *  placeholder already conveys "there was a card here". */
+const INLINE_CARD_CONTENT_TYPE_PREFIX = 'application/vnd.microsoft.card.';
+function isInlineCardAttachment(att: any): boolean {
+  const ct = (att?.contentType || '').trim().toLowerCase();
+  return ct.startsWith(INLINE_CARD_CONTENT_TYPE_PREFIX);
+}
+
+/** A chat attachment row only makes sense to render as a chip if it
+ *  represents real downloadable content (file reference, image, etc.)
+ *  rather than a quoted message reply or an inline card. */
+function isRenderableChatAttachment(att: any): boolean {
+  return !isMessageReferenceAttachment(att) && !isInlineCardAttachment(att);
+}
+
 /** Extract Teams quoted-reply metadata from `attachments`. Graph stores
  *  the quoted message as a JSON string in `attachment.content` with
  *  shape `{ messageId, messagePreview, messageSender: { user: { displayName } } }`. */
@@ -1069,11 +1088,146 @@ export function JsonPreview({ item }: { item: any }) {
 }
 
 
+// Convert ISO-8601 duration (e.g. "PT1H1M30S", "PT45M", "PT12S")
+// into a compact human string like "1h 1m 30s". Returns "" on parse
+// failure so callers can decide whether to print a label or drop it.
+function formatIsoDuration(raw: any): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const m = raw.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+  if (!m) return '';
+  const h = m[1] ? parseInt(m[1], 10) : 0;
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  const s = m[3] ? Math.round(parseFloat(m[3])) : 0;
+  const parts: string[] = [];
+  if (h) parts.push(`${h}h`);
+  if (min) parts.push(`${min}m`);
+  if (s || parts.length === 0) parts.push(`${s}s`);
+  return parts.join(' ');
+}
+
+// Teams system event renderer. Graph delivers lifecycle messages (members
+// joined/left/added, chat renamed, calls started/ended, recordings) with
+// body=<systemEventMessage/> and from=null — the actual content is in
+// raw.eventDetail. Without this, every such message looks empty in the
+// feed. We render them as small centered chips like Teams does.
+function formatSystemEvent(eventDetail: any): string | null {
+  if (!eventDetail) return null;
+  const type = String(eventDetail['@odata.type'] || '');
+  // Use ONLY the real display name. userIdentityType ("aadUser") is the
+  // identity class, not a user name — falling back to it produced rows
+  // like "Akshat Verma added aadUser, aadUser" when Graph omitted names.
+  // If the backend resolver also failed to fill displayName, fall back
+  // to a generic "someone" rather than leaking the type string.
+  const names = (members: any[]) => {
+    const resolved = (members || [])
+      .map(m => m?.displayName || m?.user?.displayName)
+      .filter(Boolean) as string[];
+    if (resolved.length) return resolved.join(', ');
+    const count = (members || []).length;
+    if (!count) return '';
+    return count === 1 ? 'someone' : `${count} members`;
+  };
+  const initiator =
+    eventDetail.initiator?.user?.displayName ||
+    eventDetail.initiator?.application?.displayName ||
+    'Someone';
+  if (type.includes('membersJoinedEventMessageDetail')) {
+    const who = names(eventDetail.members) || 'someone';
+    return `${who} joined the chat`;
+  }
+  if (type.includes('membersLeftEventMessageDetail')) {
+    const who = names(eventDetail.members) || 'someone';
+    return `${who} left the chat`;
+  }
+  if (type.includes('membersAddedEventMessageDetail')) {
+    const members = eventDetail.members || [];
+    const initiatorId = eventDetail.initiator?.user?.id || eventDetail.initiator?.id;
+    const others = initiatorId
+      ? members.filter((m: any) => m?.id !== initiatorId)
+      : members;
+    if (!others.length) {
+      return `${initiator} joined the chat`;
+    }
+    const who = names(others) || 'a member';
+    return `${initiator} added ${who}`;
+  }
+  if (type.includes('membersDeletedEventMessageDetail')) {
+    const members = eventDetail.members || [];
+    const initiatorId = eventDetail.initiator?.user?.id || eventDetail.initiator?.id;
+    const others = initiatorId
+      ? members.filter((m: any) => m?.id !== initiatorId)
+      : members;
+    if (!others.length) {
+      return `${initiator} left the chat`;
+    }
+    const who = names(others) || 'a member';
+    return `${initiator} removed ${who}`;
+  }
+  if (type.includes('chatRenamedEventMessageDetail')) {
+    const next = eventDetail.chatDisplayName || '(no name)';
+    return `${initiator} renamed the chat to “${next}”`;
+  }
+  if (type.includes('callStartedEventMessageDetail')) {
+    return `${initiator} started a call`;
+  }
+  if (type.includes('callEndedEventMessageDetail')) {
+    const dur = formatIsoDuration(eventDetail.callDuration);
+    return dur ? `Call ended · ${dur}` : 'Call ended';
+  }
+  if (type.includes('callRecordingEventMessageDetail')) {
+    return 'Call recording available';
+  }
+  if (type.includes('callTranscriptEventMessageDetail')) {
+    return 'Call transcript available';
+  }
+  if (type.includes('teamsAppInstalledEventMessageDetail')) {
+    return `${initiator} installed an app`;
+  }
+  // Fallback — humanise the type name.
+  const friendly = type
+    .replace('#microsoft.graph.', '')
+    .replace(/EventMessageDetail$/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, c => c.toUpperCase());
+  return friendly || null;
+}
+
 function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
   item: any; selected: boolean; checked: boolean;
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
+  // System-event short-circuit — render as a centered lifecycle chip
+  // instead of a sender/body row. Detected by body=<systemEventMessage/>
+  // or presence of raw.eventDetail.
+  const _bodyHtml = String(raw.body?.content || '');
+  const _isSystemEvent =
+    !!raw.eventDetail ||
+    _bodyHtml.includes('<systemEventMessage/>');
+  if (_isSystemEvent) {
+    const label = formatSystemEvent(raw.eventDetail) || 'System event';
+    const sentAt = raw.createdDateTime || item.date;
+    return (
+      <div
+        className={`chat-item-row chat-item-system${selected ? ' selected' : ''}`}
+        onClick={onSelect}
+        title={label}
+      >
+        <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
+        <div className="chat-system-event">
+          <span className="chat-system-event-label">{label}</span>
+          {sentAt && (
+            <span className="chat-system-event-time">
+              {fmtLocal(sentAt, {
+                month: 'short', day: 'numeric',
+                hour: 'numeric', minute: '2-digit', hour12: true,
+              })}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
   const sender = raw.from?.user?.displayName || raw.from?.application?.displayName
     // item.name for chat messages is the first 100 chars of body.content,
     // or the message id when body.content is empty (reply-only messages).
@@ -1113,7 +1267,29 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
         // makes the 401s go away and costs nothing visually because
         // textContent drops <img> content anyway.
         const noImages = body.replace(/<img[^>]*>/gi, '');
-        const withBreaks = noImages
+        // Teams tokenises every word of an @mention into its own <at>
+        // tag, e.g. `<at>Gajraj</at>&nbsp;<at>Singh</at>&nbsp;<at>Rathore</at>`.
+        // Merge contiguous runs (optionally separated by whitespace/&nbsp;)
+        // so the feed reads `@Gajraj Singh Rathore` instead of three
+        // separate `@\u2026` tokens.
+        const mentionsMerged = noImages.replace(
+          /(<at\b[^>]*>[^<]*<\/at>)(?:(?:\s|&nbsp;|&#160;)+<at\b[^>]*>[^<]*<\/at>)+/gi,
+          (run: string) => {
+            const parts: string[] = [];
+            run.replace(/<at\b[^>]*>([^<]*)<\/at>/gi, (_m: string, inner: string) => {
+              parts.push(inner);
+              return '';
+            });
+            return `<at>${parts.join(' ')}</at>`;
+          },
+        );
+        // Drop the <at> wrapper but prepend "@" so the mention shows up
+        // inline in the extracted text.
+        const withMentions = mentionsMerged.replace(
+          /<at\b[^>]*>([^<]*)<\/at>/gi,
+          (_m: string, name: string) => `@${name}`,
+        );
+        const withBreaks = withMentions
           .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
           .replace(/<\/(ul|ol|table)>/gi, '\n');
@@ -1179,11 +1355,23 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
           </div>
         )}
         <div className="chat-item-text">{displayBody || (quotedRefs.length > 0 ? '' : '\u00a0')}</div>
-        {rawAttachments.filter(a => !isMessageReferenceAttachment(a)).length > 0 && (
+        {rawAttachments.filter(isRenderableChatAttachment).length > 0 && (
           <div className="chat-item-attachments" onClick={(e) => e.stopPropagation()}>
             {chatAttachments.length === 0
               ? <span className="email-ol-attach-chip">Attachment{rawAttachments.length === 1 ? '' : 's'} (capturing…)</span>
-              : chatAttachments.map((a) => {
+              : chatAttachments
+                  .filter(a => {
+                    // Mirror the rawAttachments filter so cards that
+                    // sneak through the backend's CHAT_ATTACHMENT row don't
+                    // render a bare GUID chip. The backend persists card
+                    // rows as metadata-only (no blob) and stores the card
+                    // GUID in `name`; the row should not surface as a
+                    // downloadable artefact.
+                    if (!a.contentType) return true;
+                    const ct = a.contentType.trim().toLowerCase();
+                    return !ct.startsWith(INLINE_CARD_CONTENT_TYPE_PREFIX);
+                  })
+                  .map((a) => {
                   const label = a.size ? `${a.name} · ${fmtBytes(a.size)}` : a.name;
                   // CHAT_ATTACHMENT with resolved=true → real blob-backed
                   // download. Else fall back to the source contentUrl if
@@ -1215,6 +1403,47 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
                   }
                   return <span key={a.id} className="email-ol-attach-chip">{label}</span>;
                 })}
+          </div>
+        )}
+        {Array.isArray(raw.reactions) && raw.reactions.length > 0 && (
+          <div className="chat-item-reactions">
+            {(() => {
+              // Graph's reactionType IS the emoji glyph (e.g. "👍", "❤️",
+              // "😂") — earlier I mapped it through a word→emoji lookup
+              // which silently fell back to "·" because the keys never
+              // matched. Group by the glyph itself and show "emoji ×N"
+              // with a tooltip listing the reactor names where we have
+              // them (some entries arrive with displayName=null).
+              const groups: Record<string, {
+                count: number; names: string[]; reactionName: string;
+              }> = {};
+              for (const r of raw.reactions) {
+                const glyph = String(r?.reactionType || '');
+                if (!glyph) continue;
+                const reactionName = String(r?.displayName || '');
+                const n =
+                  r?.user?.user?.displayName ||
+                  r?.user?.application?.displayName ||
+                  '';
+                if (!groups[glyph]) {
+                  groups[glyph] = { count: 0, names: [], reactionName };
+                }
+                groups[glyph].count += 1;
+                if (n) groups[glyph].names.push(n);
+              }
+              return Object.entries(groups).map(([glyph, g]) => (
+                <span
+                  key={glyph}
+                  className="chat-item-reaction-chip"
+                  title={`${g.reactionName || ''}${g.reactionName ? ': ' : ''}${
+                    g.names.join(', ') || `${g.count} reaction${g.count === 1 ? '' : 's'}`
+                  }`}
+                >
+                  <span className="chat-item-reaction-glyph">{glyph}</span>
+                  <span className="chat-item-reaction-count">{g.count}</span>
+                </span>
+              ));
+            })()}
           </div>
         )}
       </div>
@@ -6081,6 +6310,15 @@ export default function Recovery() {
             const el = itemListRef.current;
             if (el) el.scrollTop = el.scrollHeight;
             chatsAutoScrolledRef.current = `${selectedSnapshotId}|${activeContentType}`;
+            // If page-1 content is too short to overflow the viewport
+            // (e.g. system-event rows got filtered, leaving <50 visible),
+            // the user can never scroll-up to trigger page 2 — the list
+            // isn't scrollable at all. Auto-bump to page 2 so older
+            // messages keep loading until the viewport actually fills.
+            if (el && (data.totalPages || 1) > 1 &&
+                el.scrollHeight <= el.clientHeight + 200) {
+              setItemPage(p => Math.max(p, 2));
+            }
           });
         }
       })
@@ -6133,6 +6371,12 @@ export default function Recovery() {
           requestAnimationFrame(() => {
             const el2 = itemListRef.current;
             if (el2) el2.scrollTop = prevScrollTop + (el2.scrollHeight - prevScrollHeight);
+            // Keep auto-bumping while the list still doesn't overflow
+            // and more pages exist — otherwise scroll-up can never fire.
+            if (el2 && itemPage < (data.totalPages || 1) &&
+                el2.scrollHeight <= el2.clientHeight + 200) {
+              setItemPage(p => p + 1);
+            }
           });
         } else {
           setRecoveryItems(prev => [...prev, ...data.content]);
@@ -6253,9 +6497,18 @@ export default function Recovery() {
     };
     const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
 
+    // First-load size. 500 is the server's hard cap and is still small
+    // bytes-wise (just folder name + count per row). Applied across every
+    // tab — chats routinely break 100, and mail with deep custom-folder
+    // hierarchies can also exceed 50 on power users. With this in place
+    // virtually every tenant sees their full folder list without needing
+    // to scroll the left rail. Infinite-scroll stays wired up as a safety
+    // net for the rare tenant with >500 folders.
+    const firstPageSize = 500;
+
     const myKey = ++foldersKeyRef.current;
     setFoldersLoading(true);
-    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, 50)
+    SnapshotService.getFolders(snapId, itemTypeForFolders, 1, firstPageSize)
       .then((resp) => {
         if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
         const data = resp.content;
@@ -6304,8 +6557,11 @@ export default function Recovery() {
     };
     const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
 
+    // Match the first-page size on subsequent infinite-scroll fetches.
+    // Mostly a safety net since 500 covers virtually every tenant.
+    const nextPageSize = 500;
     setFoldersLoadingMore(true);
-    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, 50)
+    SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, nextPageSize)
       .then((resp) => {
         setFolders((prev) => {
           const seen = new Set(prev.map(f => f.path));
@@ -7345,14 +7601,26 @@ export default function Recovery() {
                     - Chats → list of chats (display name + message count).
                     Clicking a row filters the items list via the `group`
                     parameter. "All" resets the filter. */}
-                <div className="panel-left">
-                  <div className="folder-list" ref={folderListRef} onScroll={handleFolderListScroll}>
+                <div className="panel-left" ref={folderListRef} onScroll={handleFolderListScroll}>
+                  <div className="folder-list">
                     {/* "All" aggregates across every folder — useful on mail /
                         onedrive / contacts to see the flat stream. On the
                         chats tab we skip it: each chat is a standalone
                         conversation, so "all messages from every chat mixed
                         together" isn't useful — the top chat is auto-
-                        selected in the folders-load effect instead. */}
+                        selected in the folders-load effect instead.
+
+                        Scroll handler note: this used to live on .folder-list,
+                        but .folder-list is a non-scrolling content wrapper —
+                        the actual scroll viewport is .panel-left
+                        (overflow-y: auto in Recovery.css). React onScroll
+                        doesn't bubble, so attaching the handler to the
+                        non-scrolling child meant it never fired, and the
+                        infinite-scroll page advancement was dead. Moving it
+                        up to the real scroller restores the loading-more
+                        indicator + page fetch at the rail bottom. With the
+                        first-load size also bumped to 500, this code path is
+                        now mostly a safety net for >500-folder tenants. */}
                     {activeContentType !== 'chats' && (
                       <button
                         className={`folder-item ${selectedFolder === 'all' ? 'active' : ''}`}
@@ -7434,7 +7702,20 @@ export default function Recovery() {
                               )}
                               <button
                                 className="folder-name-btn"
-                                onClick={() => patchSearchParams({ folder: folder.path })}
+                                onClick={() => {
+                                  // Chats: clicking a thread from a search
+                                  // result should drop the search filter so
+                                  // the user sees the WHOLE conversation,
+                                  // not only the messages matching the
+                                  // body-search query. Matches Teams/Slack
+                                  // behavior. Other tabs keep the filter so
+                                  // "invoice in Inbox" -> click Inbox still
+                                  // narrows to invoices.
+                                  if (activeContentType === 'chats') {
+                                    setSearchQuery('');
+                                  }
+                                  patchSearchParams({ folder: folder.path });
+                                }}
                                 title={folder.path}
                               >
                                 <span className="folder-name">{folder.path}</span>
@@ -7524,6 +7805,23 @@ export default function Recovery() {
                   </div>
 
                   <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
+                    {/* Chats load older messages ABOVE the visible list when
+                        the user scrolls up. Loader is sticky-positioned at
+                        the top of the scroll viewport (not flow) so the
+                        scroll-anchor math in the page-append effect doesn't
+                        need to compensate for the loader appearing/dis-
+                        appearing — there's no layout shift. */}
+                    {activeContentType === 'chats' && loadingMore && (
+                      <div
+                        className="item-list-loading-more item-list-loading-more--sticky"
+                      >
+                        <div className="spinner-sm" />
+                        <span>Loading older messages…</span>
+                      </div>
+                    )}
+                    {activeContentType === 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && (
+                      <div className="item-list-end">Start of conversation</div>
+                    )}
                     {itemsLoading ? (
                       <div className="loading-container">
                         <div className="spinner" />
@@ -7597,10 +7895,10 @@ export default function Recovery() {
                         });
                       })()
                     )}
-                    {/* Infinite-scroll bottom indicator — only while appending
-                        a page. When hasMore is false we render nothing (the
-                        list is fully loaded). */}
-                    {loadingMore && (
+                    {/* Bottom indicator — only for non-chat tabs, where new
+                        pages append below the visible list. Chats render
+                        their indicator at the top (above this block). */}
+                    {activeContentType !== 'chats' && loadingMore && (
                       <div className="item-list-loading-more">
                         <div className="spinner-sm" />
                         <span>Loading more…</span>
@@ -7610,7 +7908,7 @@ export default function Recovery() {
                         the visible count trails the total — happens when
                         the server caps page count. Lets the user know we
                         hit the end rather than looking like a stuck load. */}
-                    {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                    {activeContentType !== 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
                       <div className="item-list-end">End of list</div>
                     )}
                   </div>
