@@ -50,18 +50,22 @@ const WORKLOAD_TO_PST_TYPE: Partial<Record<DownloadWorkload, string>> = {
 //
 //   * "all" scope — at least one checked workload must be PST-compatible
 //     (OneDrive alone can't produce a PST).
-//   * "selected" scope — only allow PST when the user picked folder
-//     paths. Individual-item picks (single emails, events, contacts)
-//     don't have a folder hierarchy to materialise; PST is hidden so
-//     users only get the option when there's a real mailbox tree to
-//     reproduce.
+//   * "selected" scope — generally requires folder paths so the PST has
+//     a hierarchy to materialise. Contacts are exempt: each contact is
+//     a self-contained item, so individual contact picks export as
+//     one-PST-per-contact (ITEM granularity).
 function hasPstCompatibleWorkload(
   scope: Scope,
   workloads: Set<DownloadWorkload>,
-  folderPaths?: string[],
+  folderPaths: string[] | undefined,
+  contentType: ContentTab,
+  itemCount: number,
 ): boolean {
   if (scope === 'selected') {
-    return !!(folderPaths && folderPaths.length > 0);
+    if (folderPaths && folderPaths.length > 0) return true;
+    // Contacts: no folder gate — itemIds alone is enough.
+    if (contentType === 'contacts' && itemCount > 0) return true;
+    return false;
   }
   return [...workloads].some(w => w in WORKLOAD_TO_PST_TYPE);
 }
@@ -116,6 +120,10 @@ function autoGranularity(
   contentType?: ContentTab,
 ): 'MAILBOX' | 'FOLDER' | 'ITEM' {
   if (scope === 'all') return 'MAILBOX';
+  // Contacts: always ITEM when the user is picking individual contacts —
+  // each contact ships as its own PST file (consistent with the
+  // reference Outlook export, which produces one .pst per contact).
+  if (contentType === 'contacts') return 'ITEM';
   const folderCount = folderPaths?.length ?? 0;
   if (folderCount > 0) {
     // Multi-calendar selection: split per-folder so the user gets one
@@ -152,17 +160,22 @@ function getPstAutoLabel(
       const label = contentType === 'calendar' ? 'calendar' : 'folder';
       return `${folderPaths.length} ${label}${folderPaths.length > 1 ? 's' : ''} exported as a single PST (${what}) — opens in Outlook`;
     }
-    // Individual-item picks for calendar/contacts get auto-coalesced
-    // into a single MAILBOX-granularity PST (per autoGranularity); say
-    // so explicitly so the user doesn't expect N PSTs back.
-    if (scope === 'selected' && (contentType === 'calendar' || contentType === 'contacts')) {
-      return `${selectedCount} ${contentType === 'calendar' ? 'event' : 'contact'}${selectedCount !== 1 ? 's' : ''} exported as a single PST (${what}) — opens in Outlook`;
+    // Individual-item picks for calendar get auto-coalesced into a
+    // single MAILBOX-granularity PST (per autoGranularity); say so
+    // explicitly so the user doesn't expect N PSTs back.
+    if (scope === 'selected' && contentType === 'calendar') {
+      return `${selectedCount} event${selectedCount !== 1 ? 's' : ''} exported as a single PST (${what}) — opens in Outlook`;
     }
     return `Full mailbox exported as PST (${what}) — opens in Outlook`;
   }
   if (gran === 'FOLDER') {
     const label = contentType === 'calendar' ? 'calendar' : 'folder';
     return `${folderPaths!.length} ${label}${folderPaths!.length > 1 ? 's' : ''} exported as ${folderPaths!.length} separate PST file${folderPaths!.length > 1 ? 's' : ''} (${what}) — one per ${label}, all bundled in the download`;
+  }
+  // ITEM granularity: one PST per item, all zipped together. For
+  // contacts this is the default selected-picks experience.
+  if (contentType === 'contacts') {
+    return `${selectedCount} contact${selectedCount !== 1 ? 's' : ''} exported as ${selectedCount} separate PST file${selectedCount !== 1 ? 's' : ''} (${what}) — one per contact, all bundled in the download`;
   }
   return `${selectedCount} item${selectedCount !== 1 ? 's' : ''} exported as PST (${what}) — opens in Outlook`;
 }
@@ -206,10 +219,10 @@ export function DownloadModal({
   // one (OneDrive-only workload checked, or individual items picked
   // without a folderPath selection).
   useEffect(() => {
-    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths)) {
+    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length)) {
       setExportFormat(DEFAULT_FORMAT[contentType]);
     }
-  }, [scope, workloads, contentType, exportFormat, folderPaths]);
+  }, [scope, workloads, contentType, exportFormat, folderPaths, itemIds.length]);
 
   // Contact folder subgroup state. Populated only when Contacts is checked
   // and scope === 'all' for a single-snapshot export. Default = all checked
@@ -700,12 +713,13 @@ export function DownloadModal({
               if (scope !== 'selected') return null;
               if (folderPaths && folderPaths.length > 0) return null;
               if (!formats.some(f => f.value === 'PST')) return null;
+              // Contacts have no folder gate — every individual contact
+              // ships as its own PST.
+              if (contentType === 'contacts') return null;
               const msg =
                 contentType === 'calendar'
                   ? 'To enable PST export, tick one or more calendars in the "Calendar" section of the sidebar. Multiple calendars → one PST per calendar.'
-                  : contentType === 'contacts'
-                    ? 'To enable PST export, tick the Contacts folder in the left sidebar.'
-                    : 'To enable PST export, tick one or more folders in the left sidebar.';
+                  : 'To enable PST export, tick one or more folders in the left sidebar.';
               return (
                 <div
                   style={{
@@ -727,16 +741,17 @@ export function DownloadModal({
               <div className="modal-error">No export formats configured for “{contentType}”.</div>
             ) : (
               (() => {
-                const pstDisabledGlobal = !hasPstCompatibleWorkload(scope, workloads, folderPaths);
+                const pstDisabledGlobal = !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length);
                 const pstFolderHint = (() => {
                   if (!pstDisabledGlobal || scope !== 'selected') return '';
                   if (folderPaths && folderPaths.length > 0) return '';
                   // contentType-specific direction: tell the user exactly
                   // which sidebar section enables PST for their tab.
+                  // Contacts is exempt — itemIds alone unlock PST.
                   if (contentType === 'calendar')
                     return 'Tick one or more calendars in the "Calendar" filter sidebar to enable PST export. Multiple calendars produce one PST per calendar.';
                   if (contentType === 'contacts')
-                    return 'Tick a Contacts folder in the left sidebar to enable PST export.';
+                    return 'Select one or more contacts to enable PST export.';
                   return 'Tick one or more folders in the left sidebar to enable PST export. Multiple folders produce one PST containing the source folder tree.';
                 })();
                 return formats.map(f => {
