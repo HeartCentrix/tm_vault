@@ -1274,9 +1274,9 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
         // separate `@\u2026` tokens.
         const mentionsMerged = noImages.replace(
           /(<at\b[^>]*>[^<]*<\/at>)(?:(?:\s|&nbsp;|&#160;)+<at\b[^>]*>[^<]*<\/at>)+/gi,
-          (run) => {
+          (run: string) => {
             const parts: string[] = [];
-            run.replace(/<at\b[^>]*>([^<]*)<\/at>/gi, (_m, inner) => {
+            run.replace(/<at\b[^>]*>([^<]*)<\/at>/gi, (_m: string, inner: string) => {
               parts.push(inner);
               return '';
             });
@@ -1287,7 +1287,7 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
         // inline in the extracted text.
         const withMentions = mentionsMerged.replace(
           /<at\b[^>]*>([^<]*)<\/at>/gi,
-          (_m, name) => `@${name}`,
+          (_m: string, name: string) => `@${name}`,
         );
         const withBreaks = withMentions
           .replace(/<br\s*\/?>/gi, '\n')
