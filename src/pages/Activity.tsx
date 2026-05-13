@@ -252,25 +252,26 @@ export default function Activity() {
     });
   };
 
-  const handleCancelJob = async (jobId: string) => {
-    if (cancellingJobs.has(jobId)) return;
-    setCancellingJobs(prev => new Set(prev).add(jobId));
+  const handleCancelJob = async (rowId: string, jobIds?: string[]) => {
+    if (cancellingJobs.has(rowId)) return;
+    setCancellingJobs(prev => new Set(prev).add(rowId));
+    // Batch rows surface multiple underlying Job IDs; iterate so every
+    // partitioned worker-pool slice gets cancelled by one click.
+    const targets = jobIds && jobIds.length > 0 ? jobIds : [rowId];
     try {
-      await cancelJob(jobId);
-      // Optimistic: flip the row to Canceled locally; the next poll/refresh
-      // confirms it from the server.
-      setActivities(prev => prev.map(a => a.id === jobId ? { ...a, status: 'Canceled' } : a));
+      await Promise.all(targets.map(id => cancelJob(id)));
+      setActivities(prev => prev.map(a => a.id === rowId ? { ...a, status: 'Canceled' } : a));
     } catch (e) {
       console.error('Failed to cancel job:', e);
       setCancellingJobs(prev => {
         const next = new Set(prev);
-        next.delete(jobId);
+        next.delete(rowId);
         return next;
       });
     }
   };
 
-  const getStatusIcon = (status: string, jobId?: string) => {
+  const getStatusIcon = (status: string, jobId?: string, jobIds?: string[]) => {
     switch (status) {
       case 'Done':
         return (
@@ -293,7 +294,7 @@ export default function Activity() {
                 title="Cancel job"
                 aria-label="Cancel job"
                 disabled={cancellingJobs.has(jobId)}
-                onClick={(e) => { e.stopPropagation(); handleCancelJob(jobId); }}
+                onClick={(e) => { e.stopPropagation(); handleCancelJob(jobId, jobIds); }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -564,7 +565,7 @@ export default function Activity() {
                     <td>{formatDate(activity.start_time)}</td>
                     <td><span className="operation-badge">{activity.operation}</span></td>
                     <td className="object-cell">{activity.object}</td>
-                    <td>{getStatusIcon(activity.status, activity.id)}</td>
+                    <td>{getStatusIcon(activity.status, activity.id, activity.jobIds)}</td>
                     <td>{formatDate(activity.finish_time)}</td>
                     <td className="details-cell">{activity.details || '—'}</td>
                   </tr>
