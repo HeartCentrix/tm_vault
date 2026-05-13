@@ -1587,6 +1587,109 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   accent-color: #D31245;
 }
 
+/* Teams-style system event row.
+   Checkbox stays on the LEFT in the same column as regular message
+   rows (so vertical alignment doesn't break when the feed contains a
+   mix of messages and lifecycle events). The chip itself centers in
+   the remaining space. `position: relative` defines a positioning
+   context so absolutely-positioned descendants can't escape the row. */
+.chat-item-row.chat-item-system {
+  position: relative;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px dashed transparent;
+  background: transparent;
+}
+.chat-item-row.chat-item-system:hover { background: var(--row-hover-bg); }
+.chat-item-row.chat-item-system.selected { background: var(--row-selected-bg); box-shadow: inset 3px 0 0 var(--row-selected-accent); }
+.chat-item-row.chat-item-system input[type="checkbox"] {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+/* Center the chip in the remaining row space so the checkbox stays
+   in its column while the lifecycle label still reads as centered. */
+.chat-item-row.chat-item-system .chat-system-event {
+  margin-left: auto;
+  margin-right: auto;
+}
+.chat-system-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  max-width: 80%;
+}
+.chat-system-event-label {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-system-event-time {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+/* @mentions row + chips */
+.chat-item-mentions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.chat-item-mention {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* Reaction chips below the message */
+.chat-item-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.chat-item-reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 1px 8px;
+  cursor: default;
+  line-height: 1.4;
+}
+/* Bump the emoji glyph slightly so it reads at the same weight as
+   Teams does, while keeping the count compact. */
+.chat-item-reaction-glyph {
+  font-size: 14px;
+  line-height: 1;
+  /* Preserve the colour-emoji rendering on platforms whose default
+     monospace strips colour. */
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji',
+               'EmojiOne Color', sans-serif;
+}
+.chat-item-reaction-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: #64748b;
+}
+
 .chat-item-avatar {
   width: 36px;
   height: 36px;

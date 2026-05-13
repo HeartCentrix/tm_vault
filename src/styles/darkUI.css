@@ -1838,6 +1838,35 @@
 [data-theme="dark"] .chat-item-time         { color: var(--tm-body) !important; }
 [data-theme="dark"] .chat-item-text         { color: var(--tm-body-2) !important; }
 
+/* Teams-style system event row in dark mode — the chip's default
+   #f8fafc background and #64748b text are invisible on dark surface.
+   Match the surrounding row background and bump contrast for both
+   the label and the trailing timestamp. */
+[data-theme="dark"] .chat-item-row.chat-item-system {
+  background: transparent !important;
+}
+[data-theme="dark"] .chat-system-event {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-border) !important;
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .chat-system-event-label { color: var(--tm-body) !important; }
+[data-theme="dark"] .chat-system-event-time  { color: var(--tm-body-2) !important; }
+
+/* @mentions + reactions chips — same surface treatment as other
+   metadata pills so they read on the dark panel. */
+[data-theme="dark"] .chat-item-mention {
+  background: rgba(184, 14, 56, 0.18) !important;
+  border-color: rgba(184, 14, 56, 0.35) !important;
+  color: var(--tm-accent-soft) !important;
+}
+[data-theme="dark"] .chat-item-reaction-chip {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-border) !important;
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .chat-item-reaction-count { color: var(--tm-body-2) !important; }
+
 /* -- Calendar preview ------------------------------------------------ */
 [data-theme="dark"] .cal-event-header { border-bottom-color: var(--tm-border) !important; }
 [data-theme="dark"] .cal-event-title  { color: var(--tm-text) !important; }

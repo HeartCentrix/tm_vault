@@ -1088,11 +1088,146 @@ export function JsonPreview({ item }: { item: any }) {
 }
 
 
+// Convert ISO-8601 duration (e.g. "PT1H1M30S", "PT45M", "PT12S")
+// into a compact human string like "1h 1m 30s". Returns "" on parse
+// failure so callers can decide whether to print a label or drop it.
+function formatIsoDuration(raw: any): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const m = raw.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+  if (!m) return '';
+  const h = m[1] ? parseInt(m[1], 10) : 0;
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  const s = m[3] ? Math.round(parseFloat(m[3])) : 0;
+  const parts: string[] = [];
+  if (h) parts.push(`${h}h`);
+  if (min) parts.push(`${min}m`);
+  if (s || parts.length === 0) parts.push(`${s}s`);
+  return parts.join(' ');
+}
+
+// Teams system event renderer. Graph delivers lifecycle messages (members
+// joined/left/added, chat renamed, calls started/ended, recordings) with
+// body=<systemEventMessage/> and from=null — the actual content is in
+// raw.eventDetail. Without this, every such message looks empty in the
+// feed. We render them as small centered chips like Teams does.
+function formatSystemEvent(eventDetail: any): string | null {
+  if (!eventDetail) return null;
+  const type = String(eventDetail['@odata.type'] || '');
+  // Use ONLY the real display name. userIdentityType ("aadUser") is the
+  // identity class, not a user name — falling back to it produced rows
+  // like "Akshat Verma added aadUser, aadUser" when Graph omitted names.
+  // If the backend resolver also failed to fill displayName, fall back
+  // to a generic "someone" rather than leaking the type string.
+  const names = (members: any[]) => {
+    const resolved = (members || [])
+      .map(m => m?.displayName || m?.user?.displayName)
+      .filter(Boolean) as string[];
+    if (resolved.length) return resolved.join(', ');
+    const count = (members || []).length;
+    if (!count) return '';
+    return count === 1 ? 'someone' : `${count} members`;
+  };
+  const initiator =
+    eventDetail.initiator?.user?.displayName ||
+    eventDetail.initiator?.application?.displayName ||
+    'Someone';
+  if (type.includes('membersJoinedEventMessageDetail')) {
+    const who = names(eventDetail.members) || 'someone';
+    return `${who} joined the chat`;
+  }
+  if (type.includes('membersLeftEventMessageDetail')) {
+    const who = names(eventDetail.members) || 'someone';
+    return `${who} left the chat`;
+  }
+  if (type.includes('membersAddedEventMessageDetail')) {
+    const members = eventDetail.members || [];
+    const initiatorId = eventDetail.initiator?.user?.id || eventDetail.initiator?.id;
+    const others = initiatorId
+      ? members.filter((m: any) => m?.id !== initiatorId)
+      : members;
+    if (!others.length) {
+      return `${initiator} joined the chat`;
+    }
+    const who = names(others) || 'a member';
+    return `${initiator} added ${who}`;
+  }
+  if (type.includes('membersDeletedEventMessageDetail')) {
+    const members = eventDetail.members || [];
+    const initiatorId = eventDetail.initiator?.user?.id || eventDetail.initiator?.id;
+    const others = initiatorId
+      ? members.filter((m: any) => m?.id !== initiatorId)
+      : members;
+    if (!others.length) {
+      return `${initiator} left the chat`;
+    }
+    const who = names(others) || 'a member';
+    return `${initiator} removed ${who}`;
+  }
+  if (type.includes('chatRenamedEventMessageDetail')) {
+    const next = eventDetail.chatDisplayName || '(no name)';
+    return `${initiator} renamed the chat to “${next}”`;
+  }
+  if (type.includes('callStartedEventMessageDetail')) {
+    return `${initiator} started a call`;
+  }
+  if (type.includes('callEndedEventMessageDetail')) {
+    const dur = formatIsoDuration(eventDetail.callDuration);
+    return dur ? `Call ended · ${dur}` : 'Call ended';
+  }
+  if (type.includes('callRecordingEventMessageDetail')) {
+    return 'Call recording available';
+  }
+  if (type.includes('callTranscriptEventMessageDetail')) {
+    return 'Call transcript available';
+  }
+  if (type.includes('teamsAppInstalledEventMessageDetail')) {
+    return `${initiator} installed an app`;
+  }
+  // Fallback — humanise the type name.
+  const friendly = type
+    .replace('#microsoft.graph.', '')
+    .replace(/EventMessageDetail$/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, c => c.toUpperCase());
+  return friendly || null;
+}
+
 function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
   item: any; selected: boolean; checked: boolean;
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
   const raw = item.metadata?.raw || {};
+  // System-event short-circuit — render as a centered lifecycle chip
+  // instead of a sender/body row. Detected by body=<systemEventMessage/>
+  // or presence of raw.eventDetail.
+  const _bodyHtml = String(raw.body?.content || '');
+  const _isSystemEvent =
+    !!raw.eventDetail ||
+    _bodyHtml.includes('<systemEventMessage/>');
+  if (_isSystemEvent) {
+    const label = formatSystemEvent(raw.eventDetail) || 'System event';
+    const sentAt = raw.createdDateTime || item.date;
+    return (
+      <div
+        className={`chat-item-row chat-item-system${selected ? ' selected' : ''}`}
+        onClick={onSelect}
+        title={label}
+      >
+        <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
+        <div className="chat-system-event">
+          <span className="chat-system-event-label">{label}</span>
+          {sentAt && (
+            <span className="chat-system-event-time">
+              {fmtLocal(sentAt, {
+                month: 'short', day: 'numeric',
+                hour: 'numeric', minute: '2-digit', hour12: true,
+              })}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
   const sender = raw.from?.user?.displayName || raw.from?.application?.displayName
     // item.name for chat messages is the first 100 chars of body.content,
     // or the message id when body.content is empty (reply-only messages).
@@ -1132,7 +1267,29 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
         // makes the 401s go away and costs nothing visually because
         // textContent drops <img> content anyway.
         const noImages = body.replace(/<img[^>]*>/gi, '');
-        const withBreaks = noImages
+        // Teams tokenises every word of an @mention into its own <at>
+        // tag, e.g. `<at>Gajraj</at>&nbsp;<at>Singh</at>&nbsp;<at>Rathore</at>`.
+        // Merge contiguous runs (optionally separated by whitespace/&nbsp;)
+        // so the feed reads `@Gajraj Singh Rathore` instead of three
+        // separate `@\u2026` tokens.
+        const mentionsMerged = noImages.replace(
+          /(<at\b[^>]*>[^<]*<\/at>)(?:(?:\s|&nbsp;|&#160;)+<at\b[^>]*>[^<]*<\/at>)+/gi,
+          (run) => {
+            const parts: string[] = [];
+            run.replace(/<at\b[^>]*>([^<]*)<\/at>/gi, (_m, inner) => {
+              parts.push(inner);
+              return '';
+            });
+            return `<at>${parts.join(' ')}</at>`;
+          },
+        );
+        // Drop the <at> wrapper but prepend "@" so the mention shows up
+        // inline in the extracted text.
+        const withMentions = mentionsMerged.replace(
+          /<at\b[^>]*>([^<]*)<\/at>/gi,
+          (_m, name) => `@${name}`,
+        );
+        const withBreaks = withMentions
           .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|tr)>/gi, '\n')
           .replace(/<\/(ul|ol|table)>/gi, '\n');
@@ -1246,6 +1403,47 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
                   }
                   return <span key={a.id} className="email-ol-attach-chip">{label}</span>;
                 })}
+          </div>
+        )}
+        {Array.isArray(raw.reactions) && raw.reactions.length > 0 && (
+          <div className="chat-item-reactions">
+            {(() => {
+              // Graph's reactionType IS the emoji glyph (e.g. "👍", "❤️",
+              // "😂") — earlier I mapped it through a word→emoji lookup
+              // which silently fell back to "·" because the keys never
+              // matched. Group by the glyph itself and show "emoji ×N"
+              // with a tooltip listing the reactor names where we have
+              // them (some entries arrive with displayName=null).
+              const groups: Record<string, {
+                count: number; names: string[]; reactionName: string;
+              }> = {};
+              for (const r of raw.reactions) {
+                const glyph = String(r?.reactionType || '');
+                if (!glyph) continue;
+                const reactionName = String(r?.displayName || '');
+                const n =
+                  r?.user?.user?.displayName ||
+                  r?.user?.application?.displayName ||
+                  '';
+                if (!groups[glyph]) {
+                  groups[glyph] = { count: 0, names: [], reactionName };
+                }
+                groups[glyph].count += 1;
+                if (n) groups[glyph].names.push(n);
+              }
+              return Object.entries(groups).map(([glyph, g]) => (
+                <span
+                  key={glyph}
+                  className="chat-item-reaction-chip"
+                  title={`${g.reactionName || ''}${g.reactionName ? ': ' : ''}${
+                    g.names.join(', ') || `${g.count} reaction${g.count === 1 ? '' : 's'}`
+                  }`}
+                >
+                  <span className="chat-item-reaction-glyph">{glyph}</span>
+                  <span className="chat-item-reaction-count">{g.count}</span>
+                </span>
+              ));
+            })()}
           </div>
         )}
       </div>
