@@ -26,6 +26,12 @@ export interface SnapshotItem {
   label?: string;
   durationSecs?: number;
   jobId?: string;
+  // `batch_id` from the parent Job's spec — shared across the
+  // Tier-1 + Tier-2-urgent + Tier-2-heavy Jobs of one bulk click.
+  // Recovery toolbar buckets the version dropdown by this so a single
+  // "Backup now" click collapses to one entry even when it fans out
+  // into multiple resource snapshots (mail / chats / OneDrive).
+  batchId?: string;
 }
 
 /**

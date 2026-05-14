@@ -151,19 +151,28 @@ export default function RecoveryToolbar({
   onSearchSubmit,
   searchPlaceholder = 'Search',
 }: RecoveryToolbarProps) {
-  // One "version" = one backup run = one jobId. An ENTRA_USER backup
-  // fans out per content type (USER_MAIL/CALENDAR/CONTACTS/ONEDRIVE/
-  // CHATS), producing one Snapshot row per child resource — all sharing
-  // the same job_id. Collapse them to a single dropdown entry so the
-  // user sees "the backup they ran", not the worker's internal fan-out.
-  // Fallback for legacy snapshots without jobId: minute-bucket.
+  // One "version" = one "Backup now" click. The backend fans out a
+  // single click into three Jobs (Tier-1 ENTRA_USER + Tier-2-urgent
+  // for mail/calendar/contacts + Tier-2-heavy for OneDrive/chats),
+  // each producing its own Snapshot rows per child resource. All three
+  // Jobs share the same `spec.batch_id`, surfaced on every snapshot
+  // as `batchId`. Bucket primarily by batchId so cross-resource and
+  // cross-Tier children of one click collapse to a single dropdown
+  // entry. Without this the dropdown shows N entries per click (one
+  // per fan-out resource) even though there's only one logical backup.
+  //
+  // Fallback chain: batchId → jobId → minute-bucket. The jobId fallback
+  // covers legacy snapshots whose Job lacked batch_id in spec; the
+  // minute fallback covers ad-hoc snapshots with no Job at all.
   const completed = (() => {
     const all = (snapshots || [])
       .filter(s => (s.status || '').toUpperCase() === 'COMPLETED');
     const buckets = new Map<string, SnapshotItem>();
     for (const s of all) {
       let key: string;
-      if (s.jobId) {
+      if (s.batchId) {
+        key = `b:${s.batchId}`;
+      } else if (s.jobId) {
         key = `j:${s.jobId}`;
       } else {
         const t = s.createdAt ? new Date(
