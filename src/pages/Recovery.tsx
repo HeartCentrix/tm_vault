@@ -323,7 +323,13 @@ export function ChatPreview({ item }: { item: any }) {
   const realAttachments = attachments.filter(a => !isMessageReferenceAttachment(a));
   const mentions: any[] = raw.mentions || [];
   const isDeleted = raw.deletedDateTime != null;
-  const context = item.metadata?.chatTopic || item.metadata?.channelName
+  // chatTopic / channelName ride at the TOP level of the recovery item
+  // (see snapshot-service _fmt — they are NOT under metadata). The
+  // folder_path fallback is last-resort and intentionally a no-op when
+  // the topic resolved (so we never expose the "chats/Group Chat (19:xxx)"
+  // synthetic write-time fallback that may be baked into legacy rows).
+  const context = (item as any).chatTopic || item.metadata?.chatTopic
+    || (item as any).channelName || item.metadata?.channelName
     || item.folderPath?.replace('chats/', '').replace('channels/', '') || '';
 
   return (
