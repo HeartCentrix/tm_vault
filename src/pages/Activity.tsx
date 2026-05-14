@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getActivities, downloadActivityCSV, cancelJob, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocal } from '../utils/datetime';
 import { API } from '../config/api';
+import { ActivityRow } from '../components/ActivityRow';
 import './Activity.css';
 
 type ViewType = 'tasks' | 'audit' | 'risk';
@@ -61,6 +62,20 @@ export default function Activity() {
 
   // Download state
   const [downloading, setDownloading] = useState(false);
+
+  // Monotonic progress clamp — keyed by batchId (or job id for legacy
+  // rows). Server-supplied progress_pct can dip momentarily across
+  // polls (e.g. after a finalize reconcile); we expose only the
+  // running max so the bar never visibly retreats.
+  const progressClampRef = useRef<Map<string, number>>(new Map());
+  const clampProgress = (item: ActivityItemType): number => {
+    const key = item.batchId || item.id;
+    const server = item.progress_pct ?? 0;
+    const prev = progressClampRef.current.get(key) ?? 0;
+    const next = Math.max(prev, server);
+    if (next !== prev) progressClampRef.current.set(key, next);
+    return next;
+  };
 
   const selectedSourceRaw = localStorage.getItem('selected_datasource');
   let selectedSourceTenantId: string | undefined;
@@ -561,14 +576,13 @@ export default function Activity() {
                 <tr><td colSpan={6} className="empty-cell">No activities found</td></tr>
               ) : (
                 activities.map((activity) => (
-                  <tr key={activity.id}>
-                    <td>{formatDate(activity.start_time)}</td>
-                    <td><span className="operation-badge">{activity.operation}</span></td>
-                    <td className="object-cell">{activity.object}</td>
-                    <td>{getStatusIcon(activity.status, activity.id, activity.jobIds)}</td>
-                    <td>{formatDate(activity.finish_time)}</td>
-                    <td className="details-cell">{activity.details || '—'}</td>
-                  </tr>
+                  <ActivityRow
+                    key={activity.id}
+                    item={activity}
+                    displayedProgressPct={clampProgress(activity)}
+                    renderStatusIcon={getStatusIcon}
+                    formatDate={formatDate}
+                  />
                 ))
               )}
             </tbody>

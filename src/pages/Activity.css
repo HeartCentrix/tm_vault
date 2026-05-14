@@ -871,3 +871,77 @@
     margin: 0 20px;
   }
 }
+
+/* ──────────────── Activity batch-row visuals ────────────────── */
+
+.activity-row-chevron {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 6px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+  vertical-align: baseline;
+}
+.activity-row-chevron:hover { color: #111827; }
+
+.activity-row-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activity-row-warning-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.activity-row-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+.activity-row-progress-bar {
+  height: 4px;
+  background: #6366f1;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+  max-width: 200px;
+}
+
+.activity-row-expanded > td {
+  background: #f9fafb;
+  padding: 12px 16px;
+}
+.activity-row-children {
+  list-style: disc;
+  margin: 4px 0 4px 24px;
+  padding: 0;
+  font-size: 13px;
+  color: #374151;
+}
+.activity-row-children ul {
+  list-style: circle;
+  margin: 4px 0 4px 18px;
+  padding: 0;
+}
+.activity-row-child-type {
+  color: #6b7280;
+  font-size: 12px;
+}
+.activity-row-child-status,
+.activity-row-shards {
+  color: #6b7280;
+  font-size: 12px;
+}
