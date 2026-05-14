@@ -21,131 +21,6 @@ const defaultFmtBytes = (n: number): string => {
   return `${v.toFixed(1)} EiB`;
 };
 
-export function ActivityRow({
-  item,
-  displayedProgressPct,
-  renderStatusIcon,
-  formatDate,
-  formatBytes,
-}: Props) {
-  const fmtBytes = formatBytes || defaultFmtBytes;
-  const [expanded, setExpanded] = useState(false);
-  const [children, setChildren] = useState<BatchChildren | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const canExpand = !!item.batchId;
-  const onToggle = async () => {
-    if (!canExpand) return;
-    const next = !expanded;
-    setExpanded(next);
-    if (next && !children && !loading) {
-      setLoading(true);
-      try {
-        const data = await fetchBatchChildren(item.batchId!);
-        setChildren(data);
-        setErr(null);
-      } catch (e: any) {
-        setErr(e?.message || 'failed to load');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-  const warnings = item.warnings;
-  const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
-
-  const rowClickProps = canExpand
-    ? {
-        onClick: onToggle,
-        style: { cursor: 'pointer' as const },
-        'aria-expanded': expanded,
-      }
-    : {};
-
-  return (
-    <>
-      <tr {...rowClickProps}>
-        <td>
-          {canExpand && (
-            <button
-              type="button"
-              aria-label={expanded ? 'Collapse' : 'Expand'}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-              className="activity-row-chevron"
-            >
-              {expanded ? '▾' : '▸'}
-            </button>
-          )}
-          {formatDate(item.start_time)}
-        </td>
-        <td><span className="operation-badge">{item.operation}</span></td>
-        <td className="object-cell">{item.object}</td>
-        <td>{renderStatusIcon(item.status, item.id, item.jobIds)}</td>
-        <td>{formatDate(item.finish_time)}</td>
-        <td className="details-cell">
-          <div className="activity-row-details">
-            <span>{item.details || '—'}</span>
-            {hasWarnings && (
-              <span
-                className="activity-row-warning-chip"
-                title={`${warnings!.partial} partial, ${warnings!.failed} failed`}
-              >
-                ⚠ {warnings!.partial} partial · {warnings!.failed} failed
-              </span>
-            )}
-          </div>
-          {item.status === 'In Progress' && (
-            <div className="activity-row-progress">
-              <div
-                className="activity-row-progress-bar"
-                style={{ width: `${displayedProgressPct}%` }}
-              />
-              <span>{displayedProgressPct}%</span>
-            </div>
-          )}
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="activity-row-expanded">
-          <td colSpan={6}>
-            {loading && <span>Loading…</span>}
-            {err && <span className="error">Error: {err}</span>}
-            {children && (
-              <div className="modal-compact-content activity-drilldown-compact">
-                {flattenChildren(children.resources).map((leaf) => (
-                  <div className="compact-row" key={leaf.key}>
-                    <span className="compact-label">{TYPE_LABEL[leaf.type] || leaf.type}:</span>
-                    <span className="compact-value">
-                      {leaf.displayName || leaf.resourceId}
-                      <span className="object-type-inline">({leaf.type})</span>
-                      {' — '}
-                      {leaf.status ?? 'pending'}
-                      {leaf.itemCount != null && `, ${leaf.itemCount} items`}
-                      {leaf.bytesAdded != null && `, ${fmtBytes(leaf.bytesAdded)}`}
-                      {leaf.partitions && (
-                        <>
-                          {' '}({leaf.partitions.done}/{leaf.partitions.total} shards
-                          {leaf.partitions.failed > 0 && `, ${leaf.partitions.failed} failed`})
-                        </>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-// Resource-type → short label shown on the compact-row left side.
 const TYPE_LABEL: Record<string, string> = {
   ENTRA_USER:      'User',
   USER_MAIL:       'Mail',
@@ -159,9 +34,6 @@ const TYPE_LABEL: Record<string, string> = {
   SHAREPOINT_SITE: 'SharePoint',
 };
 
-// Flatten the Tier-1 → Tier-2 tree into a single ordered list so each
-// resource appears on its own row in the compact list. Tier-1 first,
-// then its children directly below it.
 type Leaf = {
   key: string;
   resourceId: string;
@@ -172,6 +44,7 @@ type Leaf = {
   bytesAdded?: number;
   partitions?: { total: number; done: number; pending: number; failed: number };
 };
+
 function flattenChildren(resources: BatchChildren['resources']): Leaf[] {
   const out: Leaf[] = [];
   for (const r of resources) {
@@ -199,4 +72,149 @@ function flattenChildren(resources: BatchChildren['resources']): Leaf[] {
     }
   }
   return out;
+}
+
+export function ActivityRow({
+  item,
+  displayedProgressPct,
+  renderStatusIcon,
+  formatDate,
+  formatBytes,
+}: Props) {
+  const fmtBytes = formatBytes || defaultFmtBytes;
+  const [open, setOpen] = useState(false);
+  const [children, setChildren] = useState<BatchChildren | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const canOpen = !!item.batchId;
+
+  const openModal = async () => {
+    if (!canOpen) return;
+    setOpen(true);
+    if (!children && !loading) {
+      setLoading(true);
+      try {
+        const data = await fetchBatchChildren(item.batchId!);
+        setChildren(data);
+        setErr(null);
+      } catch (e: any) {
+        setErr(e?.message || 'failed to load');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const closeModal = () => setOpen(false);
+
+  const warnings = item.warnings;
+  const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
+
+  const rowClickProps = canOpen
+    ? { onClick: openModal, style: { cursor: 'pointer' as const } }
+    : {};
+
+  return (
+    <>
+      <tr {...rowClickProps}>
+        <td>{formatDate(item.start_time)}</td>
+        <td><span className="operation-badge">{item.operation}</span></td>
+        <td className="object-cell">{item.object}</td>
+        <td>{renderStatusIcon(item.status, item.id, item.jobIds)}</td>
+        <td>{formatDate(item.finish_time)}</td>
+        <td className="details-cell">
+          <div className="activity-row-details">
+            <span>{item.details || '—'}</span>
+            {hasWarnings && (
+              <span
+                className="activity-row-warning-chip"
+                title={`${warnings!.partial} partial, ${warnings!.failed} failed`}
+              >
+                ⚠ {warnings!.partial} partial · {warnings!.failed} failed
+              </span>
+            )}
+          </div>
+          {item.status === 'In Progress' && (
+            <div className="activity-row-progress">
+              <div
+                className="activity-row-progress-bar"
+                style={{ width: `${displayedProgressPct}%` }}
+              />
+              <span>{displayedProgressPct}%</span>
+            </div>
+          )}
+        </td>
+      </tr>
+
+      {open && (
+        <tr style={{ display: 'none' }}>
+          <td colSpan={6}>
+            <div className="modal-overlay" onClick={closeModal}>
+              <div className="audit-modal-compact" onClick={(e) => e.stopPropagation()}>
+                <button className="modal-close-x" onClick={closeModal}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+                <div className="modal-compact-content">
+                  <div className="compact-row">
+                    <span className="compact-label">Operation:</span>
+                    <span className="compact-value">{item.operation}</span>
+                  </div>
+                  <div className="compact-row">
+                    <span className="compact-label">Status:</span>
+                    <span className="compact-value">{item.status}</span>
+                  </div>
+                  <div className="compact-row">
+                    <span className="compact-label">Started:</span>
+                    <span className="compact-value">{formatDate(item.start_time)}</span>
+                  </div>
+                  {item.finish_time && (
+                    <div className="compact-row">
+                      <span className="compact-label">Finished:</span>
+                      <span className="compact-value">{formatDate(item.finish_time)}</span>
+                    </div>
+                  )}
+
+                  {loading && (
+                    <div className="compact-row">
+                      <span className="compact-label">&nbsp;</span>
+                      <span className="compact-value">Loading…</span>
+                    </div>
+                  )}
+                  {err && (
+                    <div className="compact-row">
+                      <span className="compact-label">Error:</span>
+                      <span className="compact-value">{err}</span>
+                    </div>
+                  )}
+                  {children && flattenChildren(children.resources).map((leaf) => (
+                    <div className="compact-row" key={leaf.key}>
+                      <span className="compact-label">{TYPE_LABEL[leaf.type] || leaf.type}:</span>
+                      <span className="compact-value">
+                        {leaf.displayName || leaf.resourceId}
+                        <span className="object-type-inline">({leaf.type})</span>
+                        {' — '}
+                        {leaf.status ?? 'pending'}
+                        {leaf.itemCount != null && `, ${leaf.itemCount} items`}
+                        {leaf.bytesAdded != null && `, ${fmtBytes(leaf.bytesAdded)}`}
+                        {leaf.partitions && (
+                          <>
+                            {' '}({leaf.partitions.done}/{leaf.partitions.total} shards
+                            {leaf.partitions.failed > 0 && `, ${leaf.partitions.failed} failed`})
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
