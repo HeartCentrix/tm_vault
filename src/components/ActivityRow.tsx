@@ -56,15 +56,26 @@ export function ActivityRow({
   const warnings = item.warnings;
   const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
 
+  const rowClickProps = canExpand
+    ? {
+        onClick: onToggle,
+        style: { cursor: 'pointer' as const },
+        'aria-expanded': expanded,
+      }
+    : {};
+
   return (
     <>
-      <tr>
+      <tr {...rowClickProps}>
         <td>
           {canExpand && (
             <button
               type="button"
               aria-label={expanded ? 'Collapse' : 'Expand'}
-              onClick={onToggle}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
               className="activity-row-chevron"
             >
               {expanded ? '▾' : '▸'}
@@ -105,45 +116,87 @@ export function ActivityRow({
             {loading && <span>Loading…</span>}
             {err && <span className="error">Error: {err}</span>}
             {children && (
-              <ul className="activity-row-children">
-                {children.resources.map((r) => (
-                  <li key={r.resourceId} className="activity-row-child">
-                    <strong>{r.displayName || r.resourceId}</strong>{' '}
-                    <span className="activity-row-child-type">({r.type})</span>
-                    {r.status && (
-                      <span className="activity-row-child-status">
-                        {' — '}{r.status}
-                        {r.itemCount != null && `, ${r.itemCount} items`}
-                        {r.bytesAdded != null && `, ${fmtBytes(r.bytesAdded)}`}
-                      </span>
-                    )}
-                    {r.children && r.children.length > 0 && (
-                      <ul>
-                        {r.children.map((c) => (
-                          <li key={c.resourceId}>
-                            {c.displayName || c.resourceId}
-                            <span className="activity-row-child-type"> ({c.type})</span>
-                            {' — '}
-                            {c.status ?? 'pending'}
-                            {c.itemCount != null && `, ${c.itemCount} items`}
-                            {c.bytesAdded != null && `, ${fmtBytes(c.bytesAdded)}`}
-                            {c.partitions && (
-                              <span className="activity-row-shards">
-                                {' '}({c.partitions.done}/{c.partitions.total} shards
-                                {c.partitions.failed > 0 && `, ${c.partitions.failed} failed`})
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
+              <div className="modal-compact-content activity-drilldown-compact">
+                {flattenChildren(children.resources).map((leaf) => (
+                  <div className="compact-row" key={leaf.key}>
+                    <span className="compact-label">{TYPE_LABEL[leaf.type] || leaf.type}:</span>
+                    <span className="compact-value">
+                      {leaf.displayName || leaf.resourceId}
+                      <span className="object-type-inline">({leaf.type})</span>
+                      {' — '}
+                      {leaf.status ?? 'pending'}
+                      {leaf.itemCount != null && `, ${leaf.itemCount} items`}
+                      {leaf.bytesAdded != null && `, ${fmtBytes(leaf.bytesAdded)}`}
+                      {leaf.partitions && (
+                        <>
+                          {' '}({leaf.partitions.done}/{leaf.partitions.total} shards
+                          {leaf.partitions.failed > 0 && `, ${leaf.partitions.failed} failed`})
+                        </>
+                      )}
+                    </span>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </td>
         </tr>
       )}
     </>
   );
+}
+
+// Resource-type → short label shown on the compact-row left side.
+const TYPE_LABEL: Record<string, string> = {
+  ENTRA_USER:      'User',
+  USER_MAIL:       'Mail',
+  USER_ONEDRIVE:   'OneDrive',
+  USER_CHATS:      'Chats',
+  USER_CALENDAR:   'Calendar',
+  USER_CONTACTS:   'Contacts',
+  MAILBOX:         'Mailbox',
+  SHARED_MAILBOX:  'Shared Mailbox',
+  ROOM_MAILBOX:    'Room Mailbox',
+  SHAREPOINT_SITE: 'SharePoint',
+};
+
+// Flatten the Tier-1 → Tier-2 tree into a single ordered list so each
+// resource appears on its own row in the compact list. Tier-1 first,
+// then its children directly below it.
+type Leaf = {
+  key: string;
+  resourceId: string;
+  displayName: string;
+  type: string;
+  status?: string;
+  itemCount?: number;
+  bytesAdded?: number;
+  partitions?: { total: number; done: number; pending: number; failed: number };
+};
+function flattenChildren(resources: BatchChildren['resources']): Leaf[] {
+  const out: Leaf[] = [];
+  for (const r of resources) {
+    out.push({
+      key: r.resourceId,
+      resourceId: r.resourceId,
+      displayName: r.displayName,
+      type: r.type,
+      status: r.status,
+      itemCount: r.itemCount,
+      bytesAdded: r.bytesAdded,
+      partitions: r.partitions,
+    });
+    for (const c of (r.children ?? [])) {
+      out.push({
+        key: `${r.resourceId}/${c.resourceId}`,
+        resourceId: c.resourceId,
+        displayName: c.displayName,
+        type: c.type,
+        status: c.status,
+        itemCount: c.itemCount,
+        bytesAdded: c.bytesAdded,
+        partitions: c.partitions,
+      });
+    }
+  }
+  return out;
 }
