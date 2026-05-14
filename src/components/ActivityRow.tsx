@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ActivityItem, BatchChildren, fetchBatchChildren } from '../services/activity';
+import { fetchBatchChildren } from '../services/activity';
+import type { ActivityItem, BatchChildren } from '../services/activity';
 
 interface Props {
   item: ActivityItem;
