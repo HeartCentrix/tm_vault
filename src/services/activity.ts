@@ -24,6 +24,10 @@ export interface ActivityItem {
     queued: number;
   };
   warnings?: { partial: number; failed: number; sample?: string } | null;
+  batchSource?: 'manual_bulk' | 'manual_user' | 'scheduler';
+  progressPct?: number;
+  bytesDone?: number;
+  bytesExpected?: number | null;
 }
 
 export interface BatchChildResource {

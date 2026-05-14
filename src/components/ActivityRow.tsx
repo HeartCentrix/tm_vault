@@ -199,11 +199,10 @@ export function ActivityRow({
                         {leaf.status ?? 'pending'}
                         {leaf.itemCount != null && `, ${leaf.itemCount} items`}
                         {leaf.bytesAdded != null && `, ${fmtBytes(leaf.bytesAdded)}`}
-                        {leaf.partitions && (
-                          <>
-                            {' '}({leaf.partitions.done}/{leaf.partitions.total} shards
-                            {leaf.partitions.failed > 0 && `, ${leaf.partitions.failed} failed`})
-                          </>
+                        {leaf.status === 'IN_PROGRESS' && leaf.bytesAdded != null && (
+                          <span className="leaf-progress-chip" title="In-progress bytes so far">
+                            {' '}· {fmtBytes(leaf.bytesAdded)} so far
+                          </span>
                         )}
                       </span>
                     </div>
