@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { fetchBatchChildren } from '../services/activity';
 import type { ActivityItem, BatchChildren } from '../services/activity';
 
@@ -147,10 +148,8 @@ export function ActivityRow({
         </td>
       </tr>
 
-      {open && (
-        <tr style={{ display: 'none' }}>
-          <td colSpan={6}>
-            <div className="modal-overlay" onClick={closeModal}>
+      {open && createPortal(
+        <div className="modal-overlay" onClick={closeModal}>
               <div className="audit-modal-compact" onClick={(e) => e.stopPropagation()}>
                 <button className="modal-close-x" onClick={closeModal}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -211,9 +210,8 @@ export function ActivityRow({
                   ))}
                 </div>
               </div>
-            </div>
-          </td>
-        </tr>
+        </div>,
+        document.body
       )}
     </>
   );
