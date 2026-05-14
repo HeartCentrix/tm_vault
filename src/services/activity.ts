@@ -11,6 +11,37 @@ export interface ActivityItem {
   details?: string;
   data_backed_up?: number;
   total_data?: number;
+  batchId?: string;
+  phase?: 'discovering' | 'urgent' | 'heavy' | 'in_progress' | 'done';
+  progress_pct?: number;
+  cancellable?: boolean;
+  counts?: {
+    total: number;
+    done: number;
+    partial: number;
+    failed: number;
+    in_progress: number;
+    queued: number;
+  };
+  warnings?: { partial: number; failed: number; sample?: string } | null;
+}
+
+export interface BatchChildResource {
+  resourceId: string;
+  displayName: string;
+  type: string;
+  tier: 1 | 2;
+  snapshotId?: string;
+  status?: string;
+  itemCount?: number;
+  bytesAdded?: number;
+  partitions?: { total: number; done: number; pending: number; failed: number };
+  children?: BatchChildResource[];
+}
+
+export interface BatchChildren {
+  batchId: string;
+  resources: BatchChildResource[];
 }
 
 export interface ActivityListParams {
@@ -66,6 +97,19 @@ export async function cancelJob(jobId: string): Promise<void> {
   if (!res.ok && res.status !== 204) {
     throw new Error(`Failed to cancel job: ${res.statusText}`);
   }
+}
+
+export async function fetchBatchChildren(batchId: string): Promise<BatchChildren> {
+  const url = `${API.ACTIVITY.LIST}/batches/${encodeURIComponent(batchId)}/children`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch batch children: ${res.status} ${res.statusText}`);
+  }
+  const data = await res.json();
+  return {
+    batchId: data.batchId || batchId,
+    resources: data.resources || [],
+  };
 }
 
 export async function downloadActivityCSV(params?: ActivityListParams): Promise<Blob> {

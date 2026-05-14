@@ -1034,6 +1034,39 @@
   color: var(--tm-text) !important;
 }
 
+/* Batch-row expand chevron + warning chip + progress + drilldown — see
+   ActivityRow.tsx. Light theme defines the base colors in
+   pages/Activity.css; dark overrides land here. */
+[data-theme="dark"] .activity-row-chevron {
+  color: var(--tm-muted) !important;
+  background: transparent !important;
+}
+[data-theme="dark"] .activity-row-chevron:hover {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .activity-row-warning-chip {
+  background: rgba(251, 191, 36, 0.18) !important;
+  color: var(--tm-warning) !important;
+}
+[data-theme="dark"] .activity-row-progress {
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .activity-row-progress-bar {
+  background: var(--tm-accent) !important;
+}
+[data-theme="dark"] .activity-row-expanded > td {
+  background: var(--tm-surface-2) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .activity-row-children {
+  color: var(--tm-body-2) !important;
+}
+[data-theme="dark"] .activity-row-child-type,
+[data-theme="dark"] .activity-row-child-status,
+[data-theme="dark"] .activity-row-shards {
+  color: var(--tm-muted) !important;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    15. Storage page
    ─────────────────────────────────────────────────────────────────── */
