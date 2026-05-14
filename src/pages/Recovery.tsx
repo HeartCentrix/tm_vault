@@ -7058,17 +7058,89 @@ export default function Recovery() {
                 return next;
               });
 
-              return identityGroups.map(([key, group]) => {
-                const primary = group[0];
-                const totalSnapshots = group.reduce((s, r) => s + (r.snapshot_count || 0), 0);
-                const isSingle = group.length === 1;
-                const selectedInGroup = group.some(r => selectedResource?.id === r.id);
-                // Auto-expand when a surface inside is selected (e.g. after deep-link
-                // via ?resourceId=...), even if the user never clicked the chevron.
-                const isExpanded = expandedIdentities.has(key) || selectedInGroup;
+              // AFI-style identity flattening. A single user identity
+              // (Amit Mishra) is materialised in the DB as one ENTRA_USER
+              // parent + N Tier-2 children (USER_MAIL, USER_ONEDRIVE,
+              // USER_CHATS, USER_CONTACTS, USER_CALENDAR) plus any legacy
+              // Tier-1 surfaces. Previously the left panel exposed all
+              // of that as a "3 surfaces · 7 snapshots" dropdown — which
+              // is engineering-internal detail, not what a backup admin
+              // thinks about. AFI shows ONE row per user; clicking it
+              // drives the right panel via the parent resource, and the
+              // /content-snapshots endpoint already resolves through
+              // Tier-2 children so each content tab (Mail / OneDrive /
+              // Chats / Contacts / Calendar) loads the right surface's
+              // data automatically.
+              //
+              // Identity surfaces (treated as one logical user). When
+              // an identity has only these, we collapse to a flat row
+              // and auto-select the best parent on click. Non-user
+              // groups (M365 Group with Site + Teams + Mail surfaces)
+              // stay multi-row because each surface really is its own
+              // thing.
+              const USER_SURFACE_KINDS = new Set([
+                'entra_user', 'user',
+                'onedrive', 'mailbox', 'shared_mailbox', 'room_mailbox',
+                'user_mail', 'user_onedrive', 'user_chats',
+                'user_contacts', 'user_calendar',
+              ]);
+              const PRIMARY_PREFERENCE = [
+                'entra_user', 'user', 'mailbox',
+                'shared_mailbox', 'room_mailbox', 'onedrive',
+              ];
+              const pickPrimary = (g: typeof filteredResources) => {
+                for (const k of PRIMARY_PREFERENCE) {
+                  const hit = g.find(r => r.kind === k);
+                  if (hit) return hit;
+                }
+                return g[0];
+              };
+              const lastBackupOf = (g: typeof filteredResources): string | undefined => {
+                let max: string | undefined;
+                for (const r of g) {
+                  if (!r.last_backup_at) continue;
+                  if (!max || r.last_backup_at > max) max = r.last_backup_at;
+                }
+                return max;
+              };
 
-                // Single-surface identity: render as a plain selectable row (no expand).
-                if (isSingle) {
+              return identityGroups.map(([key, group]) => {
+                const isUserIdentity = group.every(r => USER_SURFACE_KINDS.has(r.kind));
+                const primary = isUserIdentity ? pickPrimary(group) : group[0];
+                const selectedInGroup = group.some(r => selectedResource?.id === r.id);
+                const isSelected = selectedInGroup;
+                const lastBackup = lastBackupOf(group);
+
+                // User identity (single click → primary surface drives
+                // right panel; content tabs auto-resolve via the
+                // parent's children). The number of versions / total
+                // size all show in the right-panel header, NOT here —
+                // mixing a per-surface count into a row that represents
+                // the whole user was the source of the confusion.
+                if (isUserIdentity) {
+                  return (
+                    <button
+                      key={key}
+                      className={`resource-list-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleResourceSelect(primary)}
+                    >
+                      <div className="resource-avatar-sm">{getInitials(primary.name)}</div>
+                      <div className="resource-list-info">
+                        <div className="resource-list-name">{primary.name}</div>
+                        {primary.email && <div className="resource-list-email">{primary.email}</div>}
+                        <div className="resource-list-meta">
+                          <span className="resource-kind-pill">{getKindLabel(primary.kind)}</span>
+                          {lastBackup && (
+                            <span>Last backup: {fmtLocalDate(lastBackup, { month: 'short', day: 'numeric' })}</span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+
+                // Non-user single-surface identity: plain row.
+                if (group.length === 1) {
                   return (
                     <button
                       key={key}
@@ -7081,14 +7153,22 @@ export default function Recovery() {
                         {primary.email && <div className="resource-list-email">{primary.email}</div>}
                         <div className="resource-list-meta">
                           <span className="resource-kind-pill">{getKindLabel(primary.kind)}</span>
-                          <span>{primary.snapshot_count} snapshot{primary.snapshot_count !== 1 ? 's' : ''}</span>
+                          {lastBackup && (
+                            <span>Last backup: {fmtLocalDate(lastBackup, { month: 'short', day: 'numeric' })}</span>
+                          )}
                         </div>
                       </div>
                     </button>
                   );
                 }
 
-                // Multi-surface identity: header row + nested surface rows when expanded.
+                // Non-user multi-surface identity (M365 Group with Site
+                // + Channels + Mail, etc.). These really ARE multiple
+                // distinct things, so keep the expandable layout — but
+                // drop the per-surface snapshot count from the meta
+                // line, which was the same source of confusion. Show
+                // "X surfaces · Last backup" instead.
+                const isExpanded = expandedIdentities.has(key) || selectedInGroup;
                 return (
                   <div key={key} className={`identity-group${selectedInGroup ? ' has-selection' : ''}`}>
                     <button
@@ -7102,8 +7182,12 @@ export default function Recovery() {
                         {primary.email && <div className="resource-list-email">{primary.email}</div>}
                         <div className="resource-list-meta">
                           <span>{group.length} surfaces</span>
-                          <span>·</span>
-                          <span>{totalSnapshots} snapshot{totalSnapshots !== 1 ? 's' : ''}</span>
+                          {lastBackup && (
+                            <>
+                              <span>·</span>
+                              <span>Last backup: {fmtLocalDate(lastBackup, { month: 'short', day: 'numeric' })}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -7125,7 +7209,6 @@ export default function Recovery() {
                             <div className="resource-list-info">
                               <div className="resource-list-meta">
                                 <span className="resource-kind-pill">{getKindLabel(surface.kind)}</span>
-                                <span>{surface.snapshot_count} snapshot{surface.snapshot_count !== 1 ? 's' : ''}</span>
                               </div>
                             </div>
                           </button>
@@ -7181,16 +7264,22 @@ export default function Recovery() {
                     resourceId={selectedResource.id}
                   />
 
-                  {/* Snapshot picker is gone — the user no longer chooses a
-                      version; clicking a content tab auto-resolves to the
-                      latest snapshot for that tab. We surface the count so
-                      the user can see backup activity at a glance. */}
+                  {/* AFI-style "versions" = distinct backup attempts
+                      (job_ids) across this identity's parent + Tier-2
+                      child subtree. One "Backup now" click for a user
+                      is ONE version, even though the worker fans it out
+                      into per-surface snapshot rows internally. Falls
+                      back to snapshotCount for older API responses that
+                      pre-date versionCount (defensive — backend always
+                      returns it now). */}
                   <div className="snapshot-count">
                     <div className="snapshot-count-num">
-                      {contentSnapshots?.snapshotCount ?? (snapshotsLoading ? '…' : 0)}
+                      {contentSnapshots?.versionCount
+                        ?? contentSnapshots?.snapshotCount
+                        ?? (snapshotsLoading ? '…' : 0)}
                     </div>
                     <div className="snapshot-count-label">
-                      snapshot{(contentSnapshots?.snapshotCount ?? 0) === 1 ? '' : 's'}
+                      version{(contentSnapshots?.versionCount ?? contentSnapshots?.snapshotCount ?? 0) === 1 ? '' : 's'}
                     </div>
                   </div>
                 </div>
