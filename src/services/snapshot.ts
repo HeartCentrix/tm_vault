@@ -158,6 +158,11 @@ export interface ContentSnapshotEntry {
 export interface ContentSnapshotsResponse {
   resourceId: string;
   snapshotCount: number;
+  /** Distinct backup attempts ("versions" / recovery points) across this
+   *  identity's parent + Tier-2 child subtree. One "Backup now" click
+   *  fans out to ~5 surface snapshots but is a single recovery point —
+   *  this is the number the Recovery header surfaces to the user. */
+  versionCount?: number;
   byContent: Record<ContentTab, ContentSnapshotEntry | null>;
 }
 
