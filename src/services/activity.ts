@@ -41,6 +41,10 @@ export interface BatchChildResource {
   // "current vault state". bytesTotal carries the cumulative size so
   // the UI can show both "added this run" and "total in vault".
   itemCount?: number;
+  // Lifetime retained inventory for this resource. Useful as context
+  // ("0 added this run / 29 092 in vault") so a clean no-op
+  // incremental doesn't get mis-read as "we re-fetched everything."
+  itemCountTotal?: number;
   bytesAdded?: number;
   bytesTotal?: number;
   partitions?: { total: number; done: number; pending: number; failed: number };
