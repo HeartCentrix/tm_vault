@@ -191,7 +191,18 @@ export function ActivityRow({
                                 <span className={`mini-glyph ${cGlyph.cls}`} title={cGlyph.label}>{cGlyph.ch}</span>
                                 <span className="mini-type">{TYPE_LABEL[child.type] || child.type}</span>
                                 <span className="mini-count">{child.itemCount != null ? child.itemCount.toLocaleString() : '—'}</span>
-                                <span className="mini-bytes">{child.bytesAdded != null && child.bytesAdded > 0 ? fmtBytes(child.bytesAdded) : '—'}</span>
+                                <span
+                                  className="mini-bytes"
+                                  title={
+                                    child.bytesTotal != null && child.bytesTotal > 0
+                                      ? `${fmtBytes(child.bytesAdded ?? 0)} added · ${fmtBytes(child.bytesTotal)} total`
+                                      : undefined
+                                  }
+                                >
+                                  {child.bytesAdded != null && child.bytesAdded > 0
+                                    ? fmtBytes(child.bytesAdded)
+                                    : '—'}
+                                </span>
                               </div>
                             );
                           })}
@@ -201,7 +212,18 @@ export function ActivityRow({
                               <span className="mini-glyph glyph-spacer">&nbsp;</span>
                               <span className="mini-type">{TYPE_LABEL[parent.type] || parent.type}</span>
                               <span className="mini-count">{parent.itemCount != null ? parent.itemCount.toLocaleString() : '—'}</span>
-                              <span className="mini-bytes">{parent.bytesAdded != null && parent.bytesAdded > 0 ? fmtBytes(parent.bytesAdded) : '—'}</span>
+                              <span
+                                className="mini-bytes"
+                                title={
+                                  parent.bytesTotal != null && parent.bytesTotal > 0
+                                    ? `${fmtBytes(parent.bytesAdded ?? 0)} added · ${fmtBytes(parent.bytesTotal)} total`
+                                    : undefined
+                                }
+                              >
+                                {parent.bytesAdded != null && parent.bytesAdded > 0
+                                  ? fmtBytes(parent.bytesAdded)
+                                  : '—'}
+                              </span>
                             </div>
                           )}
                         </div>

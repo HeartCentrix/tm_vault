@@ -37,8 +37,12 @@ export interface BatchChildResource {
   tier: 1 | 2;
   snapshotId?: string;
   status?: string;
+  // itemCount / bytesAdded are scoped to THE batch clicked, not
+  // "current vault state". bytesTotal carries the cumulative size so
+  // the UI can show both "added this run" and "total in vault".
   itemCount?: number;
   bytesAdded?: number;
+  bytesTotal?: number;
   partitions?: { total: number; done: number; pending: number; failed: number };
   children?: BatchChildResource[];
 }
