@@ -902,8 +902,24 @@
 .mini-tree {
   border-top: 1px solid #f3f4f6;
   padding-top: 12px;
+  padding-right: 12px;          /* gutter so scrollbar doesn't sit on text */
   max-height: 60vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;     /* reserve track width even when not scrolling */
+}
+
+.mini-tree::-webkit-scrollbar {
+  width: 8px;
+}
+.mini-tree::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mini-tree::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+.mini-tree::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 .mini-group {
