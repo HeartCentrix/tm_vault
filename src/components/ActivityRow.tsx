@@ -5,7 +5,10 @@ import type { ActivityItem, BatchChildren } from '../services/activity';
 
 interface Props {
   item: ActivityItem;
-  displayedProgressPct: number;
+  // null when the server has no progress estimate yet — render "—"
+  // instead of a ratcheted stale percentage. See spec
+  // docs/superpowers/specs/2026-05-15-backup-batch-race-fix-design.md.
+  displayedProgressPct: number | null;
   renderStatusIcon: (status: string, jobId?: string, jobIds?: string[]) => React.ReactNode;
   formatDate: (iso: string) => string;
   formatBytes?: (n: number) => string;
@@ -114,11 +117,17 @@ export function ActivityRow({
           </div>
           {item.status === 'In Progress' && (
             <div className="activity-row-progress">
-              <div
-                className="activity-row-progress-bar"
-                style={{ width: `${displayedProgressPct}%` }}
-              />
-              <span>{displayedProgressPct}%</span>
+              {displayedProgressPct == null ? (
+                <span className="activity-row-progress-unknown">—</span>
+              ) : (
+                <>
+                  <div
+                    className="activity-row-progress-bar"
+                    style={{ width: `${displayedProgressPct}%` }}
+                  />
+                  <span>{displayedProgressPct}%</span>
+                </>
+              )}
             </div>
           )}
         </td>
@@ -144,7 +153,9 @@ export function ActivityRow({
                 {item.status === 'In Progress' && (
                   <>
                     <span className="mini-sep">·</span>
-                    <span className="mini-pct">{displayedProgressPct}%</span>
+                    <span className="mini-pct">
+                      {displayedProgressPct == null ? '—' : `${displayedProgressPct}%`}
+                    </span>
                   </>
                 )}
               </div>

@@ -64,13 +64,33 @@ export default function Activity() {
   const [downloading, setDownloading] = useState(false);
 
   // Monotonic progress clamp — keyed by batchId (or job id for legacy
-  // rows). Server-supplied progress_pct can dip momentarily across
-  // polls (e.g. after a finalize reconcile); we expose only the
-  // running max so the bar never visibly retreats.
+  // rows). Server-supplied progress can dip momentarily across polls
+  // (e.g. after a finalize reconcile); we expose only the running max
+  // so the bar never visibly retreats.
+  //
+  // Null/undefined progress is meaningful: it means the server has no
+  // estimate yet (bytes_expected was null at batch creation, common
+  // for first-ever backups). Return null in that case so the renderer
+  // can show "—" instead of a stale ratcheted value. Without this
+  // guard, a prior poll's 99% was getting cached and shown as the
+  // "current" progress even after the server stopped reporting,
+  // producing the 2026-05-15 incident where the card said 100% but
+  // the actual snapshot was incomplete.
+  //
+  // Field-name compatibility: the new backup_batches-driven Activity
+  // rows use `progressPct` (Task 7 of the batch-race-fix spec); the
+  // legacy _group_batch_jobs path used `progress_pct`. Prefer the
+  // new field when both are present.
   const progressClampRef = useRef<Map<string, number>>(new Map());
-  const clampProgress = (item: ActivityItemType): number => {
+  const clampProgress = (item: ActivityItemType): number | null => {
     const key = item.batchId || item.id;
-    const server = item.progress_pct ?? 0;
+    const server = item.progressPct ?? item.progress_pct;
+    if (server == null) {
+      // No server-supplied progress this poll. Don't ratchet 0 in:
+      // that's what produced stale-100% renders. Return null so the
+      // renderer shows "—".
+      return null;
+    }
     const prev = progressClampRef.current.get(key) ?? 0;
     const next = Math.max(prev, server);
     if (next !== prev) progressClampRef.current.set(key, next);

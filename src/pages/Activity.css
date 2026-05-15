@@ -1096,6 +1096,10 @@
   min-width: 2px;
   max-width: 200px;
 }
+.activity-row-progress-unknown {
+  color: #9ca3af;
+  font-style: italic;
+}
 
 .activity-row-expanded > td {
   background: #f9fafb;
