@@ -35,45 +35,17 @@ const TYPE_LABEL: Record<string, string> = {
   SHAREPOINT_SITE: 'SharePoint',
 };
 
-type Leaf = {
-  key: string;
-  resourceId: string;
-  displayName: string;
-  type: string;
-  status?: string;
-  itemCount?: number;
-  bytesAdded?: number;
-  partitions?: { total: number; done: number; pending: number; failed: number };
-};
-
-function flattenChildren(resources: BatchChildren['resources']): Leaf[] {
-  const out: Leaf[] = [];
-  for (const r of resources) {
-    out.push({
-      key: r.resourceId,
-      resourceId: r.resourceId,
-      displayName: r.displayName,
-      type: r.type,
-      status: r.status,
-      itemCount: r.itemCount,
-      bytesAdded: r.bytesAdded,
-      partitions: r.partitions,
-    });
-    for (const c of (r.children ?? [])) {
-      out.push({
-        key: `${r.resourceId}/${c.resourceId}`,
-        resourceId: c.resourceId,
-        displayName: c.displayName,
-        type: c.type,
-        status: c.status,
-        itemCount: c.itemCount,
-        bytesAdded: c.bytesAdded,
-        partitions: c.partitions,
-      });
-    }
+function statusGlyph(status?: string): { ch: string; cls: string; label: string } {
+  switch ((status || '').toUpperCase()) {
+    case 'COMPLETED':   return { ch: '✓', cls: 'glyph-done',    label: 'Completed' };
+    case 'IN_PROGRESS': return { ch: '◐', cls: 'glyph-running', label: 'In progress' };
+    case 'FAILED':      return { ch: '✗', cls: 'glyph-failed',  label: 'Failed' };
+    case 'PARTIAL':     return { ch: '⚠', cls: 'glyph-partial', label: 'Partial' };
+    default:            return { ch: '⋯', cls: 'glyph-pending', label: 'Pending' };
   }
-  return out;
 }
+
+const LEAF_PAGE_SIZE = 50;
 
 export function ActivityRow({
   item,
@@ -87,6 +59,7 @@ export function ActivityRow({
   const [children, setChildren] = useState<BatchChildren | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(LEAF_PAGE_SIZE);
 
   const canOpen = !!item.batchId;
 
@@ -107,7 +80,10 @@ export function ActivityRow({
     }
   };
 
-  const closeModal = () => setOpen(false);
+  const closeModal = () => {
+    setOpen(false);
+    setVisibleCount(LEAF_PAGE_SIZE);  // reset paging on close
+  };
 
   const warnings = item.warnings;
   const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
@@ -150,65 +126,92 @@ export function ActivityRow({
 
       {open && createPortal(
         <div className="modal-overlay" onClick={closeModal}>
-              <div className="audit-modal-compact" onClick={(e) => e.stopPropagation()}>
-                <button className="modal-close-x" onClick={closeModal}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-                <div className="modal-compact-content">
-                  <div className="compact-row">
-                    <span className="compact-label">Operation:</span>
-                    <span className="compact-value">{item.operation}</span>
-                  </div>
-                  <div className="compact-row">
-                    <span className="compact-label">Status:</span>
-                    <span className="compact-value">{item.status}</span>
-                  </div>
-                  <div className="compact-row">
-                    <span className="compact-label">Started:</span>
-                    <span className="compact-value">{formatDate(item.start_time)}</span>
-                  </div>
-                  {item.finish_time && (
-                    <div className="compact-row">
-                      <span className="compact-label">Finished:</span>
-                      <span className="compact-value">{formatDate(item.finish_time)}</span>
-                    </div>
-                  )}
-
-                  {loading && (
-                    <div className="compact-row">
-                      <span className="compact-label">&nbsp;</span>
-                      <span className="compact-value">Loading…</span>
-                    </div>
-                  )}
-                  {err && (
-                    <div className="compact-row">
-                      <span className="compact-label">Error:</span>
-                      <span className="compact-value">{err}</span>
-                    </div>
-                  )}
-                  {children && flattenChildren(children.resources).map((leaf) => (
-                    <div className="compact-row" key={leaf.key}>
-                      <span className="compact-label">{TYPE_LABEL[leaf.type] || leaf.type}:</span>
-                      <span className="compact-value">
-                        {leaf.displayName || leaf.resourceId}
-                        <span className="object-type-inline">({leaf.type})</span>
-                        {' — '}
-                        {leaf.status ?? 'pending'}
-                        {leaf.itemCount != null && `, ${leaf.itemCount} items`}
-                        {leaf.bytesAdded != null && `, ${fmtBytes(leaf.bytesAdded)}`}
-                        {leaf.status === 'IN_PROGRESS' && leaf.bytesAdded != null && (
-                          <span className="leaf-progress-chip" title="In-progress bytes so far">
-                            {' '}· {fmtBytes(leaf.bytesAdded)} so far
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+          <div className="audit-modal-compact mini-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-x" onClick={closeModal}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <div className="modal-compact-content">
+              {/* Header — single line: operation · status · % */}
+              <div className="mini-header">
+                <span className="mini-operation">{item.operation}</span>
+                <span className="mini-sep">·</span>
+                <span className={`mini-status ${statusGlyph(item.status === 'In Progress' ? 'IN_PROGRESS' : item.status === 'Done' ? 'COMPLETED' : item.status === 'Failed' ? 'FAILED' : item.status === 'Partial' ? 'PARTIAL' : 'PENDING').cls}`}>
+                  {item.status}
+                </span>
+                {item.status === 'In Progress' && (
+                  <>
+                    <span className="mini-sep">·</span>
+                    <span className="mini-pct">{displayedProgressPct}%</span>
+                  </>
+                )}
               </div>
+              <div className="mini-subheader">
+                {formatDate(item.start_time)}
+                {item.finish_time && ` → ${formatDate(item.finish_time)}`}
+                <span className="mini-sep">·</span>
+                {item.object}
+              </div>
+
+              {loading && <div className="mini-loading">Loading…</div>}
+              {err && <div className="mini-error">Error: {err}</div>}
+
+              {children && (() => {
+                const groups = children.resources;
+                const visibleGroups = groups.slice(0, visibleCount);
+                const remaining = groups.length - visibleGroups.length;
+                return (
+                  <div className="mini-tree">
+                    {visibleGroups.map((parent) => {
+                      const pGlyph = statusGlyph(parent.status);
+                      const kids = parent.children ?? [];
+                      return (
+                        <div className="mini-group" key={parent.resourceId}>
+                          <div className="mini-parent">
+                            <span className={`mini-glyph ${pGlyph.cls}`} title={pGlyph.label}>{pGlyph.ch}</span>
+                            <span className="mini-name">{parent.displayName || parent.resourceId}</span>
+                          </div>
+                          {kids.map((child) => {
+                            const cGlyph = statusGlyph(child.status);
+                            return (
+                              <div className="mini-child" key={child.resourceId}>
+                                <span className={`mini-glyph ${cGlyph.cls}`} title={cGlyph.label}>{cGlyph.ch}</span>
+                                <span className="mini-type">{TYPE_LABEL[child.type] || child.type}</span>
+                                <span className="mini-count">{child.itemCount != null ? child.itemCount.toLocaleString() : '—'}</span>
+                                <span className="mini-bytes">{child.bytesAdded != null && child.bytesAdded > 0 ? fmtBytes(child.bytesAdded) : '—'}</span>
+                              </div>
+                            );
+                          })}
+                          {/* Tier-1-only resources (no children) render their own metrics inline */}
+                          {kids.length === 0 && (parent.itemCount != null || parent.bytesAdded != null) && (
+                            <div className="mini-child">
+                              <span className="mini-glyph glyph-spacer">&nbsp;</span>
+                              <span className="mini-type">{TYPE_LABEL[parent.type] || parent.type}</span>
+                              <span className="mini-count">{parent.itemCount != null ? parent.itemCount.toLocaleString() : '—'}</span>
+                              <span className="mini-bytes">{parent.bytesAdded != null && parent.bytesAdded > 0 ? fmtBytes(parent.bytesAdded) : '—'}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {remaining > 0 && (
+                      <div className="mini-show-more">
+                        <button
+                          type="button"
+                          className="mini-show-more-link"
+                          onClick={() => setVisibleCount((n) => n + LEAF_PAGE_SIZE)}
+                        >
+                          {visibleGroups.length} of {groups.length} · Show {Math.min(LEAF_PAGE_SIZE, remaining)} more
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
         </div>,
         document.body
       )}

@@ -3002,6 +3002,31 @@
   color: var(--tm-text) !important;
 }
 
+/* Minimalist Activity drilldown — dark theme */
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-header,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-name,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-parent {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-operation,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-subheader,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-type,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-count,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-show-more-link {
+  color: var(--tm-body) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-bytes,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-child {
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-tree,
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-show-more {
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-sep {
+  color: var(--tm-border) !important;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    <input type="date"> — the native ::-webkit-calendar-picker-indicator
    is a black SVG, which disappears against dark surfaces. Invert it so

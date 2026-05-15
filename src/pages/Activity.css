@@ -830,6 +830,167 @@
   margin-left: 4px;
 }
 
+/* ============================================
+   Minimalist Activity drilldown modal — mini-*
+   ============================================ */
+
+.audit-modal-compact.mini-modal {
+  min-width: 520px;
+  max-width: 720px;
+  padding: 24px 28px;
+}
+
+.mini-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  letter-spacing: 0.2px;
+}
+
+.mini-operation {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.mini-status {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mini-status.glyph-done    { color: #059669; }
+.mini-status.glyph-running { color: #2563eb; }
+.mini-status.glyph-failed  { color: #dc2626; }
+.mini-status.glyph-partial { color: #d97706; }
+.mini-status.glyph-pending { color: #9ca3af; }
+
+.mini-pct {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.mini-sep {
+  color: #d1d5db;
+  font-weight: 400;
+}
+
+.mini-subheader {
+  margin-top: 4px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.mini-loading,
+.mini-error {
+  font-size: 13px;
+  color: #6b7280;
+  padding: 8px 0;
+}
+
+.mini-error {
+  color: #dc2626;
+}
+
+.mini-tree {
+  border-top: 1px solid #f3f4f6;
+  padding-top: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.mini-group {
+  margin-bottom: 10px;
+}
+
+.mini-parent {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  padding: 4px 0;
+}
+
+.mini-child {
+  display: grid;
+  grid-template-columns: 24px 110px 1fr 90px;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+  padding: 2px 0 2px 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-glyph {
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.mini-glyph.glyph-done    { color: #059669; }
+.mini-glyph.glyph-running { color: #2563eb; }
+.mini-glyph.glyph-failed  { color: #dc2626; }
+.mini-glyph.glyph-partial { color: #d97706; }
+.mini-glyph.glyph-pending { color: #9ca3af; }
+.mini-glyph.glyph-spacer  { color: transparent; }
+
+.mini-type {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.mini-name {
+  color: #111827;
+  word-break: break-word;
+}
+
+.mini-count {
+  text-align: right;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.mini-bytes {
+  text-align: right;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mini-show-more {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
+  text-align: center;
+}
+
+.mini-show-more-link {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.mini-show-more-link:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
 .view-raw-btn-compact {
   margin-top: 8px;
   padding: 6px 12px;
