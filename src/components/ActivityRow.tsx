@@ -48,6 +48,37 @@ function statusGlyph(status?: string): { ch: string; cls: string; label: string 
   }
 }
 
+// Roll up a parent's status from its children. The backend's parent row
+// is the Tier-1 ENTRA_USER snapshot, which COMPLETES as soon as the
+// user-metadata fetch finishes — long before per-workload Tier-2
+// snapshots (Mail / OneDrive / Chats / Calendar / Contacts) settle. If
+// we surface the raw parent.status, the operator sees a ✓ next to the
+// user name while every workload row still shows ⋯ — the original
+// 2026-05-16 UX complaint. Aggregate so the parent glyph reflects the
+// WHOLE user.
+//   - any child PENDING / IN_PROGRESS / unknown  → IN_PROGRESS
+//   - all children COMPLETED                     → COMPLETED
+//   - all children FAILED                        → FAILED
+//   - mix of COMPLETED + FAILED/PARTIAL          → PARTIAL
+function rollupParentStatus(
+  parentStatus: string | undefined,
+  kids: { status?: string }[],
+): string {
+  if (!kids.length) return (parentStatus || '').toUpperCase();
+  let anyPending = false, anyCompleted = false, anyFailed = false, anyPartial = false;
+  for (const k of kids) {
+    const s = (k.status || '').toUpperCase();
+    if (s === 'COMPLETED') anyCompleted = true;
+    else if (s === 'FAILED') anyFailed = true;
+    else if (s === 'PARTIAL') anyPartial = true;
+    else anyPending = true; // IN_PROGRESS, PENDING, unknown
+  }
+  if (anyPending) return 'IN_PROGRESS';
+  if (anyFailed && !anyCompleted && !anyPartial) return 'FAILED';
+  if (anyFailed || anyPartial) return 'PARTIAL';
+  return 'COMPLETED';
+}
+
 const LEAF_PAGE_SIZE = 50;
 
 export function ActivityRow({
@@ -223,8 +254,10 @@ export function ActivityRow({
                 return (
                   <div className="mini-tree">
                     {visibleGroups.map((parent) => {
-                      const pGlyph = statusGlyph(parent.status);
                       const kids = parent.children ?? [];
+                      const pGlyph = statusGlyph(
+                        rollupParentStatus(parent.status, kids),
+                      );
                       return (
                         <div className="mini-group" key={parent.resourceId}>
                           <div className="mini-parent">
