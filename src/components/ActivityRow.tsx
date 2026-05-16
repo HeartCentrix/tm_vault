@@ -152,11 +152,20 @@ export function ActivityRow({
                 <span className="activity-row-progress-unknown">—</span>
               ) : (
                 <>
-                  <div
-                    className="activity-row-progress-bar"
-                    style={{ width: `${displayedProgressPct}%` }}
-                  />
-                  <span>{displayedProgressPct}%</span>
+                  {/* Track is a fixed-width container so the % label
+                      sitting alongside doesn't get pushed right as the
+                      bar grows. Previously bar + label were direct
+                      flex siblings and the label slid with the bar's
+                      `width: N%` (2026-05-16 UX report). */}
+                  <div className="activity-row-progress-track">
+                    <div
+                      className="activity-row-progress-bar"
+                      style={{ width: `${displayedProgressPct}%` }}
+                    />
+                  </div>
+                  <span className="activity-row-progress-label">
+                    {displayedProgressPct}%
+                  </span>
                 </>
               )}
             </div>
