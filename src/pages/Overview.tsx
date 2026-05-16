@@ -261,9 +261,17 @@ export default function Overview() {
         });
         if (cancelled) return;
         setActivities(activityData.items || []);
-        const anyLive = (activityData.items || []).some(
-          (a) => a.status === 'In Progress',
-        );
+        // Mirror the staleness guard from `hasLiveBackup` below — a
+        // worker that died mid-flight leaves rows pinned at
+        // 'In Progress' forever, and we don't want the aggregate
+        // refresher to burn cycles on a phantom run.
+        const STALE_MS = 45 * 60 * 1000;
+        const anyLive = (activityData.items || []).some((a) => {
+          if (a.status !== 'In Progress') return false;
+          if (!a.start_time) return true;
+          const age = Date.now() - new Date(a.start_time).getTime();
+          return !(Number.isFinite(age) && age > STALE_MS);
+        });
         // Aggregates change as backups complete — refresh on every
         // tick while something is in-flight, else every 4th tick.
         const shouldRefreshAggregates = anyLive || idleTicks >= 3;
@@ -352,7 +360,22 @@ export default function Overview() {
   // round-trip + UI confusion). The 15s activity poll already refreshes
   // this list, so the button re-enables on its own once everything
   // completes.
-  const hasLiveBackup = activities.some((a) => a.status === 'In Progress');
+  //
+  // Staleness guard: a worker dying mid-flight (lease expiry, infra
+  // restart, manual redeploy) can leave an activity row pinned at
+  // 'In Progress' with no one to flip it. Without a cutoff, the
+  // "Backup in progress..." label is sticky forever and the user is
+  // locked out of triggering a new run. 45 minutes is comfortably
+  // longer than any realistic single-tenant batch in this product
+  // (largest historical run is ~25 min), so anything beyond that is
+  // a stale row and we should treat it as not-live.
+  const LIVE_BACKUP_STALE_MS = 45 * 60 * 1000;
+  const hasLiveBackup = activities.some((a) => {
+    if (a.status !== 'In Progress') return false;
+    if (!a.start_time) return true; // missing timestamp — assume live, conservative
+    const ageMs = Date.now() - new Date(a.start_time).getTime();
+    return !(Number.isFinite(ageMs) && ageMs > LIVE_BACKUP_STALE_MS);
+  });
 
   const handleBackupAll = async () => {
     if (!tenantId || (serviceType !== 'm365' && serviceType !== 'azure')) return;
