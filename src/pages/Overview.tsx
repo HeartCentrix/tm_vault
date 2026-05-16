@@ -346,6 +346,14 @@ export default function Overview() {
         ]).filter((item): item is { label: string; value: { protectedCount: number; total: number } } => !!item.value && item.value.total > 0)
     : [];
 
+  // Any in-flight activity for the current tenant/service keeps the
+  // "Backup all" button disabled — clicking it again would race the
+  // running batch (and the backend dedupes it anyway, so it's a wasted
+  // round-trip + UI confusion). The 15s activity poll already refreshes
+  // this list, so the button re-enables on its own once everything
+  // completes.
+  const hasLiveBackup = activities.some((a) => a.status === 'In Progress');
+
   const handleBackupAll = async () => {
     if (!tenantId || (serviceType !== 'm365' && serviceType !== 'azure')) return;
 
@@ -412,9 +420,14 @@ export default function Overview() {
                 <button
                   className="backup-all-btn status-summary-btn"
                   onClick={handleBackupAll}
-                  disabled={!tenantId || !serviceType || triggeringBackupAll}
+                  disabled={!tenantId || !serviceType || triggeringBackupAll || hasLiveBackup}
+                  title={hasLiveBackup ? 'A backup is currently running for this tenant.' : undefined}
                 >
-                  {triggeringBackupAll ? 'Starting backup...' : `Backup all ${serviceType === 'azure' ? 'Azure' : 'M365'} now`}
+                  {triggeringBackupAll
+                    ? 'Starting backup...'
+                    : hasLiveBackup
+                      ? 'Backup in progress...'
+                      : `Backup all ${serviceType === 'azure' ? 'Azure' : 'M365'} now`}
                 </button>
               </div>
             )}
