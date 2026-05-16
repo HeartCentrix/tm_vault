@@ -1090,6 +1090,38 @@
 [data-theme="dark"] .storage-table td     { color: var(--tm-text) !important; border-bottom-color: var(--tm-border) !important; }
 [data-theme="dark"] .storage-arrow        { color: var(--tm-accent-soft) !important; }
 
+/* Status / error text — dark-mode lifted out of #c62828 (unreadable on dark bg).
+   #ff8a8a / #ffb86b / #7ee787 chosen for WCAG-AA contrast against --tm-surface. */
+[data-theme="dark"] .storage-status.completed { color: #7ee787 !important; }
+[data-theme="dark"] .storage-status.failed,
+[data-theme="dark"] .storage-status.aborted   { color: #ff8a8a !important; }
+[data-theme="dark"] .storage-status.running,
+[data-theme="dark"] .storage-status.pending,
+[data-theme="dark"] .storage-status.queued    { color: #ffb86b !important; }
+
+[data-theme="dark"] .storage-err {
+  color: #ff8a8a !important;
+}
+[data-theme="dark"] .storage-error-msg {
+  color: #ff8a8a !important;
+  background: rgba(211, 18, 69, 0.12) !important;
+  border-color: rgba(255, 138, 138, 0.35) !important;
+}
+[data-theme="dark"] .storage-modal-error {
+  color: #ff8a8a !important;
+  background: rgba(211, 18, 69, 0.12) !important;
+  border-color: rgba(255, 138, 138, 0.35) !important;
+}
+[data-theme="dark"] .storage-modal-final.completed {
+  background: rgba(126, 231, 135, 0.12) !important;
+  color: #7ee787 !important;
+}
+[data-theme="dark"] .storage-modal-final.failed,
+[data-theme="dark"] .storage-modal-final.aborted {
+  background: rgba(255, 138, 138, 0.12) !important;
+  color: #ff8a8a !important;
+}
+
 [data-theme="dark"] .storage-modal-overlay { background: rgba(0, 0, 0, 0.65) !important; }
 [data-theme="dark"] .storage-modal {
   background: var(--tm-surface) !important;
