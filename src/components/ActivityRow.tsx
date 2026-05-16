@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchBatchChildren } from '../services/activity';
 import type { ActivityItem, BatchChildren } from '../services/activity';
@@ -87,6 +87,37 @@ export function ActivityRow({
     setOpen(false);
     setVisibleCount(LEAF_PAGE_SIZE);  // reset paging on close
   };
+
+  // Live refresh: while the modal is open AND the batch is still
+  // in progress, repoll the children endpoint so the per-user x
+  // per-workload breakdown updates without the operator closing /
+  // reopening the modal. (2026-05-16 report: "the compact backup
+  // modal ... doesn't auto-update its breakdown after user, i need
+  // to do a manual refresh to see new resource".)
+  //
+  // 5 s cadence matches the backend rollup's typical settle time
+  // and the existing Activity-list poll rate. We swallow errors so
+  // a transient 5xx doesn't blank out the last-good children
+  // payload; the next tick replaces it cleanly. Effect tears down
+  // on close / status flip-to-terminal — terminal rows never
+  // change again so the poll would be pure waste.
+  useEffect(() => {
+    if (!open || !item.batchId || item.status !== 'In Progress') return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const data = await fetchBatchChildren(item.batchId!);
+        if (!cancelled) setChildren(data);
+      } catch {
+        // keep prior children; transient errors are not user-facing
+      }
+    };
+    const id = setInterval(tick, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [open, item.status, item.batchId]);
 
   const warnings = item.warnings;
   const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
