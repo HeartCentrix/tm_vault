@@ -7575,7 +7575,7 @@ export default function Recovery() {
                   resource view. */}
 
               {/* Three Panel Layout */}
-              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}${activeContentType === 'onedrive' ? ' od-layout-mode' : ''}`}>
+              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}${activeContentType === 'onedrive' ? ' od-layout-mode' : ''}${activeContentType === 'mail' ? ' mail-layout-mode' : ''}`}>
                 {activeContentType === 'calendar' ? (
                   /* Calendar Month View — replaces folder tree + item list */
                   <div className="panel-calendar">

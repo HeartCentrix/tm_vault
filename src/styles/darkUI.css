@@ -1768,6 +1768,88 @@
 [data-theme="dark"] .recovery-page,
 [data-theme="dark"] .recovery-page * { color: var(--tm-text); }
 
+/* ─────────────────────────────────────────────────────────────────────
+   26b. Mail content-type — cream right panel even in dark mode.
+
+   Operators read full email bodies in this pane all day. The dark-on-dark
+   variant kills readability on long-form HTML mail (which often inlines
+   black text + transparent backgrounds, leaving us with black-on-near-
+   black). Forcing a warm cream paper tone here keeps the rest of the
+   chrome dark while the mail body itself reads like print. Only fires
+   when activeContentType === 'mail' so chat / calendar / files keep
+   their normal dark right panel.
+
+   The opt-in is the `.mail-layout-mode` class on the parent
+   .three-panel-layout (set inline from Recovery.tsx).
+   ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .mail-layout-mode .panel-right,
+[data-theme="dark"] .mail-layout-mode .panel-right .email-preview,
+[data-theme="dark"] .mail-layout-mode .panel-right .email-body,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-body,
+[data-theme="dark"] .mail-layout-mode .panel-right .email-plain {
+  background: #fbf7ee !important;
+  color: #000000 !important;
+}
+/* The Outlook-style header banner sits one step darker than the body so
+   the body looks like a sheet of paper resting on a desk. */
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-header {
+  background: #f3ecd9 !important;
+  border-bottom-color: #d8cdac !important;
+}
+/* Blanket override — every text descendant under the mail right pane
+   reads black on cream. The cascade earlier in this file applies
+   `color: var(--tm-text) !important;` (light text) to many specific
+   selectors like .email-ol-row / .preview-body / .item-subject, so
+   we need !important here to win against them. The :not(iframe)
+   exclusion leaves HTML email bodies rendered inside the sandboxed
+   iframe alone — that iframe carries its own document with its own
+   author colors. */
+[data-theme="dark"] .mail-layout-mode .panel-right,
+[data-theme="dark"] .mail-layout-mode .panel-right *:not(iframe):not(.email-iframe) {
+  color: #000000 !important;
+}
+/* Targeted overrides for the specific selectors elsewhere in this file
+   that use `!important` to paint text light. Listed explicitly so the
+   intent is obvious even if the descendant-combinator rule above is
+   ever weakened. */
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-row,
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-val,
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-subject,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-from .value,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-to .value,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-meta-row .value,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-status,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-body,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-body p,
+[data-theme="dark"] .mail-layout-mode .panel-right .email-plain {
+  color: #000000 !important;
+}
+/* Header labels (From / To / Cc / Sent) are slightly muted so they
+   read as supporting metadata rather than competing with the body. */
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-label,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-from .label,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-to .label,
+[data-theme="dark"] .mail-layout-mode .panel-right .preview-meta-row .label {
+  color: #4b5563 !important;
+}
+/* Attachment chips read as soft beige cards on the cream sheet. */
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-attach-chip {
+  background: #efe6cd !important;
+  color: #000000 !important;
+  border-color: #d8cdac !important;
+}
+[data-theme="dark"] .mail-layout-mode .panel-right .email-ol-attach-link:hover {
+  background: #e8dcb8 !important;
+}
+/* Empty-preview state when no mail is selected — also cream so the
+   transition from selected → unselected doesn't flash dark. */
+[data-theme="dark"] .mail-layout-mode .panel-right .empty-preview,
+[data-theme="dark"] .mail-layout-mode .panel-right .empty-state,
+[data-theme="dark"] .mail-layout-mode .panel-right .empty-state p {
+  background: #fbf7ee !important;
+  color: #4b5563 !important;
+}
+
 /* Keep icon-stroke elements legible */
 [data-theme="dark"] .recovery-page svg { stroke-linecap: round; stroke-linejoin: round; }
 
