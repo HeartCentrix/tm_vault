@@ -48,6 +48,37 @@ function statusGlyph(status?: string): { ch: string; cls: string; label: string 
   }
 }
 
+// Roll up a parent's status from its children. The backend's parent row
+// is the Tier-1 ENTRA_USER snapshot, which COMPLETES as soon as the
+// user-metadata fetch finishes — long before per-workload Tier-2
+// snapshots (Mail / OneDrive / Chats / Calendar / Contacts) settle. If
+// we surface the raw parent.status, the operator sees a ✓ next to the
+// user name while every workload row still shows ⋯ — the original
+// 2026-05-16 UX complaint. Aggregate so the parent glyph reflects the
+// WHOLE user.
+//   - any child PENDING / IN_PROGRESS / unknown  → IN_PROGRESS
+//   - all children COMPLETED                     → COMPLETED
+//   - all children FAILED                        → FAILED
+//   - mix of COMPLETED + FAILED/PARTIAL          → PARTIAL
+function rollupParentStatus(
+  parentStatus: string | undefined,
+  kids: { status?: string }[],
+): string {
+  if (!kids.length) return (parentStatus || '').toUpperCase();
+  let anyPending = false, anyCompleted = false, anyFailed = false, anyPartial = false;
+  for (const k of kids) {
+    const s = (k.status || '').toUpperCase();
+    if (s === 'COMPLETED') anyCompleted = true;
+    else if (s === 'FAILED') anyFailed = true;
+    else if (s === 'PARTIAL') anyPartial = true;
+    else anyPending = true; // IN_PROGRESS, PENDING, unknown
+  }
+  if (anyPending) return 'IN_PROGRESS';
+  if (anyFailed && !anyCompleted && !anyPartial) return 'FAILED';
+  if (anyFailed || anyPartial) return 'PARTIAL';
+  return 'COMPLETED';
+}
+
 const LEAF_PAGE_SIZE = 50;
 
 export function ActivityRow({
@@ -91,16 +122,22 @@ export function ActivityRow({
   // Live refresh: while the modal is open AND the batch is still
   // in progress, repoll the children endpoint so the per-user x
   // per-workload breakdown updates without the operator closing /
-  // reopening the modal. (2026-05-16 report: "the compact backup
-  // modal ... doesn't auto-update its breakdown after user, i need
-  // to do a manual refresh to see new resource".)
+  // reopening the modal. (2026-05-16 report: "i not want had to have
+  // the need to see the new tier discovered and backend up info it
+  // should show me in realtime instantly" — Tier-2 sub-rows appeared
+  // only after manual refresh because the initial fetch landed
+  // before Tier-2 discovery completed.)
   //
-  // 5 s cadence matches the backend rollup's typical settle time
-  // and the existing Activity-list poll rate. We swallow errors so
-  // a transient 5xx doesn't blank out the last-good children
-  // payload; the next tick replaces it cleanly. Effect tears down
-  // on close / status flip-to-terminal — terminal rows never
-  // change again so the poll would be pure waste.
+  // 2 s cadence — feels close to real-time without hammering the
+  // endpoint. The /batches/{id}/children query is a single CTE
+  // walk; one extra request every 2 s during an open modal is
+  // negligible. We:
+  //   * fire an immediate tick on mount so we don't wait the
+  //     interval before the first refresh,
+  //   * swallow errors so a transient 5xx doesn't blank out the
+  //     last-good payload — next tick replaces it cleanly,
+  //   * tear down on close / status flip to terminal so we don't
+  //     poll forever on a Done row that can't change.
   useEffect(() => {
     if (!open || !item.batchId || item.status !== 'In Progress') return;
     let cancelled = false;
@@ -112,7 +149,8 @@ export function ActivityRow({
         // keep prior children; transient errors are not user-facing
       }
     };
-    const id = setInterval(tick, 5000);
+    void tick();  // immediate refresh on open
+    const id = setInterval(tick, 2000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -216,8 +254,10 @@ export function ActivityRow({
                 return (
                   <div className="mini-tree">
                     {visibleGroups.map((parent) => {
-                      const pGlyph = statusGlyph(parent.status);
                       const kids = parent.children ?? [];
+                      const pGlyph = statusGlyph(
+                        rollupParentStatus(parent.status, kids),
+                      );
                       return (
                         <div className="mini-group" key={parent.resourceId}>
                           <div className="mini-parent">
