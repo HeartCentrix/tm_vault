@@ -91,16 +91,22 @@ export function ActivityRow({
   // Live refresh: while the modal is open AND the batch is still
   // in progress, repoll the children endpoint so the per-user x
   // per-workload breakdown updates without the operator closing /
-  // reopening the modal. (2026-05-16 report: "the compact backup
-  // modal ... doesn't auto-update its breakdown after user, i need
-  // to do a manual refresh to see new resource".)
+  // reopening the modal. (2026-05-16 report: "i not want had to have
+  // the need to see the new tier discovered and backend up info it
+  // should show me in realtime instantly" — Tier-2 sub-rows appeared
+  // only after manual refresh because the initial fetch landed
+  // before Tier-2 discovery completed.)
   //
-  // 5 s cadence matches the backend rollup's typical settle time
-  // and the existing Activity-list poll rate. We swallow errors so
-  // a transient 5xx doesn't blank out the last-good children
-  // payload; the next tick replaces it cleanly. Effect tears down
-  // on close / status flip-to-terminal — terminal rows never
-  // change again so the poll would be pure waste.
+  // 2 s cadence — feels close to real-time without hammering the
+  // endpoint. The /batches/{id}/children query is a single CTE
+  // walk; one extra request every 2 s during an open modal is
+  // negligible. We:
+  //   * fire an immediate tick on mount so we don't wait the
+  //     interval before the first refresh,
+  //   * swallow errors so a transient 5xx doesn't blank out the
+  //     last-good payload — next tick replaces it cleanly,
+  //   * tear down on close / status flip to terminal so we don't
+  //     poll forever on a Done row that can't change.
   useEffect(() => {
     if (!open || !item.batchId || item.status !== 'In Progress') return;
     let cancelled = false;
@@ -112,7 +118,8 @@ export function ActivityRow({
         // keep prior children; transient errors are not user-facing
       }
     };
-    const id = setInterval(tick, 5000);
+    void tick();  // immediate refresh on open
+    const id = setInterval(tick, 2000);
     return () => {
       cancelled = true;
       clearInterval(id);
