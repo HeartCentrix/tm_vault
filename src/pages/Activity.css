@@ -864,7 +864,7 @@
 }
 
 .mini-status.glyph-done    { color: #059669; }
-.mini-status.glyph-running { color: #2563eb; }
+.mini-status.glyph-running { color: #dc2626; }
 .mini-status.glyph-failed  { color: #dc2626; }
 .mini-status.glyph-partial { color: #d97706; }
 .mini-status.glyph-pending { color: #9ca3af; }
@@ -872,7 +872,7 @@
 .mini-pct {
   font-size: 14px;
   font-weight: 600;
-  color: #2563eb;
+  color: #dc2626;
 }
 
 .mini-sep {
@@ -956,7 +956,7 @@
 }
 
 .mini-glyph.glyph-done    { color: #059669; }
-.mini-glyph.glyph-running { color: #2563eb; }
+.mini-glyph.glyph-running { color: #dc2626; }
 .mini-glyph.glyph-failed  { color: #dc2626; }
 .mini-glyph.glyph-partial { color: #d97706; }
 .mini-glyph.glyph-pending { color: #9ca3af; }

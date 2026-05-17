@@ -923,6 +923,18 @@
 [data-theme="dark"] .chart-legend-item.failure            { color: var(--tm-failure) !important; }
 [data-theme="dark"] .chart-legend-item.failure::before    { background: var(--tm-failure) !important; }
 
+/* audit-modal-compact / mini-modal: running and failed glyphs render as
+   `#dc2626` in the base stylesheet. On dark surfaces that hex sits a touch
+   too dim against the slate background, so we promote it to the brighter
+   `--tm-failure` (#ef4444) token used for every other failure indicator
+   in dark mode. Done glyph (green #059669) and partial (amber #d97706)
+   already pass the dark-mode contrast check unchanged. */
+[data-theme="dark"] .mini-status.glyph-running,
+[data-theme="dark"] .mini-status.glyph-failed,
+[data-theme="dark"] .mini-glyph.glyph-running,
+[data-theme="dark"] .mini-glyph.glyph-failed,
+[data-theme="dark"] .mini-pct { color: var(--tm-failure) !important; }
+
 [data-theme="dark"] .status-summary-title.success         { color: var(--tm-success) !important; }
 [data-theme="dark"] .status-summary-title.warning         { color: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-title.failure         { color: var(--tm-failure) !important; }
