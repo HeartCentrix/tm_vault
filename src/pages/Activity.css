@@ -864,7 +864,7 @@
 }
 
 .mini-status.glyph-done    { color: #059669; }
-.mini-status.glyph-running { color: #dc2626; }
+.mini-status.glyph-running { color: #b80e38; }
 .mini-status.glyph-failed  { color: #dc2626; }
 .mini-status.glyph-partial { color: #d97706; }
 .mini-status.glyph-pending { color: #9ca3af; }
@@ -872,7 +872,7 @@
 .mini-pct {
   font-size: 14px;
   font-weight: 600;
-  color: #dc2626;
+  color: #b80e38;
 }
 
 .mini-sep {
@@ -956,7 +956,7 @@
 }
 
 .mini-glyph.glyph-done    { color: #059669; }
-.mini-glyph.glyph-running { color: #dc2626; }
+.mini-glyph.glyph-running { color: #b80e38; }
 .mini-glyph.glyph-failed  { color: #dc2626; }
 .mini-glyph.glyph-partial { color: #d97706; }
 .mini-glyph.glyph-pending { color: #9ca3af; }
@@ -1103,7 +1103,7 @@
 }
 .activity-row-progress-bar {
   height: 100%;
-  background: #6366f1;
+  background: #b80e38;
   border-radius: 2px;
   transition: width 0.4s ease;
   min-width: 2px;
