@@ -81,6 +81,16 @@ export default function Signin() {
           </svg>
           {loading ? 'Connecting...' : 'Sign in with Microsoft'}
         </button>
+
+        <div className="auth-docs-link">
+          <a href="/docs" target="_blank" rel="noreferrer">
+            Read the documentation
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M7 17L17 7"/>
+              <path d="M7 7h10v10"/>
+            </svg>
+          </a>
+        </div>
       </div>
     </div>
   );

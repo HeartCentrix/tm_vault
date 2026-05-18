@@ -69,7 +69,13 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <a href="#" className="footer-link">Docs</a>
+        <a
+          href="/docs"
+          className="footer-link"
+          onClick={(e) => { e.preventDefault(); navigate('/docs'); }}
+        >
+          Docs
+        </a>
       </div>
     </div>
   );

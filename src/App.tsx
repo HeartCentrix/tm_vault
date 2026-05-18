@@ -17,6 +17,7 @@ import SettingsStoragePage from './pages/SettingsStorage';
 import ErrorBoundary from './components/ErrorBoundary';
 import GlobalSearch from './pages/GlobalSearch';
 import Configuration from './pages/Configuration';
+import Docs from './pages/Docs';
 import GlobalTooltip from './components/GlobalTooltip';
 
 // The access token lives in an HttpOnly cookie that JS can't read (so XSS
@@ -73,6 +74,10 @@ export default function App() {
         <Route path="/datasource-callback" element={<DatasourceCallback />} />
         <Route path="/azure-datasource-callback" element={<AzureDatasourceCallback />} />
         <Route path="/power-bi-callback" element={<PowerBICallback />} />
+        {/* Docs is public — reachable from the signin page and from the
+         * in-app footer link. It has its own sidebar/chrome and does not
+         * depend on auth state. */}
+        <Route path="/docs" element={<Docs />} />
 
         {/* Protected routes with layout */}
         <Route path="/" element={<Layout />}>

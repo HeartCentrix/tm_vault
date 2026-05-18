@@ -174,3 +174,37 @@
   background: #231F20;
   color: #ffffff;
 }
+
+/* Documentation link beneath the sign-in CTA. Subordinate to the primary
+ * action visually — small, muted, but discoverable. The arrow icon hints
+ * that it opens in a new tab. */
+.auth-docs-link {
+  margin-top: 22px;
+  text-align: center;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.auth-docs-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #6B6B6B;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 4px 2px;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-docs-link a:hover,
+.auth-docs-link a:focus-visible {
+  color: #D31245;
+  border-bottom-color: #D31245;
+  outline: none;
+}
+
+.auth-docs-link svg {
+  width: 12px;
+  height: 12px;
+}
