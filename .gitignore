@@ -14,8 +14,11 @@ node_modules
 dist
 dist-ssr
 *.local
-docs/
-tests/
+# Anchored to repo root so it doesn't swallow src/pages/docs (the Docs page
+# source tree) — unanchored `docs/` was hiding the entire Docs feature from
+# git and breaking Vercel builds.
+/docs/
+/tests/
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
