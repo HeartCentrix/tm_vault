@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Docs.css';
-import { DOCS_SECTIONS, type DocSection } from './docs/content';
+import { DOCS_SECTIONS, type DocSection } from './docs/content.tsx';
 
 type FlatNode = {
   id: string;
