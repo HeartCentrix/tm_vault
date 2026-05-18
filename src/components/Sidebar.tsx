@@ -72,7 +72,8 @@ export default function Sidebar() {
         <a
           href="/docs"
           className="footer-link"
-          onClick={(e) => { e.preventDefault(); navigate('/docs'); }}
+          target="_blank"
+          rel="noreferrer"
         >
           Docs
         </a>
