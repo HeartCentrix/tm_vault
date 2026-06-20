@@ -1939,6 +1939,8 @@ export function EnvVarsSection() {
           <tr><td><code>CHAT_THREAD_DRAIN_FRESHNESS_S</code></td><td><code>25200</code></td><td>7 hours — cross-user dedup window</td></tr>
           <tr><td><code>USER_CHATS_FULL_RESCAN_DAYS</code></td><td><code>3</code></td><td>Force a full rescan every N days</td></tr>
           <tr><td><code>ONEDRIVE_PREFETCH_CONCURRENCY</code></td><td><code>16</code></td><td>OneDrive prefetcher fanout</td></tr>
+          <tr><td><code>TIER2_DISCOVERY_MESSAGE_CHUNK_SIZE</code></td><td><code>25</code></td><td>Users per <code>discovery.tier2</code> message; 4k users produce about 160 queue chunks so discovery-worker replicas share the run.</td></tr>
+          <tr><td><code>TIER2_DISCOVERY_USER_CONCURRENCY</code></td><td><code>4</code></td><td>Concurrent users per discovery-worker chunk; each user probes Mail, OneDrive, Contacts, Calendar, and Chats in parallel.</td></tr>
           <tr><td><code>BACKUP_FANOUT_ENABLED</code></td><td><code>true</code></td><td>Master fanout switch</td></tr>
           <tr><td><code>ONEDRIVE_PARTITION_ENABLED</code></td><td><code>true</code></td><td>Enable OneDrive partition fanout</td></tr>
           <tr><td><code>CHATS_PARTITION_ENABLED</code></td><td><code>true</code></td><td>Enable Teams chats partition fanout</td></tr>
@@ -1948,6 +1950,17 @@ export function EnvVarsSection() {
           <tr><td><code>ENTRA_PARTITION_ENABLED</code></td><td><code>true</code></td><td>Enable Entra category partition fanout</td></tr>
           <tr><td><code>BATCH_ROW_REDESIGN_ENABLED</code></td><td><code>true</code></td><td>Gate for the 2026-05 batch-rollup hooks (must be <code>true</code> in prod)</td></tr>
           <tr><td><code>USER_CHATS_HC_BARRIER_DETACHED</code></td><td><code>true</code></td><td>Detached HC drain barrier (Item C optimization)</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Scheduler resilience</h4>
+      <table>
+        <thead><tr><th>Env Var</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>SCHEDULER_RESCHEDULE_INTERVAL_SECONDS</code></td><td><code>300</code></td><td>How often backup-scheduler rebuilds in-memory SLA cron jobs from the database.</td></tr>
+          <tr><td><code>SCHEDULER_CATCHUP_INTERVAL_SECONDS</code></td><td><code>300</code></td><td>How often backup-scheduler scans for missed SLA fires after process/cloud downtime.</td></tr>
+          <tr><td><code>SCHEDULER_CATCHUP_LOOKBACK_MINUTES</code></td><td><code>1440</code></td><td>Lookback window for missed scheduled SLA runs. Default is 24 hours.</td></tr>
+          <tr><td><code>SCHEDULER_MISFIRE_GRACE_SECONDS</code></td><td><code>21600</code></td><td>APScheduler grace window for delayed in-process cron execution. Default is 6 hours.</td></tr>
         </tbody>
       </table>
 

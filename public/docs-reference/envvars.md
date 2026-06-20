@@ -347,6 +347,12 @@ On-prem storage is a **sharded cluster**: one volume-less coordinator (`weed mas
 | `BACKUP_VERIFY_SAMPLE_SIZE` | `50` | int | services/backup-scheduler/main.py:2434 | Random sample size for verification. |
 | `BACKUP_VERIFY_LOOKBACK_HOURS` | `24` | int | services/backup-scheduler/main.py:2435 | Verification lookback window. |
 | `TIER2_DISCOVERY_BACKSTOP_S` | `7*3600` (7h) | int | services/backup-scheduler/main.py:1266 | Tier-2 discovery backstop interval. |
+| `TIER2_DISCOVERY_MESSAGE_CHUNK_SIZE` | `25` | int | shared/config.py | Users per `discovery.tier2` queue message; 4k users produce about 160 chunks for replica fan-out. |
+| `TIER2_DISCOVERY_USER_CONCURRENCY` | `4` | int | shared/config.py | Concurrent users per discovery-worker chunk; each user probes five workload types in parallel. |
+| `SCHEDULER_RESCHEDULE_INTERVAL_SECONDS` | `300` | int | shared/config.py | Backup-scheduler interval for rebuilding in-memory SLA cron jobs from the DB. |
+| `SCHEDULER_CATCHUP_INTERVAL_SECONDS` | `300` | int | shared/config.py | Backup-scheduler interval for scanning and dispatching missed SLA fires after downtime. |
+| `SCHEDULER_CATCHUP_LOOKBACK_MINUTES` | `1440` | int | shared/config.py | Missed scheduled-run lookback window. Default is 24 hours. |
+| `SCHEDULER_MISFIRE_GRACE_SECONDS` | `21600` | int | shared/config.py | APScheduler in-process misfire grace window. Default is 6 hours. |
 | `BATCH_STALL_TIMEOUT_HOURS` | `24` | int | shared/config.py:273 | Watchdog: stalled batch finalize timeout. |
 | `DISCOVERY_DEADLINE_MIN` | `60` | int | shared/config.py:282 | batch_pending_users watchdog deadline. |
 | `WORKER_REGION` | `default` | str | shared/models.py:668 (comment) | Region tag on partition claims. |
