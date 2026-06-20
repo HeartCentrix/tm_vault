@@ -1693,6 +1693,19 @@ export function StorageSection() {
         <li><strong>SMOKE</strong> — a synthetic snapshot validates the new backend end-to-end.</li>
         <li><strong>COMMITTED</strong> — the toggle event is sealed; old backend stays read-only for archives.</li>
       </ol>
+
+      <h4>SeaweedFS — sharded cluster (current deployment)</h4>
+      <Callout kind="warn" title="DR / rebuild-critical">
+        On-prem SeaweedFS runs as a <strong>sharded cluster</strong>: one
+        <strong> volume-less coordinator</strong> (<code>weed master+filer+s3</code>)
+        plus <strong>N volume-server services</strong> (<code>weed volume</code>),
+        each with its own Railway volume. The coordinator stores{' '}
+        <strong>zero blobs by itself</strong> — deploying it without the volume
+        servers makes every backup write fail (<code>no writable volumes</code>).
+        Full architecture, deploy/DR steps, env vars, and operational notes are
+        in the reference below.
+      </Callout>
+      <Reference file="seaweedfs-sharding.md" />
     </>
   );
 }

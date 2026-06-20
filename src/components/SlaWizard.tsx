@@ -130,6 +130,7 @@ export default function SlaWizard({ tenantId, serviceType, initialPolicy, onClos
       backupOneDrive: true,
       backupSharepoint: true,
       backupTeams: true,
+      backupTeamsChats: true,
       contacts: true,
       calendars: true,
       groupMailbox: true,

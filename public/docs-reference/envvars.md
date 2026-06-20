@@ -132,9 +132,32 @@ Notes:
 | `ONPREM_S3_REGION` | `us-east-1` | str | shared/config.py:172 | Region (signing). |
 | `ONPREM_S3_VERIFY_TLS` | `true` | bool | shared/config.py:173 | Verify TLS cert on S3 calls. |
 | `ONPREM_S3_CA_BUNDLE` | `""` (None) | str | shared/config.py:174 | Custom CA bundle path. |
-| `ONPREM_UPLOAD_CONCURRENCY` | `16` | int | shared/config.py:182 | Multipart parts in flight per upload. |
+| `ONPREM_UPLOAD_CONCURRENCY` | `16` | int | shared/config.py:182 | Multipart parts in flight per upload. (Deployed: 96 on heavy worker.) |
 | `ONPREM_MULTIPART_THRESHOLD_MB` | `100` | int | shared/config.py:183 | Size at which multipart upload is used. |
 | `ONPREM_RETRY_MAX` | `3` | int | shared/config.py:184 | Retries on S3 calls. |
+
+### S3 client timeouts (worker → SeaweedFS) — `shared/storage/seaweedfs.py`
+Bounded so a slow/down/restarting SeaweedFS server **fails fast → per-file retry queue** instead of hanging the drain coroutine (a hung upload would hold the partition lease and stall the snapshot forever). See `SEAWEEDFS_SHARDING.md`.
+
+| Env Var | Default | Type | Where Used | Description |
+|---|---|---|---|---|
+| `ONPREM_S3_CONNECT_TIMEOUT_S` | `10` | int | shared/storage/seaweedfs.py | Connect timeout; fail fast if a vol server is unreachable. |
+| `ONPREM_S3_READ_TIMEOUT_S` | `120` | int | shared/storage/seaweedfs.py | Per-request read timeout. |
+| `ONPREM_S3_MAX_ATTEMPTS` | `3` | int | shared/storage/seaweedfs.py | botocore retry attempts (standard mode). |
+| `ONPREM_S3_MAX_POOL` | `256` | int | shared/storage/seaweedfs.py | S3 connection-pool size (default 10 stalls at high file-concurrency). |
+
+### SeaweedFS sharded cluster — coordinator + volume-server services
+On-prem storage is a **sharded cluster**: one volume-less coordinator (`weed master+filer+s3`) + N volume-server services (`weed volume`), each with its own Railway volume. **Full architecture + DR/rebuild steps: `SEAWEEDFS_SHARDING.md`.** These vars are set on the SeaweedFS container services (not `config.py`).
+
+| Env Var | Default | Type | Where Used | Description |
+|---|---|---|---|---|
+| `SEAWEED_MASTER` | — (required) | str | deploy/railway/seaweedfs-volume/entrypoint.sh | Master address each vol server registers with (`seaweedfs.railway.internal:9333`). |
+| `SEAWEED_VOLUME_MAX` | `100` | int | deploy/railway/seaweedfs-volume/entrypoint.sh | Max volumes a vol server may host (disk is the real cap). |
+| `SEAWEED_VOLUME_SIZE_LIMIT_MB` | `30000` | int | deploy/railway/seaweedfs/entrypoint.sh | Per-volume rollover (coordinator). Deployed `5000` ⇒ 5 GB volumes ⇒ even cross-server spread. |
+| `SEAWEED_ADVERTISE_IP` | `RAILWAY_PRIVATE_DOMAIN` | str | deploy/railway/seaweedfs-volume/entrypoint.sh | Advertised host; entrypoint binds `0.0.0.0` (`-ip.bind`) to avoid gRPC bind crash-loop. |
+| `SEAWEED_VOLUME_PORT` | `8080` | int | deploy/railway/seaweedfs-volume/entrypoint.sh | Volume HTTP port (gRPC = +10000). |
+| `GOMEMLIMIT` | — | str | seaweedfs + vol-server services | Go heap soft-cap (deployed `18GiB`). |
+| `GOGC` | `100` | int | seaweedfs + vol-server services | GC aggressiveness (deployed `50`). |
 
 ---
 
@@ -247,7 +270,9 @@ Notes:
 | Env Var | Default | Type | Where Used | Description |
 |---|---|---|---|---|
 | `ONEDRIVE_BACKUP_V2_ENABLED` | `true` | bool | shared/config.py:373 | New uncapped, resumable OneDrive pipeline. |
-| `ONEDRIVE_BACKUP_FILE_CONCURRENCY` | `16` | int | shared/config.py:374 | Concurrent file fetches per drive. |
+| `ONEDRIVE_BACKUP_FILE_CONCURRENCY` | `16` | int | shared/config.py:374 | Concurrent file fetches per drive. (Deployed: 128 on heavy worker.) |
+| `ONEDRIVE_PREFETCH_CONCURRENCY` | `16` | int | workers/backup-worker/main.py | Files prefetched (downloaded) ahead of upload. (Deployed: 96 on heavy worker.) |
+| `ONEDRIVE_HUGE_FILE_RAM_BUDGET_GIB` | `4` | int | workers/backup-worker/main.py:13720 | Worker-wide RAM budget for in-flight huge-file segments; bounds `min(file_concurrency, budget ÷ (segment_concurrency × segment_size))` concurrent huge files ⇒ download backpressures on the write. (Deployed: 16.) |
 | `MAX_CONCURRENT_ONEDRIVE_BACKUPS_PER_WORKER` | `4` | int | shared/config.py:375 | Per-replica concurrent drives in flight. |
 | `ONEDRIVE_BACKUP_FILE_TIMEOUT_SECONDS` | `21600` (6h) | int | shared/config.py:376 | Per-file timeout. |
 | `ONEDRIVE_BACKUP_CHECKPOINT_EVERY_FILES` | `500` | int | shared/config.py:377 | Checkpoint after N files. |

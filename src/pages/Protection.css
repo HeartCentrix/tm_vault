@@ -13,6 +13,7 @@
   background: #F2EDE6;
   border: 1px solid #E0D9D0;
   border-radius: 12px;
+  margin: 16px 0 24px;
   overflow-x: auto;
 }
 
@@ -862,4 +863,3 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
-

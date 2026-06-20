@@ -68,8 +68,15 @@ const POLICY_COVERAGE_RULES: Record<string, PolicyCoverageRule> = {
   teams_channel: { workloadLabel: 'Teams channel backups', covers: (policy) => !!policy.backupTeams },
   teams_chat: { workloadLabel: 'Teams chat backups', covers: (policy) => !!policy.backupTeamsChats },
   entra_user: {
-    workloadLabel: 'Entra user, contacts, or calendar backups',
-    covers: (policy) => !!(policy.backupEntraId || policy.contacts || policy.calendars),
+    workloadLabel: 'any user backup workload',
+    covers: (policy) => !!(
+      policy.backupExchange
+      || policy.backupOneDrive
+      || policy.backupTeamsChats
+      || policy.contacts
+      || policy.calendars
+      || policy.backupEntraId
+    ),
   },
   entra_group: {
     workloadLabel: 'Entra group or group mailbox backups',
