@@ -47,15 +47,20 @@
   border-left: 3px solid transparent;
 }
 
+/* Hover/active use the warm-cream tint + dark text so the label stays readable
+   on the light sidebar. Was #2d3748 (dark grey), which on the light sidebar
+   left the dark nav text invisible on hover. !important so it beats the global
+   base nav-item color rule; dark mode is handled separately in darkUI.css
+   ([data-theme="dark"] has higher specificity, so it still wins there). */
 .sidebar .nav-menu .nav-item:hover {
-  background: #2d3748;
-  color: #fff;
+  background: #F2EDE6 !important;
+  color: #231F20 !important;
 }
 
 .sidebar .nav-menu .nav-item.active {
-  background: #2d3748;
-  color: #fff;
-  border-left-color: #D31245;
+  background: #F2EDE6 !important;
+  color: #D31245 !important;
+  border-left-color: #D31245 !important;
 }
 
 .sidebar .nav-menu .nav-item .nav-label {
