@@ -839,8 +839,10 @@ export default function Protection() {
                       {unbackable.length > 0 && (
                         <span
                           className="license-limited-pill"
-                          title={limitedTitle}
+                          data-tooltip={limitedTitle}
                           aria-label={limitedTitle}
+                          role="note"
+                          tabIndex={0}
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
