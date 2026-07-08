@@ -448,6 +448,9 @@
    nothing on touch). Shows instantly on hover AND keyboard focus. */
 .license-limited-pill[data-tooltip]::after {
   content: attr(data-tooltip);
+  /* display:none when hidden → no layout footprint → cannot add horizontal
+     scroll to the resource table (the Activity chip hit exactly that). */
+  display: none;
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -465,15 +468,11 @@
   color: #f8fafc;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  opacity: 0;
-  transform: translateY(4px);
   pointer-events: none;
-  transition: opacity 120ms ease, transform 120ms ease;
 }
 .license-limited-pill[data-tooltip]:hover::after,
 .license-limited-pill[data-tooltip]:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
+  display: block;
 }
 @media (prefers-color-scheme: dark) {
   .license-limited-pill[data-tooltip]::after {

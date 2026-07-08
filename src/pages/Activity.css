@@ -1115,9 +1115,16 @@
    Shows instantly on hover AND keyboard focus. */
 .activity-row-skip-chip[data-tooltip]::after {
   content: attr(data-tooltip);
+  /* display:none when hidden so the (280px-wide) box takes NO layout space —
+     otherwise, sitting in the rightmost column, it extends past the table edge
+     and forces a horizontal scrollbar even while invisible. */
+  display: none;
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  /* Anchor to the RIGHT edge of the chip so the tooltip opens leftward into
+     the table instead of off the right side of the page. */
+  right: 0;
+  left: auto;
   z-index: 1000;
   width: max-content;
   max-width: 280px;
@@ -1132,15 +1139,11 @@
   color: #f8fafc;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  opacity: 0;
-  transform: translateY(4px);
   pointer-events: none;
-  transition: opacity 120ms ease, transform 120ms ease;
 }
 .activity-row-skip-chip[data-tooltip]:hover::after,
 .activity-row-skip-chip[data-tooltip]:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
+  display: block;
 }
 
 .activity-row-progress {
