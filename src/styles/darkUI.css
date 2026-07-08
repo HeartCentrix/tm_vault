@@ -1056,6 +1056,11 @@
   background: rgba(251, 191, 36, 0.18) !important;
   color: var(--tm-warning) !important;
 }
+[data-theme="dark"] .activity-row-skip-chip {
+  background: rgba(148, 163, 184, 0.15) !important;
+  color: var(--tm-body) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+}
 [data-theme="dark"] .activity-row-progress {
   color: var(--tm-body) !important;
 }

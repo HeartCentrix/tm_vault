@@ -23,7 +23,7 @@ export interface ActivityItem {
     in_progress: number;
     queued: number;
   };
-  warnings?: { partial: number; failed: number; sample?: string } | null;
+  warnings?: { partial?: number; failed?: number; skipped_no_license?: number; sample?: string } | null;
   batchSource?: 'manual_bulk' | 'manual_user' | 'scheduler';
   progressPct?: number;
   bytesDone?: number;

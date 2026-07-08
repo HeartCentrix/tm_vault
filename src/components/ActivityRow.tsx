@@ -162,6 +162,11 @@ export function ActivityRow({
 
   const warnings = item.warnings;
   const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
+  // Workloads skipped because the user has no M365 license — a neutral,
+  // informational chip (NOT a warning). This is why a partially-licensed
+  // user's backup reads "Completed · N skipped (no license)" instead of
+  // stalling at "In Progress".
+  const skippedNoLicense = warnings?.skipped_no_license || 0;
 
   const rowClickProps = canOpen
     ? { onClick: openModal, style: { cursor: 'pointer' as const } }
@@ -181,9 +186,21 @@ export function ActivityRow({
             {hasWarnings && (
               <span
                 className="activity-row-warning-chip"
-                title={`${warnings!.partial} partial, ${warnings!.failed} failed`}
+                title={`${warnings!.partial || 0} partial, ${warnings!.failed || 0} failed`}
               >
-                ⚠ {warnings!.partial} partial · {warnings!.failed} failed
+                ⚠ {warnings!.partial || 0} partial · {warnings!.failed || 0} failed
+              </span>
+            )}
+            {skippedNoLicense > 0 && (
+              <span
+                className="activity-row-skip-chip"
+                title={`${skippedNoLicense} workload${skippedNoLicense === 1 ? '' : 's'} skipped — the user has no M365 license for ${skippedNoLicense === 1 ? 'it' : 'them'}. Resumes automatically once a license is assigned.`}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <line x1="4.5" y1="4.5" x2="19.5" y2="19.5" />
+                </svg>
+                {skippedNoLicense} skipped (no license)
               </span>
             )}
           </div>

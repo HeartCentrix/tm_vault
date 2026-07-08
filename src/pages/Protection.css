@@ -405,9 +405,63 @@
   font-weight: 600;
   font-size: 14px;
   color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.resource-display-name .name-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* "Limited" pill — informational, NOT an error. A user with no M365 license
+   for some workloads (mailbox/OneDrive/calendar) is an expected state, so we
+   use a calm amber, an icon + text (never color alone), and put the full
+   detail in the tooltip. */
+.license-limited-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.license-limited-pill svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* Dark mode: keep the amber legible without glaring. */
+@media (prefers-color-scheme: dark) {
+  .license-limited-pill {
+    background: rgba(180, 83, 9, 0.18);
+    color: #fdba74;
+    border-color: rgba(251, 146, 60, 0.35);
+  }
+}
+:root[data-theme="dark"] .license-limited-pill {
+  background: rgba(180, 83, 9, 0.18);
+  color: #fdba74;
+  border-color: rgba(251, 146, 60, 0.35);
+}
+:root[data-theme="light"] .license-limited-pill {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
 }
 
 .resource-email {

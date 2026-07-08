@@ -808,6 +808,12 @@ export default function Protection() {
             {!loading && displayedResources.map(resource => {
               const selectedPolicy = policies.find(p => p.id === resource.protections?.[0]?.policy_id);
               const coverageWarning = getPolicyCoverageWarning(resource, selectedPolicy);
+              // Workloads the user has no M365 license for → "Limited" pill.
+              const unbackable = resource.unbackable_workloads ?? [];
+              const limitedTitle = unbackable.length > 0
+                ? `No M365 license — can't back up: ${unbackable.map(w => w.workload).join(', ')}. `
+                  + `Other data still backs up. Resumes automatically once a license is assigned.`
+                : '';
               const backupButtonTitle = !resource.protections?.[0]?.policy_id
                 ? 'Assign an SLA policy before triggering backup'
                 : coverageWarning
@@ -828,7 +834,22 @@ export default function Protection() {
                 <td className="resource-name-cell">
                   <div className="resource-avatar">{getInitials(resource.name)}</div>
                   <div className="resource-info">
-                    <div className="resource-display-name">{resource.name}</div>
+                    <div className="resource-display-name">
+                      <span className="name-text">{resource.name}</span>
+                      {unbackable.length > 0 && (
+                        <span
+                          className="license-limited-pill"
+                          title={limitedTitle}
+                          aria-label={limitedTitle}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            <line x1="4.5" y1="4.5" x2="19.5" y2="19.5" />
+                          </svg>
+                          Limited
+                        </span>
+                      )}
+                    </div>
                     {resource.email && <div className="resource-email">{resource.email}</div>}
                     {resource.kind && !resource.email && <div className="resource-email">{resource.kind.replace(/_/g, ' ')}</div>}
                   </div>

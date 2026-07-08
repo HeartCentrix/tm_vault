@@ -66,7 +66,19 @@ export interface ResourceItem {
   sla?: string;
   last_backup?: string;
   last_backup_status?: string;
+  // Workloads this user has no M365 license for (empty/absent when fully
+  // licensed). Populated on the parent user row; drives the "Limited" pill.
+  unbackable_workloads?: UnbackableWorkload[];
+  // This resource's OWN license state (set on Tier-2 children).
+  license_missing?: boolean;
+  license_hint?: string | null;
   group_ids: string[];
+}
+
+export interface UnbackableWorkload {
+  workload: string;        // friendly label, e.g. "Mailbox", "OneDrive"
+  resource_type: string;   // e.g. "USER_MAIL"
+  license_hint?: string | null; // e.g. "Exchange Online"
 }
 
 export interface ResourceListResponse {
