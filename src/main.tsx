@@ -181,6 +181,15 @@ const _schedule = () => {
     // Only refresh if the user is actually signed in (breadcrumb present).
     // Skips the timer if they signed out in another flow.
     if (!localStorage.getItem('user')) return
+    // Cross-tab dedup: the `access_token_expires_at` cookie is shared across
+    // tabs, so if ANOTHER tab already refreshed since we scheduled, the expiry
+    // has moved forward. If there's still comfortably more than the 60s
+    // pre-expiry window of life left, that refresh already happened — just
+    // re-arm instead of firing a redundant /refresh. With N tabs this avoids
+    // the simultaneous-refresh herd that raced into 401 logouts (the
+    // server-side rotation grace is the backstop for any residual race).
+    const freshExp = _readExpiresAt()
+    if (freshExp != null && freshExp - Date.now() > 90_000) { _schedule(); return }
     const outcome = await _doRefresh()
     if (outcome === 'ok') _schedule()
     else if (outcome === 'invalid') _redirectToSignIn()

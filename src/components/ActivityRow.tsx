@@ -44,6 +44,9 @@ function statusGlyph(status?: string): { ch: string; cls: string; label: string 
     case 'IN_PROGRESS': return { ch: '◐', cls: 'glyph-running', label: 'In progress' };
     case 'FAILED':      return { ch: '✗', cls: 'glyph-failed',  label: 'Failed' };
     case 'PARTIAL':     return { ch: '⚠', cls: 'glyph-partial', label: 'Partial' };
+    // A backup that succeeded but whose restore point later aged out under the
+    // SLA retention policy. Neutral (muted) treatment — it is NOT a failure.
+    case 'EXPIRED':     return { ch: '⌛', cls: 'glyph-pending', label: 'Expired' };
     default:            return { ch: '⋯', cls: 'glyph-pending', label: 'Pending' };
   }
 }
@@ -225,7 +228,7 @@ export function ActivityRow({
               <div className="mini-header">
                 <span className="mini-operation">{item.operation}</span>
                 <span className="mini-sep">·</span>
-                <span className={`mini-status ${statusGlyph(item.status === 'In Progress' ? 'IN_PROGRESS' : item.status === 'Done' ? 'COMPLETED' : item.status === 'Failed' ? 'FAILED' : item.status === 'Partial' ? 'PARTIAL' : 'PENDING').cls}`}>
+                <span className={`mini-status ${statusGlyph(item.status === 'In Progress' ? 'IN_PROGRESS' : item.status === 'Done' ? 'COMPLETED' : item.status === 'Failed' ? 'FAILED' : item.status === 'Partial' ? 'PARTIAL' : item.status === 'Expired' ? 'EXPIRED' : 'PENDING').cls}`}>
                   {item.status}
                 </span>
                 {item.status === 'In Progress' && (

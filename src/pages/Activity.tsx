@@ -371,6 +371,20 @@ export default function Activity() {
             Canceled
           </span>
         );
+      case 'Expired':
+        // The backup completed, but its restore point later aged out under the
+        // SLA retention policy. Neutral (not error) styling — reuses the muted
+        // canceled treatment. This is what the older same-day GFS fires show
+        // once retention prunes them; it must never read as "Failed".
+        return (
+          <span className="status-badge status-canceled" title="Backup completed; restore point aged out under retention policy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 7 12 12 15 14" />
+            </svg>
+            Expired
+          </span>
+        );
       default:
         return <span className="status-badge">{status}</span>;
     }
