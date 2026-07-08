@@ -6,7 +6,7 @@ export interface ActivityItem {
   start_time: string;
   operation: string;
   object: string;
-  status: 'Done' | 'In Progress' | 'Failed' | 'Canceled' | 'Warning' | 'Partial';
+  status: 'Done' | 'In Progress' | 'Failed' | 'Canceled' | 'Warning' | 'Partial' | 'Expired';
   finish_time: string;
   details?: string;
   data_backed_up?: number;
