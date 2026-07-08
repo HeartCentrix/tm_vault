@@ -868,6 +868,7 @@
 .mini-status.glyph-failed  { color: #dc2626; }
 .mini-status.glyph-partial { color: #d97706; }
 .mini-status.glyph-pending { color: #9ca3af; }
+.mini-status.glyph-skipped { color: #64748b; }
 
 .mini-pct {
   font-size: 14px;
@@ -960,6 +961,7 @@
 .mini-glyph.glyph-failed  { color: #dc2626; }
 .mini-glyph.glyph-partial { color: #d97706; }
 .mini-glyph.glyph-pending { color: #9ca3af; }
+.mini-glyph.glyph-skipped { color: #64748b; }
 .mini-glyph.glyph-spacer  { color: transparent; }
 
 .mini-type {

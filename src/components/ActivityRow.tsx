@@ -47,6 +47,10 @@ function statusGlyph(status?: string): { ch: string; cls: string; label: string 
     // A backup that succeeded but whose restore point later aged out under the
     // SLA retention policy. Neutral (muted) treatment — it is NOT a failure.
     case 'EXPIRED':     return { ch: '⌛', cls: 'glyph-pending', label: 'Expired' };
+    // Workload the user has no M365 license for — deliberately skipped, not
+    // pending/failed. Neutral shield-slash glyph.
+    case 'SKIPPED_NO_LICENSE':
+                        return { ch: '⊘', cls: 'glyph-skipped', label: 'Skipped — no license' };
     default:            return { ch: '⋯', cls: 'glyph-pending', label: 'Pending' };
   }
 }
@@ -74,6 +78,10 @@ function rollupParentStatus(
     if (s === 'COMPLETED') anyCompleted = true;
     else if (s === 'FAILED') anyFailed = true;
     else if (s === 'PARTIAL') anyPartial = true;
+    // License-skipped workloads are terminal, not pending — they must NOT
+    // hold the parent at ◐ In Progress (the whole point of the fix). Treat
+    // like a benign no-op: neither pending nor a success/failure signal.
+    else if (s === 'SKIPPED_NO_LICENSE') continue;
     else anyPending = true; // IN_PROGRESS, PENDING, unknown
   }
   if (anyPending) return 'IN_PROGRESS';
@@ -290,7 +298,11 @@ export function ActivityRow({
                               <div className="mini-child" key={child.resourceId}>
                                 <span className={`mini-glyph ${cGlyph.cls}`} title={cGlyph.label}>{cGlyph.ch}</span>
                                 <span className="mini-type">{TYPE_LABEL[child.type] || child.type}</span>
-                                <span className="mini-count">{child.itemCount != null ? child.itemCount.toLocaleString() : '—'}</span>
+                                <span className="mini-count" title={child.skippedNoLicense && child.licenseHint ? `No ${child.licenseHint} license` : undefined}>
+                                  {child.skippedNoLicense
+                                    ? 'No license'
+                                    : (child.itemCount != null ? child.itemCount.toLocaleString() : '—')}
+                                </span>
                                 <span
                                   className="mini-bytes"
                                   title={

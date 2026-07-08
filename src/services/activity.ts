@@ -48,6 +48,10 @@ export interface BatchChildResource {
   bytesAdded?: number;
   bytesTotal?: number;
   partitions?: { total: number; done: number; pending: number; failed: number };
+  // Set when the workload was skipped for lack of an M365 license (status
+  // === 'SKIPPED_NO_LICENSE'). licenseHint names the missing service.
+  skippedNoLicense?: boolean;
+  licenseHint?: string | null;
   children?: BatchChildResource[];
 }
 
