@@ -202,7 +202,11 @@ export function ActivityRow({
             {skippedNoLicense > 0 && (
               <span
                 className="activity-row-skip-chip"
-                title={`${skippedNoLicense} workload${skippedNoLicense === 1 ? '' : 's'} skipped — the user has no M365 license for ${skippedNoLicense === 1 ? 'it' : 'them'}. Resumes automatically once a license is assigned.`}
+                tabIndex={0}
+                role="note"
+                data-tooltip={`${skippedNoLicense} workload${skippedNoLicense === 1 ? '' : 's'} skipped — the user has no M365 license for ${skippedNoLicense === 1 ? 'it' : 'them'}. Resumes automatically once a license is assigned.`}
+                aria-label={`${skippedNoLicense} workload${skippedNoLicense === 1 ? '' : 's'} skipped, no M365 license`}
+                onClick={(e) => e.stopPropagation()}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />

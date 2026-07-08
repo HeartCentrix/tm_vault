@@ -1087,6 +1087,7 @@
    expected state, not a problem, so it reads as calm/neutral (slate) with an
    icon + text. */
 .activity-row-skip-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1099,11 +1100,47 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: help;
+  outline: none;
+}
+.activity-row-skip-chip:focus-visible {
+  box-shadow: 0 0 0 2px rgba(71, 85, 105, 0.4);
 }
 .activity-row-skip-chip svg {
   width: 12px;
   height: 12px;
   flex-shrink: 0;
+}
+
+/* Reliable tooltip (native title is flaky: ~1s delay, never on click/touch).
+   Shows instantly on hover AND keyboard focus. */
+.activity-row-skip-chip[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1000;
+  width: max-content;
+  max-width: 280px;
+  white-space: normal;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.activity-row-skip-chip[data-tooltip]:hover::after,
+.activity-row-skip-chip[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .activity-row-progress {
