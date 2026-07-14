@@ -734,6 +734,9 @@ export function DownloadModal({
               if (formats.length === 0) return null;
               if (scope !== 'selected') return null;
               if (folderPaths && folderPaths.length > 0) return null;
+              // Items ticked → PST is already enabled; the hint (which nudges
+              // the user to pick SOMETHING) is only for the empty selection.
+              if (itemIds.length > 0) return null;
               if (!formats.some(f => f.value === 'PST')) return null;
               // Contacts and the Online Archive have no folder-checkbox gate —
               // selecting item rows alone unlocks PST, so no folder hint applies.
@@ -741,7 +744,7 @@ export function DownloadModal({
               const msg =
                 contentType === 'calendar'
                   ? 'To enable PST export, tick one or more calendars in the "Calendar" section of the sidebar. Multiple calendars → one PST per calendar.'
-                  : 'To enable PST export, tick one or more folders in the left sidebar.';
+                  : 'To enable PST export, select one or more messages, or tick folders in the left sidebar.';
               return (
                 <div
                   style={{

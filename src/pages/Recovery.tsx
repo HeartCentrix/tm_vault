@@ -6064,6 +6064,8 @@ export default function Recovery() {
   // EITHER tick whole folders (folder-level PST) OR navigate into a folder and
   // tick individual items (item-level PST) — the two no longer collide.
   const [archiveFolderChecked, setArchiveFolderChecked] = useState<Set<string>>(new Set());
+  // Folders whose id-walk is still resolving (mirrors genericFolderBusy).
+  const [archiveFolderBusy, setArchiveFolderBusy] = useState<Set<string>>(new Set());
   const [archiveFolders, setArchiveFolders] = useState<SnapshotFolder[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(false);
   // Left-panel folders pagination — 50 at a time, infinite-scroll appends.
@@ -6138,6 +6140,7 @@ export default function Recovery() {
       setArchiveSelected(false);
       setArchiveFolder(null);
       setArchiveFolderChecked(new Set());
+      setArchiveFolderBusy(new Set());
     }
     const v = searchParams.get('view');
     const nextView = v === 'recent' ? 'recent' : 'my-drive';
@@ -6921,6 +6924,63 @@ export default function Recovery() {
       });
     }
   }, [selectedSnapshotId, selectedResource, genericFolderBusy, genericFolderSelected, recoveryItems]);
+
+  // Online Archive folder checkbox — the archive twin of
+  // handleGenericFolderCheck. Ticking a folder selects EVERY item in it (so
+  // the user sees the rows tick + the count update, not a mysterious folder-
+  // only state), and keeps the path in archiveFolderChecked so the export
+  // scopes folder-level. Uses the dedicated listArchive endpoint (archive
+  // items live in the archive child snapshot, not the primary).
+  const handleArchiveFolderCheck = useCallback(async (folderPath: string) => {
+    const archiveSnap = contentSnapshots?.byContent?.archive?.snapshotId;
+    if (!archiveSnap) return;
+    if (archiveFolderBusy.has(folderPath)) return;
+    const alreadySelected = archiveFolderChecked.has(folderPath);
+    setArchiveFolderChecked(prev => {
+      const next = new Set(prev);
+      if (alreadySelected) next.delete(folderPath); else next.add(folderPath);
+      return next;
+    });
+    // Instant feedback on the currently-visible rows of this folder.
+    const visibleIds = recoveryItems
+      .filter(it => (it.folderPath || '') === folderPath)
+      .map(it => it.id);
+    if (visibleIds.length > 0) {
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        if (alreadySelected) { for (const id of visibleIds) next.delete(id); }
+        else { for (const id of visibleIds) next.add(id); }
+        return next;
+      });
+    }
+    setArchiveFolderBusy(prev => new Set(prev).add(folderPath));
+    try {
+      const allIds: string[] = [];
+      let page = 1;
+      while (true) {
+        const resp = await SnapshotService.listArchive(
+          archiveSnap, activeContentType as ContentTab, page, 500, '', folderPath,
+        );
+        const content = (resp as any).content || [];
+        if (!content.length) break;
+        for (const it of content) allIds.push(it.id);
+        if (content.length < 500) break;
+        page += 1;
+      }
+      if (allIds.length === 0) return;  // keep folder ticked; export scopes via folderPaths
+      setSelectedItems(prev => {
+        const next = new Set(prev);
+        if (alreadySelected) { for (const id of allIds) next.delete(id); }
+        else { for (const id of allIds) next.add(id); }
+        return next;
+      });
+    } catch (e) {
+      console.error('Archive folder-select fetch failed:', e);
+      setArchiveFolderChecked(prev => { const n = new Set(prev); n.delete(folderPath); return n; });
+    } finally {
+      setArchiveFolderBusy(prev => { const n = new Set(prev); n.delete(folderPath); return n; });
+    }
+  }, [contentSnapshots, archiveFolderBusy, archiveFolderChecked, recoveryItems, activeContentType]);
 
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
@@ -8018,13 +8078,10 @@ export default function Recovery() {
                                 type="checkbox"
                                 className="folder-check"
                                 checked={archiveFolderChecked.has(f.path)}
+                                disabled={archiveFolderBusy.has(f.path)}
                                 onClick={(e) => e.stopPropagation()}
-                                onChange={() => setArchiveFolderChecked(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(f.path)) next.delete(f.path); else next.add(f.path);
-                                  return next;
-                                })}
-                                title="Select this archive folder for export / recover"
+                                onChange={() => handleArchiveFolderCheck(f.path)}
+                                title="Select every item in this archive folder"
                               />
                               <button
                                 className="folder-name-btn"
