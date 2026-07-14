@@ -812,7 +812,7 @@ export default function Protection() {
               const unbackable = resource.unbackable_workloads ?? [];
               const limitedTitle = unbackable.length > 0
                 ? `No M365 license — can't back up: ${unbackable.map(w => w.workload).join(', ')}. `
-                  + `Other data still backs up. Resumes automatically once a license is assigned.`
+                  + `Backup resumes automatically once a license is assigned.`
                 : '';
               const backupButtonTitle = !resource.protections?.[0]?.policy_id
                 ? 'Assign an SLA policy before triggering backup'
