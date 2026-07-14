@@ -3667,3 +3667,37 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   border-color: rgba(96, 165, 250, 0.28);
   color: #bfdbfe;
 }
+
+/* ============================================================
+   Online Archive — folder section inside Mail/Contacts panels
+   A subtle labelled divider + a folder-item that reroutes the
+   item fetch to the archive child's snapshot.
+   ============================================================ */
+.folder-section-label {
+  margin: 10px 8px 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tm-border, #e2e8f0);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tm-muted, #94a3b8);
+}
+.archive-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+.archive-folder-item .archive-folder-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: #2563eb;
+}
+:root[data-theme="dark"] .folder-section-label {
+  border-top-color: rgba(148, 163, 184, 0.22);
+  color: #94a3b8;
+}
+:root[data-theme="dark"] .archive-folder-item .archive-folder-icon { color: #60a5fa; }

@@ -5,16 +5,17 @@ import { API } from '../config/api';
 
 // Five fixed content tabs rendered on Recovery. Hardcoded — no longer derived
 // from snapshot contents at runtime.
+// 'archive' is NOT a top-level tab — the Online Archive shows as a folder
+// inside the Mail/Contacts tabs. It stays in the type/labels/byContent because
+// content-snapshots + exportFormats key on it.
 export type ContentTab = 'mail' | 'onedrive' | 'contacts' | 'calendar' | 'chats' | 'archive';
-export const CONTENT_TABS: ContentTab[] = ['mail', 'onedrive', 'contacts', 'calendar', 'chats', 'archive'];
+export const CONTENT_TABS: ContentTab[] = ['mail', 'onedrive', 'contacts', 'calendar', 'chats'];
 export const CONTENT_TAB_LABELS: Record<ContentTab, string> = {
   mail: 'Mail',
   onedrive: 'OneDrive',
   contacts: 'Contacts',
   calendar: 'Calendar',
   chats: 'Chats',
-  // Exchange Online Archive. The tab is filtered out unless the resource has
-  // an archive backup (byContent.archive), so most users never see it.
   archive: 'Online Archive',
 };
 
@@ -350,6 +351,26 @@ export const SnapshotService = {
         metadata: item.metadata && Object.keys(item.metadata).length > 0
           ? item.metadata
           : { raw: item },
+      }));
+    }
+    return data;
+  },
+
+  // Online Archive items for a content tab's archive folder. Hits the archive
+  // child's OWN snapshot with a category filter (mail/contacts/calendar). Same
+  // response shape + metadata.raw fallback as listItems.
+  async listArchive(archiveSnapshotId: string, category: ContentTab, page = 1, size = 50, search?: string): Promise<SnapshotItemListResponse> {
+    // Served via the gateway-allowed /mail path with source=archive — the
+    // api-gateway does not forward a dedicated /archive path.
+    let url = `${API.SNAPSHOTS.MAIL(archiveSnapshotId)}?page=${page}&size=${size}&source=archive&category=${encodeURIComponent(category)}`;
+    if (search && search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch archive items');
+    const data = await res.json();
+    if (data.content) {
+      data.content = data.content.map((item: any) => ({
+        ...item,
+        metadata: item.metadata && Object.keys(item.metadata).length > 0 ? item.metadata : { raw: item },
       }));
     }
     return data;

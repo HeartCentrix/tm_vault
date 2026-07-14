@@ -6051,6 +6051,10 @@ export default function Recovery() {
     const isOneDriveMyDrive = t === 'onedrive' && (v ?? 'my-drive') === 'my-drive';
     return isOneDriveMyDrive ? '/' : 'all';
   });
+  // The "Online Archive" folder (inside Mail/Contacts) is selected. Not
+  // URL-synced — a transient sub-selection that reroutes the item fetch to the
+  // archive child's snapshot. Reset whenever a tab or normal folder is picked.
+  const [archiveSelected, setArchiveSelected] = useState(false);
   const [foldersLoading, setFoldersLoading] = useState(false);
   // Left-panel folders pagination — 50 at a time, infinite-scroll appends.
   const [foldersPage, setFoldersPage] = useState<number>(1);
@@ -6356,10 +6360,16 @@ export default function Recovery() {
     const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
     const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
     const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
-    SnapshotService.listItems(
-      selectedSnapshotId, 1, pageSize,
-      activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
-    )
+    // "Online Archive" folder selected → fetch from the archive child's OWN
+    // snapshot, filtered to this tab's kind. Otherwise the normal per-tab fetch.
+    const _archiveEntry = contentSnapshots?.byContent?.archive;
+    const _firstPage = (archiveSelected && _archiveEntry?.snapshotId)
+      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, 1, pageSize, debouncedSearch)
+      : SnapshotService.listItems(
+          selectedSnapshotId, 1, pageSize,
+          activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
+        );
+    _firstPage
       .then((data) => {
         if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
         // Chats: backend orders newest-first. We reverse each page so the
@@ -6403,7 +6413,7 @@ export default function Recovery() {
       .finally(() => {
         if (myKey === requestKeyRef.current) setItemsLoading(false);
       });
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading, archiveSelected, contentSnapshots]);
 
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
@@ -6430,10 +6440,14 @@ export default function Recovery() {
     const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
     const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
     const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
-    SnapshotService.listItems(
-      selectedSnapshotId, itemPage, pageSize,
-      activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
-    )
+    const _archiveEntry = contentSnapshots?.byContent?.archive;
+    const _nextPage = (archiveSelected && _archiveEntry?.snapshotId)
+      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, itemPage, pageSize, debouncedSearch)
+      : SnapshotService.listItems(
+          selectedSnapshotId, itemPage, pageSize,
+          activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
+        );
+    _nextPage
       .then((data) => {
         if (myKey !== requestKeyRef.current) return;  // filter changed mid-fetch
         if (isChats) {
@@ -7612,9 +7626,6 @@ export default function Recovery() {
                     // provisioning in M365, so hide the tab.
                     const kind = selectedResource.kind;
                     if (type === 'onedrive' && (kind === 'shared_mailbox' || kind === 'room_mailbox')) return false;
-                    // Online Archive is opt-in per user — only surface the tab
-                    // when this resource actually has an archive backup.
-                    if (type === 'archive' && !contentSnapshots?.byContent?.archive) return false;
                     return true;
                   })
                   .map(type => {
@@ -7630,6 +7641,7 @@ export default function Recovery() {
                         // new tab starts clean. patchSearchParams pushes
                         // a new history entry; the sync effect above
                         // then updates local state.
+                        setArchiveSelected(false);
                         patchSearchParams({ tab: type, folder: null, view: null });
                       }}
                       title={hasBackup ? `${count.toLocaleString()} item${count === 1 ? '' : 's'} backed up` : 'No backup yet'}
@@ -7790,8 +7802,8 @@ export default function Recovery() {
                         now mostly a safety net for >500-folder tenants. */}
                     {activeContentType !== 'chats' && (
                       <button
-                        className={`folder-item ${selectedFolder === 'all' ? 'active' : ''}`}
-                        onClick={() => patchSearchParams({ folder: null })}
+                        className={`folder-item ${selectedFolder === 'all' && !archiveSelected ? 'active' : ''}`}
+                        onClick={() => { setArchiveSelected(false); patchSearchParams({ folder: null }); }}
                       >
                         <span className="folder-name">All</span>
                       </button>
@@ -7823,7 +7835,7 @@ export default function Recovery() {
                           {visibleFolders.map(folder => (
                             <div
                               key={folder.path}
-                              className={`folder-item has-check ${selectedFolder === folder.path ? 'active' : ''}`}
+                              className={`folder-item has-check ${selectedFolder === folder.path && !archiveSelected ? 'active' : ''}`}
                             >
                               {activeContentType === 'chats' ? (
                                 <input
@@ -7881,6 +7893,7 @@ export default function Recovery() {
                                   if (activeContentType === 'chats') {
                                     setSearchQuery('');
                                   }
+                                  setArchiveSelected(false);
                                   patchSearchParams({ folder: folder.path });
                                 }}
                                 title={folder.path}
@@ -7901,6 +7914,31 @@ export default function Recovery() {
                     )}
                     {!foldersLoadingMore && !foldersHasMore && folders.length > 50 && (
                       <div className="folder-empty"><p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>End of list</p></div>
+                    )}
+                    {/* Online Archive — a folder section below the primary
+                        folders (AFI convention). Shows only on Mail/Contacts
+                        when the resource has an archive backup; clicking it
+                        reroutes the item fetch to the archive child's snapshot,
+                        filtered to this tab's kind. */}
+                    {(activeContentType === 'mail' || activeContentType === 'contacts')
+                      && contentSnapshots?.byContent?.archive && (
+                      <>
+                        <div className="folder-section-label">Online Archive</div>
+                        <button
+                          className={`folder-item archive-folder-item ${archiveSelected ? 'active' : ''}`}
+                          onClick={() => setArchiveSelected(true)}
+                          title="Exchange Online Archive"
+                        >
+                          <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
+                               stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                               strokeLinejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="4" rx="1" />
+                            <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+                            <path d="M10 12h4" />
+                          </svg>
+                          <span className="folder-name">Online Archive</span>
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
