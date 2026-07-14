@@ -8272,7 +8272,14 @@ export default function Recovery() {
               isOpen={downloadModalOpen}
               onClose={() => setDownloadModalOpen(false)}
               itemIds={Array.from(selectedItems)}
-              snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+              snapshotIds={
+                // Online Archive selected → export from the archive CHILD
+                // snapshot (its items are ARCHIVE_ITEM), not the primary.
+                archiveSelected && contentSnapshots?.byContent?.archive?.snapshotId
+                  ? [contentSnapshots.byContent.archive.snapshotId]
+                  : (selectedSnapshotId ? [selectedSnapshotId] : [])
+              }
+              isArchive={archiveSelected}
               selectedCount={selectedItems.size}
               contentType={effectiveContentType}
               preserveTree={oneDriveFolderSelected.size > 0 || genericFolderSelected.size > 0}

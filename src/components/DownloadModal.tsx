@@ -34,6 +34,10 @@ interface DownloadModalProps {
   // item ids server-side, so we don't have to materialise the full list
   // in the UI. Sent alongside itemIds — backend treats them as a union.
   folderPaths?: string[];
+  // The Online Archive folder is selected (browsed inside the Mail/Contacts
+  // view). Redirects PST type resolution to ARCHIVE_ITEM; the caller also
+  // passes the archive child snapshot id as snapshotIds.
+  isArchive?: boolean;
 }
 
 type Scope = 'selected' | 'all';
@@ -60,13 +64,18 @@ function hasPstCompatibleWorkload(
   folderPaths: string[] | undefined,
   contentType: ContentTab,
   itemCount: number,
+  isArchive: boolean = false,
 ): boolean {
   if (scope === 'selected') {
     if (folderPaths && folderPaths.length > 0) return true;
-    // Contacts: no folder gate — itemIds alone is enough.
+    // Contacts + Online Archive: no folder gate — itemIds alone is enough
+    // (each archive item is a self-contained enriched message).
     if (contentType === 'contacts' && itemCount > 0) return true;
+    if (isArchive && itemCount > 0) return true;
     return false;
   }
+  // "all" scope: the Online Archive is itself PST-compatible.
+  if (isArchive) return true;
   return [...workloads].some(w => w in WORKLOAD_TO_PST_TYPE);
 }
 
@@ -79,7 +88,12 @@ function resolvePstIncludeTypes(
   resourceKind: string | undefined,
   scope: Scope,
   workloads: Set<DownloadWorkload>,
+  isArchive: boolean = false,
 ): string[] {
+  // Online Archive items are their own item_type regardless of the tab they're
+  // browsed under (archive lives inside the Mail/Contacts view).
+  if (isArchive) return ['ARCHIVE_ITEM'];
+
   let types: string[];
 
   if (scope === 'selected') {
@@ -144,9 +158,10 @@ function getPstAutoLabel(
   resourceKind: string | undefined,
   workloads: Set<DownloadWorkload>,
   selectedCount: number,
+  isArchive: boolean = false,
 ): string {
   const gran = autoGranularity(scope, folderPaths, contentType);
-  const types = resolvePstIncludeTypes(contentType, resourceKind, scope, workloads);
+  const types = resolvePstIncludeTypes(contentType, resourceKind, scope, workloads, isArchive);
   if (types.length === 0) return 'No PST-compatible items in current selection.';
 
   const typeLabels: string[] = [];
@@ -193,6 +208,7 @@ export function DownloadModal({
   threadPath,
   resourceKind,
   folderPaths,
+  isArchive = false,
 }: DownloadModalProps) {
   const [scope, setScope] = useState<Scope>('selected');
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
@@ -219,7 +235,7 @@ export function DownloadModal({
   // one (OneDrive-only workload checked, or individual items picked
   // without a folderPath selection).
   useEffect(() => {
-    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length)) {
+    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length, isArchive)) {
       setExportFormat(DEFAULT_FORMAT[contentType]);
     }
   }, [scope, workloads, contentType, exportFormat, folderPaths, itemIds.length]);
@@ -453,8 +469,11 @@ export function DownloadModal({
           folderPaths: useFolders ? folderPaths : undefined,
           exportFormat: 'PST',
           pstGranularity,
-          pstIncludeTypes: resolvePstIncludeTypes(contentType, resourceKind, scope, workloads),
-          workloads: scope === 'all' ? Array.from(workloads) : undefined,
+          pstIncludeTypes: resolvePstIncludeTypes(contentType, resourceKind, scope, workloads, isArchive),
+          // Archive: no workload filter — the archive snapshot holds only
+          // ARCHIVE_ITEM, and pstIncludeTypes already scopes to it. Sending
+          // Mail/Contacts/Calendar would filter every archive item out.
+          workloads: scope === 'all' && !isArchive ? Array.from(workloads) : undefined,
           includeAttachments,
         });
         const jobId = response.jobId;
@@ -537,8 +556,10 @@ export function DownloadModal({
         // File-family resources always export as ZIP with full tree;
         // no format or workload axis applies.
         exportFormat: isFilesFamily ? undefined : exportFormat,
+        // Archive export: skip the workload filter (archive snapshot is all
+        // ARCHIVE_ITEM; Mail/Contacts/Calendar would exclude everything).
         workloads:
-          !isFilesFamily && scope === 'all' ? Array.from(workloads) : undefined,
+          !isFilesFamily && scope === 'all' && !isArchive ? Array.from(workloads) : undefined,
         includeAttachments: isFilesFamily ? undefined : includeAttachments,
         preserveTree:
           isFilesFamily || scope === 'all' || preserveTree
@@ -741,7 +762,7 @@ export function DownloadModal({
               <div className="modal-error">No export formats configured for “{contentType}”.</div>
             ) : (
               (() => {
-                const pstDisabledGlobal = !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length);
+                const pstDisabledGlobal = !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length, isArchive);
                 const pstFolderHint = (() => {
                   if (!pstDisabledGlobal || scope !== 'selected') return '';
                   if (folderPaths && folderPaths.length > 0) return '';
@@ -784,7 +805,7 @@ export function DownloadModal({
             )}
             {exportFormat === 'PST' && (
               <div style={{ marginTop: 14, fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
-                {getPstAutoLabel(scope, folderPaths, contentType, resourceKind, workloads, selectedCount)}
+                {getPstAutoLabel(scope, folderPaths, contentType, resourceKind, workloads, selectedCount, isArchive)}
               </div>
             )}
             {contentType === 'mail' && exportFormat !== 'PST' && (
