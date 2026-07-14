@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import './RestoreModal.css';
 import './DownloadModal.css';
 import { RecoveryService } from '../services/recovery';
-import { API } from '../config/api';
+import { exportJobs } from '../services/exportJobs';
 import type { ContentTab } from '../services/snapshot';
 import { SnapshotService } from '../services/snapshot';
 import {
@@ -219,15 +219,10 @@ export function DownloadModal({
   const [includeAttachments, setIncludeAttachments] = useState<boolean>(true);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Elapsed-time tick during the async poll loop so the user sees
-  // progress instead of a frozen "Preparing..." button. Updates every
-  // second while downloading=true.
-  const [elapsedSec, setElapsedSec] = useState(0);
   const [estimate, setEstimate] = useState<{
     messages: number; estimatedZipBytes: number;
     layoutMode: string; softCapExceeded: boolean;
   } | null>(null);
-  const [progressPct, setProgressPct] = useState<number>(0);
   const [entraSelection, setEntraSelection] = useState<EntraDownloadSelection | null>(null);
   // Granularity is auto-determined — no state needed.
   const pstGranularity = autoGranularity(scope, folderPaths, contentType);
@@ -246,17 +241,6 @@ export function DownloadModal({
   // (so omitting unmodified selection means "include all" — no payload field).
   const [contactFolders, setContactFolders] = useState<string[]>([]);
   const [selectedContactFolders, setSelectedContactFolders] = useState<Set<string>>(new Set());
-
-  // Tick the elapsed counter while a download is in flight so users
-  // see movement and don't assume the modal is stuck.
-  useEffect(() => {
-    if (!downloading) {
-      setElapsedSec(0);
-      return;
-    }
-    const t = setInterval(() => setElapsedSec(s => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [downloading]);
 
   useEffect(() => {
     if (!isOpen || contentType !== 'chats' || !resourceId) return;
@@ -309,8 +293,6 @@ export function DownloadModal({
     if (isOpen) {
       setError(null);
       setDownloading(false);
-      setProgressPct(0);
-      setElapsedSec(0);
       setEntraSelection(null);
     }
   }, [isOpen]);
@@ -351,7 +333,7 @@ export function DownloadModal({
         setError('Select messages from one thread, or tick one thread.');
         return;
       }
-      setDownloading(true); setError(null); setProgressPct(0);
+      setDownloading(true); setError(null);
       try {
         const { jobId } = await RecoveryService.triggerChatExport({
           resourceId,
@@ -361,8 +343,12 @@ export function DownloadModal({
           exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
           includeAttachments,
         });
+        // Background it: the SSE subscription runs independently of the modal,
+        // so close the modal and drive the bottom-right toast from its
+        // callbacks (they download the SAS artifact + mark the job done).
+        exportJobs.track(jobId, 'Chat export');
         RecoveryService.subscribeChatExportStatus(jobId, {
-          onProgress: (p) => { if (typeof p.percent === 'number') setProgressPct(p.percent); },
+          onProgress: () => { /* toast shows elapsed time, not percent */ },
           onComplete: (c) => {
             // SAS URL already carries auth in the query string — don't send any
             // headers (they'd force a CORS preflight the blob account doesn't
@@ -377,12 +363,13 @@ export function DownloadModal({
               a.click();
               document.body.removeChild(a);
             } finally {
-              setDownloading(false);
-              onClose();
+              exportJobs.markReady(jobId);
             }
           },
-          onError: (e) => { setError(e?.code ?? 'Export failed'); setDownloading(false); },
+          onError: (e) => exportJobs.markFailed(jobId, e?.code ?? 'Export failed'),
         });
+        setDownloading(false);
+        onClose();
       } catch (e: any) {
         if (e?.status === 409) {
           setError(e.body?.detail?.error === 'SIZE_SOFT_CAP_EXCEEDED' || e.body?.error === 'SIZE_SOFT_CAP_EXCEEDED'
@@ -410,40 +397,14 @@ export function DownloadModal({
           format: entraSelection.format,
           includeNestedDetail: entraSelection.includeNestedDetail,
         });
-        const jobId = response.jobId;
-        const headers: Record<string, string> = {};
-        for (let i = 0; i < 600; i++) {
-          await new Promise(r => setTimeout(r, 2000));
-          const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
-          if (!statusRes.ok) continue;
-          const job = await statusRes.json();
-          if (job.status === 'COMPLETED') {
-            const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
-            if (!dlRes.ok) throw new Error('Download failed');
-            const blob = await dlRes.blob();
-            const cd = dlRes.headers.get('Content-Disposition') || '';
-            const m = cd.match(/filename="?([^"]+)"?/i);
-            const fallback = `entra-export-${jobId.slice(0, 8)}.zip`;
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = m ? m[1] : fallback;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            onClose();
-            return;
-          }
-          if (job.status === 'FAILED') {
-            setError('Export failed. Please try again.');
-            return;
-          }
-        }
-        setError('Export timed out. Try again later.');
+        // Hand the job to the background store and close the modal — a
+        // bottom-right toast tracks progress across navigation and downloads
+        // the artifact when it's ready.
+        exportJobs.start(response.jobId, 'Directory export', `entra-export-${response.jobId.slice(0, 8)}.zip`, 2000);
+        setDownloading(false);
+        onClose();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Download failed');
-      } finally {
         setDownloading(false);
       }
       return;
@@ -477,39 +438,11 @@ export function DownloadModal({
           workloads: scope === 'all' && !isArchive ? Array.from(workloads) : undefined,
           includeAttachments,
         });
-        const jobId = response.jobId;
-        const headers: Record<string, string> = {};
-        for (let i = 0; i < 600; i++) {
-          await new Promise(r => setTimeout(r, 3000));
-          const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
-          if (!statusRes.ok) continue;
-          const job = await statusRes.json();
-          if (job.status === 'COMPLETED') {
-            const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
-            if (!dlRes.ok) throw new Error('Download failed');
-            const blob = await dlRes.blob();
-            const cd = dlRes.headers.get('Content-Disposition') || '';
-            const m = cd.match(/filename="?([^"]+)"?/i);
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = m ? m[1] : `pst-export-${jobId.slice(0, 8)}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            onClose();
-            return;
-          }
-          if (job.status === 'FAILED') {
-            setError('PST export failed. Please try again.');
-            return;
-          }
-        }
-        setError('Export timed out. Try again later.');
+        exportJobs.start(response.jobId, `PST export — ${contentType}`, `pst-export-${response.jobId.slice(0, 8)}.zip`);
+        setDownloading(false);
+        onClose();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'PST export failed');
-      } finally {
         setDownloading(false);
       }
       return;
@@ -567,49 +500,22 @@ export function DownloadModal({
           || (!!folderPaths && folderPaths.length > 0),
         contactFolders: isFilesFamily ? undefined : contactFoldersPayload,
       });
-      const jobId = response.jobId;
-
-      const headers: Record<string, string> = {};
-      // Full-drive OneDrive ZIPs for a power user can need a few minutes
-      // to assemble; 60 s (the old cap) timed out on real drives. Poll for
-      // up to 20 min and surface the in-progress state clearly.
-      for (let i = 0; i < 600; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const statusRes = await fetch(`${API.BASE_URL}/jobs/${jobId}`, { headers });
-        if (!statusRes.ok) continue;
-        const job = await statusRes.json();
-        if (job.status === 'COMPLETED') {
-          const dlRes = await fetch(API.EXPORT.DOWNLOAD(jobId), { headers });
-          if (!dlRes.ok) throw new Error('Download failed');
-          const blob = await dlRes.blob();
-          // Prefer the server's Content-Disposition filename — raw_single
-          // responses set it to the user's original filename (e.g. Report.xlsx)
-          // so single-file ORIGINAL downloads don't land as .zip. Fall back
-          // to the ZIP naming for the multi-file case where the header is
-          // the generated export-<jobid>.zip.
-          const cd = dlRes.headers.get('Content-Disposition') || '';
-          const m = cd.match(/filename="?([^"]+)"?/i);
-          const fallback = `export-${jobId.slice(0, 8)}.${exportFormat.toLowerCase()}.zip`;
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = m ? m[1] : fallback;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          onClose();
-          return;
-        }
-        if (job.status === 'FAILED') {
-          setError('Export failed. Please try again.');
-          return;
-        }
-      }
-      setError('Export timed out. Try again later.');
+      // Full-drive ZIPs can take minutes to assemble. Hand off to the
+      // background store (bottom-right toast) so the user can navigate freely;
+      // it downloads the artifact when ready. The fallback name keeps the
+      // format extension for the multi-file case; the server's
+      // Content-Disposition still wins for single-file ORIGINAL downloads.
+      const label = isFilesFamily ? 'Export' : `Export — ${contentType}`;
+      exportJobs.start(
+        response.jobId,
+        label,
+        `export-${response.jobId.slice(0, 8)}.${(exportFormat || 'zip').toLowerCase()}.zip`,
+        2000,
+      );
+      setDownloading(false);
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Download failed');
-    } finally {
       setDownloading(false);
     }
   };
@@ -833,9 +739,6 @@ export function DownloadModal({
                 {estimate.softCapExceeded && <span className="warn"> — large, will take time</span>}
               </div>
             )}
-            {contentType === 'chats' && downloading && (
-              <div className="modal-progress-bar"><div style={{ width: `${progressPct}%` }} /></div>
-            )}
           </div>
         </div>
         )}
@@ -865,17 +768,8 @@ export function DownloadModal({
               }}
             />
             <div>
-              <div>
-                Assembling export…{' '}
-                <strong>
-                  {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')}
-                </strong>{' '}
-                elapsed
-              </div>
-              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-                Large drives or full-backup downloads can take several minutes —
-                please keep this tab open.
-              </div>
+              Starting export… it will continue in the background — you can keep
+              working, and it'll download automatically when it's ready.
             </div>
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>

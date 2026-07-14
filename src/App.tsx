@@ -19,6 +19,7 @@ import GlobalSearch from './pages/GlobalSearch';
 import Configuration from './pages/Configuration';
 import Docs from './pages/Docs';
 import GlobalTooltip from './components/GlobalTooltip';
+import { ExportToasts } from './components/ExportToasts';
 
 // The access token lives in an HttpOnly cookie that JS can't read (so XSS
 // can't exfiltrate it). Use the non-credential `user` breadcrumb as a UX
@@ -66,6 +67,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <GlobalTooltip />
+      <ExportToasts />
       <Routes>
         <Route path="/" element={<AutoRedirect />} />
         <Route path="/signin" element={<Signin />} />
