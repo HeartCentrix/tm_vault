@@ -62,7 +62,6 @@ function hasPstCompatibleWorkload(
   scope: Scope,
   workloads: Set<DownloadWorkload>,
   folderPaths: string[] | undefined,
-  contentType: ContentTab,
   itemCount: number,
   isArchive: boolean = false,
 ): boolean {
@@ -237,7 +236,7 @@ export function DownloadModal({
   // one (OneDrive-only workload checked, or individual items picked
   // without a folderPath selection).
   useEffect(() => {
-    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length, isArchive)) {
+    if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths, itemIds.length, isArchive)) {
       setExportFormat(DEFAULT_FORMAT[contentType]);
     }
   }, [scope, workloads, contentType, exportFormat, folderPaths, itemIds.length]);
@@ -764,7 +763,7 @@ export function DownloadModal({
               <div className="modal-error">No export formats configured for “{contentType}”.</div>
             ) : (
               (() => {
-                const pstDisabledGlobal = !hasPstCompatibleWorkload(scope, workloads, folderPaths, contentType, itemIds.length, isArchive);
+                const pstDisabledGlobal = !hasPstCompatibleWorkload(scope, workloads, folderPaths, itemIds.length, isArchive);
                 const pstFolderHint = (() => {
                   if (!pstDisabledGlobal || scope !== 'selected') return '';
                   if (folderPaths && folderPaths.length > 0) return '';
