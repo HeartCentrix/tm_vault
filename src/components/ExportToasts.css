@@ -78,6 +78,7 @@
 }
 
 .export-toast__close {
+  position: relative;
   flex-shrink: 0;
   background: none;
   border: 0;
@@ -88,6 +89,37 @@
   padding: 0 2px;
 }
 .export-toast__close:hover { color: #D31245; }
+
+/* Instant CSS tooltip (the global title-based one only covers .info-icon).
+   Anchored to the button's right edge and shown above it, so it never spills
+   off the right of the viewport and stays within the toast/group bounds. */
+.export-toast__close[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  white-space: nowrap;
+  background: #0f172a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+  z-index: 10;
+}
+.export-toast__close:hover[data-tip]::after,
+.export-toast__close:focus-visible[data-tip]::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .export-toast__close[data-tip]::after { transition: none; }
+}
 
 /* ---- collapsed group (2+ jobs) ---- */
 .export-toasts__group {

@@ -37,7 +37,7 @@ function ToastCard({ job, now }: { job: ExportJob; now: number }) {
       <button
         className="export-toast__close"
         aria-label={running ? 'Cancel export' : 'Dismiss'}
-        title={running ? 'Cancel this export — the job will be stopped' : 'Dismiss'}
+        data-tip={running ? 'Cancel export — stops the job' : 'Dismiss'}
         onClick={() => exportJobs.cancel(job.id)}
       >
         ×
