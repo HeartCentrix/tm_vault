@@ -6437,6 +6437,22 @@ export default function Recovery() {
     return () => { alive = false; };
   }, [contentSnapshots, activeContentType]);
 
+  // Complete archive folder tree. /folders only returns folders that have
+  // DIRECT items, so a nesting level that only holds more subfolders would be
+  // missing and its children would render orphaned. Synthesize every ancestor
+  // prefix so the full hierarchy (subfolder of subfolder …) always shows,
+  // ordered parent-before-child by lexical path sort.
+  const archiveTree = useMemo(() => {
+    const counts = new Map(archiveFolders.map(f => [f.path, f.count] as const));
+    const paths = new Set<string>();
+    for (const f of archiveFolders) {
+      const parts = f.path.split('/');
+      for (let i = 1; i <= parts.length; i++) paths.add(parts.slice(0, i).join('/'));
+    }
+    return [...paths].sort((a, b) => a.localeCompare(b))
+      .map(path => ({ path, count: counts.get(path) ?? 0 }));
+  }, [archiveFolders]);
+
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
   // scroll-triggered page bump. For the chats tab we PREPEND instead (older
@@ -7962,7 +7978,7 @@ export default function Recovery() {
                           </svg>
                           <span className="folder-name">All items</span>
                         </button>
-                        {[...archiveFolders].sort((a, b) => a.path.localeCompare(b.path)).map(f => {
+                        {archiveTree.map(f => {
                           const depth = f.path.split('/').length - 1;
                           const leaf = f.path.split('/').pop() || f.path;
                           return (
