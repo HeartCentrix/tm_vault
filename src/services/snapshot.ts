@@ -359,11 +359,13 @@ export const SnapshotService = {
   // Online Archive items for a content tab's archive folder. Hits the archive
   // child's OWN snapshot with a category filter (mail/contacts/calendar). Same
   // response shape + metadata.raw fallback as listItems.
-  async listArchive(archiveSnapshotId: string, category: ContentTab, page = 1, size = 50, search?: string): Promise<SnapshotItemListResponse> {
+  async listArchive(archiveSnapshotId: string, category: ContentTab, page = 1, size = 50, search?: string, folder?: string): Promise<SnapshotItemListResponse> {
     // Served via the gateway-allowed /mail path with source=archive — the
     // api-gateway does not forward a dedicated /archive path.
     let url = `${API.SNAPSHOTS.MAIL(archiveSnapshotId)}?page=${page}&size=${size}&source=archive&category=${encodeURIComponent(category)}`;
     if (search && search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
+    // folder scopes to one archive folder (full nested path e.g. "Archive/2024").
+    if (folder) url += `&folder=${encodeURIComponent(folder)}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to fetch archive items');
     const data = await res.json();

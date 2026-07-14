@@ -6055,6 +6055,11 @@ export default function Recovery() {
   // URL-synced — a transient sub-selection that reroutes the item fetch to the
   // archive child's snapshot. Reset whenever a tab or normal folder is picked.
   const [archiveSelected, setArchiveSelected] = useState(false);
+  // Which archive folder is selected (full nested path e.g. "Archive/2024");
+  // null = all archive items of this tab's kind. Drives the listArchive folder
+  // filter so the retained archive folder hierarchy is browsable, not flat.
+  const [archiveFolder, setArchiveFolder] = useState<string | null>(null);
+  const [archiveFolders, setArchiveFolders] = useState<SnapshotFolder[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(false);
   // Left-panel folders pagination — 50 at a time, infinite-scroll appends.
   const [foldersPage, setFoldersPage] = useState<number>(1);
@@ -6364,7 +6369,7 @@ export default function Recovery() {
     // snapshot, filtered to this tab's kind. Otherwise the normal per-tab fetch.
     const _archiveEntry = contentSnapshots?.byContent?.archive;
     const _firstPage = (archiveSelected && _archiveEntry?.snapshotId)
-      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, 1, pageSize, debouncedSearch)
+      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, 1, pageSize, debouncedSearch, archiveFolder ?? undefined)
       : SnapshotService.listItems(
           selectedSnapshotId, 1, pageSize,
           activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
@@ -6413,7 +6418,24 @@ export default function Recovery() {
       .finally(() => {
         if (myKey === requestKeyRef.current) setItemsLoading(false);
       });
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading, archiveSelected, contentSnapshots]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading, archiveSelected, archiveFolder, contentSnapshots]);
+
+  // Load the archive's real folder list (full nested paths) so the Online
+  // Archive section renders its retained folder hierarchy instead of one flat
+  // bucket. Archive folders are shared across kinds (mail/contacts), so this
+  // fetches once per archive snapshot.
+  useEffect(() => {
+    const snap = contentSnapshots?.byContent?.archive?.snapshotId;
+    if (!snap || !(activeContentType === 'mail' || activeContentType === 'contacts')) {
+      setArchiveFolders([]);
+      return;
+    }
+    let alive = true;
+    SnapshotService.getFolders(snap, 'ARCHIVE_ITEM', 1, 200)
+      .then(r => { if (alive) setArchiveFolders(r.content || []); })
+      .catch(() => { if (alive) setArchiveFolders([]); });
+    return () => { alive = false; };
+  }, [contentSnapshots, activeContentType]);
 
   // Append next page when itemPage advances (driven by the scroll handler
   // below). Separate effect so the fresh-load above doesn't re-run on every
@@ -6442,7 +6464,7 @@ export default function Recovery() {
     const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
     const _archiveEntry = contentSnapshots?.byContent?.archive;
     const _nextPage = (archiveSelected && _archiveEntry?.snapshotId)
-      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, itemPage, pageSize, debouncedSearch)
+      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, itemPage, pageSize, debouncedSearch, archiveFolder ?? undefined)
       : SnapshotService.listItems(
           selectedSnapshotId, itemPage, pageSize,
           activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
@@ -7917,17 +7939,19 @@ export default function Recovery() {
                     )}
                     {/* Online Archive — a folder section below the primary
                         folders (AFI convention). Shows only on Mail/Contacts
-                        when the resource has an archive backup; clicking it
-                        reroutes the item fetch to the archive child's snapshot,
-                        filtered to this tab's kind. */}
+                        when the resource has an archive backup; the item fetch
+                        reroutes to the archive child's snapshot, filtered to
+                        this tab's kind. "All items" shows the flat union; each
+                        archive folder below preserves the RETAINED nested
+                        hierarchy (full path, indented by depth). */}
                     {(activeContentType === 'mail' || activeContentType === 'contacts')
                       && contentSnapshots?.byContent?.archive && (
                       <>
                         <div className="folder-section-label">Online Archive</div>
                         <button
-                          className={`folder-item archive-folder-item ${archiveSelected ? 'active' : ''}`}
-                          onClick={() => setArchiveSelected(true)}
-                          title="Exchange Online Archive"
+                          className={`folder-item archive-folder-item ${archiveSelected && archiveFolder === null ? 'active' : ''}`}
+                          onClick={() => { setArchiveSelected(true); setArchiveFolder(null); }}
+                          title="All Exchange Online Archive items"
                         >
                           <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
                                stroke="currentColor" strokeWidth="2" strokeLinecap="round"
@@ -7936,8 +7960,29 @@ export default function Recovery() {
                             <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
                             <path d="M10 12h4" />
                           </svg>
-                          <span className="folder-name">Online Archive</span>
+                          <span className="folder-name">All items</span>
                         </button>
+                        {[...archiveFolders].sort((a, b) => a.path.localeCompare(b.path)).map(f => {
+                          const depth = f.path.split('/').length - 1;
+                          const leaf = f.path.split('/').pop() || f.path;
+                          return (
+                            <button
+                              key={f.path}
+                              className={`folder-item archive-folder-item ${archiveSelected && archiveFolder === f.path ? 'active' : ''}`}
+                              style={{ paddingLeft: `${20 + depth * 16}px` }}
+                              onClick={() => { setArchiveSelected(true); setArchiveFolder(f.path); }}
+                              title={f.path}
+                            >
+                              <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
+                                   stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                                   strokeLinejoin="round" aria-hidden="true">
+                                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                              </svg>
+                              <span className="folder-name">{leaf}</span>
+                              {f.count > 0 && <span className="folder-count">{f.count}</span>}
+                            </button>
+                          );
+                        })}
                       </>
                     )}
                   </div>
