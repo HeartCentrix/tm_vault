@@ -3543,7 +3543,7 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
    .folder-item above is a button; the has-check variant is a div that
    wraps a checkbox + an inner folder-name-btn (button-in-button is
    invalid HTML, hence the split). */
-.folder-check { flex-shrink: 0; margin: 0; accent-color: #2563eb; }
+.folder-check { flex-shrink: 0; margin: 0; accent-color: #D31245; }
 .folder-item.has-check .folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .folder-name-btn {
   background: none;
@@ -3694,10 +3694,10 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
-  color: #2563eb;
+  color: #D31245;
 }
 :root[data-theme="dark"] .folder-section-label {
   border-top-color: rgba(148, 163, 184, 0.22);
   color: #94a3b8;
 }
-:root[data-theme="dark"] .archive-folder-item .archive-folder-icon { color: #60a5fa; }
+:root[data-theme="dark"] .archive-folder-item .archive-folder-icon { color: #ED8FA0; }

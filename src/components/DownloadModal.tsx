@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import './RestoreModal.css';
 import './DownloadModal.css';
 import { RecoveryService } from '../services/recovery';
+import { API } from '../config/api';
 import { exportJobs } from '../services/exportJobs';
 import type { ContentTab } from '../services/snapshot';
 import { SnapshotService } from '../services/snapshot';
@@ -346,8 +347,7 @@ export function DownloadModal({
         // Background it: the SSE subscription runs independently of the modal,
         // so close the modal and drive the bottom-right toast from its
         // callbacks (they download the SAS artifact + mark the job done).
-        exportJobs.track(jobId, 'Chat export');
-        RecoveryService.subscribeChatExportStatus(jobId, {
+        const unsub = RecoveryService.subscribeChatExportStatus(jobId, {
           onProgress: () => { /* toast shows elapsed time, not percent */ },
           onComplete: (c) => {
             // SAS URL already carries auth in the query string — don't send any
@@ -367,6 +367,10 @@ export function DownloadModal({
             }
           },
           onError: (e) => exportJobs.markFailed(jobId, e?.code ?? 'Export failed'),
+        });
+        exportJobs.track(jobId, 'Chat export', {
+          cancelUrl: API.EXPORT.CHAT.CANCEL(jobId),
+          stop: unsub, // × closes the SSE stream + hits the chat cancel endpoint
         });
         setDownloading(false);
         onClose();

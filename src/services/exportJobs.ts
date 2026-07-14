@@ -1,6 +1,6 @@
-// Background export-job store. Exports (PST / ZIP / EML / MBOX / Entra) are
-// server-side jobs: the API returns a jobId, we poll /jobs/{id} until COMPLETED,
-// then fetch the artifact and trigger a browser download.
+// Background export-job store. Exports (PST / ZIP / EML / MBOX / Entra / Teams
+// chat) are server-side jobs: the API returns a jobId, we poll /jobs/{id} until
+// COMPLETED, then fetch the artifact and trigger a browser download.
 //
 // This store lives at module scope — NOT inside a React component — so the poll
 // survives route navigation (the user can move across screens while it runs).
@@ -25,6 +25,9 @@ export interface ExportJob {
 type Listener = () => void;
 
 const jobs = new Map<string, ExportJob>();
+// Per-job cancel plumbing kept out of the rendered snapshot.
+const cancelUrls = new Map<string, string>(); // server-side cancel endpoint
+const stoppers = new Map<string, () => void>(); // client-side stop (e.g. close SSE)
 const listeners = new Set<Listener>();
 let snapshot: ExportJob[] = [];
 
@@ -42,6 +45,13 @@ function set(id: string, patch: Partial<ExportJob>) {
   }
 }
 
+function remove(id: string) {
+  const existed = jobs.delete(id);
+  cancelUrls.delete(id);
+  stoppers.delete(id);
+  if (existed) emit();
+}
+
 function browserDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -56,9 +66,7 @@ function browserDownload(blob: Blob, filename: string) {
 async function poll(jobId: string, fallbackName: string, intervalMs: number) {
   for (let i = 0; i < 600; i++) {
     await new Promise((r) => setTimeout(r, intervalMs));
-    // NOTE: we keep polling even if the toast was dismissed — dismissing hides
-    // the notification but must NOT cancel the export; the file still downloads
-    // when ready (set() below is a harmless no-op once the job is gone).
+    if (!jobs.has(jobId)) return; // cancelled — stop polling
     let job: any;
     try {
       const res = await fetch(`${API.BASE_URL}/jobs/${jobId}`);
@@ -76,15 +84,15 @@ async function poll(jobId: string, fallbackName: string, intervalMs: number) {
         const m = cd.match(/filename="?([^"]+)"?/i);
         browserDownload(blob, m ? m[1] : fallbackName);
         set(jobId, { status: 'ready' });
-        // Clear the "downloaded" toast after a short confirmation window.
-        setTimeout(() => exportJobs.dismiss(jobId), 8000);
+        setTimeout(() => remove(jobId), 8000); // clear the "downloaded" toast
       } catch {
         set(jobId, { status: 'failed', error: 'Download failed — try again from Activity.' });
       }
       return;
     }
-    if (job.status === 'FAILED') {
-      set(jobId, { status: 'failed', error: 'Export failed. Please try again.' });
+    if (job.status === 'FAILED' || job.status === 'CANCELLED') {
+      if (job.status === 'CANCELLED') remove(jobId);
+      else set(jobId, { status: 'failed', error: 'Export failed. Please try again.' });
       return;
     }
   }
@@ -95,25 +103,42 @@ export const exportJobs = {
   /** Register a just-created export job and begin polling in the background. */
   start(jobId: string, label: string, fallbackName: string, intervalMs = 3000) {
     jobs.set(jobId, { id: jobId, label, status: 'running', startedAt: Date.now() });
+    cancelUrls.set(jobId, API.JOBS.CANCEL(jobId));
     emit();
     void poll(jobId, fallbackName, intervalMs);
   },
   /** Register a running job whose completion is driven EXTERNALLY (e.g. the
    *  Teams chat export's SSE stream). The caller downloads the artifact and
-   *  then calls markReady/markFailed. */
-  track(jobId: string, label: string) {
+   *  then calls markReady/markFailed. `cancelUrl`/`stop` wire up cancellation. */
+  track(jobId: string, label: string, opts?: { cancelUrl?: string; stop?: () => void }) {
     jobs.set(jobId, { id: jobId, label, status: 'running', startedAt: Date.now() });
+    if (opts?.cancelUrl) cancelUrls.set(jobId, opts.cancelUrl);
+    if (opts?.stop) stoppers.set(jobId, opts.stop);
     emit();
   },
   markReady(id: string) {
     set(id, { status: 'ready' });
-    setTimeout(() => exportJobs.dismiss(id), 8000);
+    setTimeout(() => remove(id), 8000);
   },
   markFailed(id: string, error: string) {
     set(id, { status: 'failed', error });
   },
-  dismiss(id: string) {
-    if (jobs.delete(id)) emit();
+  /** × on a card. Running → cancel the job (server + client); terminal → just
+   *  clear the notification. */
+  cancel(id: string) {
+    const j = jobs.get(id);
+    if (!j) return;
+    const wasRunning = j.status === 'running';
+    const url = cancelUrls.get(id);
+    const stop = stoppers.get(id);
+    remove(id); // poll aborts on !jobs.has(id); no re-appear from late set()
+    if (wasRunning) {
+      try { stop?.(); } catch { /* ignore */ }
+      if (url) fetch(url, { method: 'POST' }).catch(() => { /* best-effort */ });
+    }
+  },
+  cancelAll() {
+    for (const id of Array.from(jobs.keys())) exportJobs.cancel(id);
   },
   subscribe(l: Listener) {
     listeners.add(l);
