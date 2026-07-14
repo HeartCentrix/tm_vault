@@ -734,9 +734,9 @@ export function DownloadModal({
               if (scope !== 'selected') return null;
               if (folderPaths && folderPaths.length > 0) return null;
               if (!formats.some(f => f.value === 'PST')) return null;
-              // Contacts have no folder gate — every individual contact
-              // ships as its own PST.
-              if (contentType === 'contacts') return null;
+              // Contacts and the Online Archive have no folder-checkbox gate —
+              // selecting item rows alone unlocks PST, so no folder hint applies.
+              if (contentType === 'contacts' || isArchive) return null;
               const msg =
                 contentType === 'calendar'
                   ? 'To enable PST export, tick one or more calendars in the "Calendar" section of the sidebar. Multiple calendars → one PST per calendar.'
@@ -769,6 +769,8 @@ export function DownloadModal({
                   // contentType-specific direction: tell the user exactly
                   // which sidebar section enables PST for their tab.
                   // Contacts is exempt — itemIds alone unlock PST.
+                  if (isArchive)
+                    return 'Select one or more archived items to enable PST export.';
                   if (contentType === 'calendar')
                     return 'Tick one or more calendars in the "Calendar" filter sidebar to enable PST export. Multiple calendars produce one PST per calendar.';
                   if (contentType === 'contacts')
