@@ -8256,13 +8256,23 @@ export default function Recovery() {
               isOpen={restoreModalOpen}
               onClose={() => setRestoreModalOpen(false)}
               itemIds={Array.from(selectedItems)}
-              snapshotIds={selectedSnapshotId ? [selectedSnapshotId] : []}
+              snapshotIds={
+                // Online Archive selected → restore from the archive CHILD
+                // snapshot (its items are ARCHIVE_ITEM), not the primary.
+                archiveSelected && contentSnapshots?.byContent?.archive?.snapshotId
+                  ? [contentSnapshots.byContent.archive.snapshotId]
+                  : (selectedSnapshotId ? [selectedSnapshotId] : [])
+              }
+              isArchive={archiveSelected}
               itemName={restoreItemName}
               itemType={restoreItemType}
               resourceKind={effectiveResourceKind}
               chatRestoreUnsupported={isChatRestoreUnsupported}
               folderPaths={
-                activeContentType !== 'chats' && genericFolderSelected.size > 0
+                // Whole archive folder → recover every item in it.
+                archiveSelected && archiveFolder
+                  ? [archiveFolder]
+                  : activeContentType !== 'chats' && genericFolderSelected.size > 0
                   ? Array.from(genericFolderSelected)
                   : undefined
               }
@@ -8284,7 +8294,12 @@ export default function Recovery() {
               contentType={effectiveContentType}
               preserveTree={oneDriveFolderSelected.size > 0 || genericFolderSelected.size > 0}
               folderPaths={
-                activeContentType === 'calendar' && selectedCalendarPaths.length > 0
+                // Online Archive folder selected → export EVERY item in that
+                // folder (archiveFolder=null "All items" falls through to the
+                // whole-archive path).
+                archiveSelected && archiveFolder
+                  ? [archiveFolder]
+                  : activeContentType === 'calendar' && selectedCalendarPaths.length > 0
                   ? selectedCalendarPaths
                   : activeContentType !== 'chats' && genericFolderSelected.size > 0
                   ? Array.from(genericFolderSelected)

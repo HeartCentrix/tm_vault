@@ -25,6 +25,10 @@ interface RestoreModalProps {
   // ticks e.g. `/Inbox` in the left rail, we forward the path to the
   // backend; shared.folder_resolver expands it into item ids.
   folderPaths?: string[];
+  // The Online Archive is selected (browsed inside the Mail view). snapshotIds
+  // point at the archive child snapshot; restore must scope to the Archive
+  // workload so its ARCHIVE_ITEM rows aren't filtered out.
+  isArchive?: boolean;
 }
 
 const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
@@ -34,7 +38,7 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths, isArchive = false }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
   // Shared + room mailboxes have no OneDrive in M365 — hide it so users
@@ -349,8 +353,13 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
                 && (resourceKind === 'onedrive' || isSharepointSource)))
           && originalSub === 'overwrite',
         workloads:
-          !isPowerBiItem && !isPowerPlatformItem && !isSharepointSource
-            && scope === 'full' ? Array.from(workloads) : undefined,
+          // Archive restore must scope to the Archive workload or the backend's
+          // WORKLOAD_ITEM_TYPES filter drops every ARCHIVE_ITEM on a full-scope
+          // (whole-folder) restore.
+          isArchive
+            ? ['Archive']
+            : !isPowerBiItem && !isPowerPlatformItem && !isSharepointSource
+              && scope === 'full' ? Array.from(workloads) : undefined,
       });
       setSuccess(response.jobId);
     } catch (err) {
