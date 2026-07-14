@@ -34,6 +34,12 @@ export const EXPORT_FORMATS: Record<ContentTab, ExportFormatOption[]> = {
     { value: 'JSON', label: 'Export as JSON' },
     { value: 'PDF', label: 'Export as PDF' },
   ],
+  // Online Archive items are Exchange mail — same export formats as the mail tab.
+  archive: [
+    { value: 'MBOX', label: 'Export as MBOX' },
+    { value: 'EML', label: 'Export as EML' },
+    { value: 'PST', label: 'Export as PST', hint: 'Outlook .pst archive of the online-archive mail' },
+  ],
 };
 
 export const DEFAULT_FORMAT: Record<ContentTab, string> = {
@@ -42,6 +48,7 @@ export const DEFAULT_FORMAT: Record<ContentTab, string> = {
   contacts: 'VCF',
   calendar: 'ICS',
   chats: 'HTML',
+  archive: 'EML',
 };
 
 // Workload checkboxes shown when "Download all" is selected. Matches afi.ai layout.

@@ -1463,8 +1463,14 @@ function EmailItemRow({ item, selected, checked, onSelect, onCheck }: {
 }) {
   const raw = item.metadata?.raw || {};
   const from = raw.from?.emailAddress || {};
-  const sender = from.name || from.address || item.from || item.name || '(Unknown)';
-  const subject = raw.subject || item.subject || item.name || '(No subject)';
+  // Archive items are opaque until enrichment stages them → no subject/sender
+  // yet. Show the friendly kind + a "processing" pill until enrich_status flips.
+  const archiveProcessing = item.itemType === 'ARCHIVE_ITEM'
+    && item.metadata?.enrich_status !== 'enriched';
+  const sender = from.name || from.address || item.from
+    || (archiveProcessing ? 'Online Archive' : item.name) || '(Unknown)';
+  const subject = raw.subject || item.subject || item.name
+    || (archiveProcessing ? 'Archived item' : '(No subject)');
   const preview = raw.bodyPreview || item.preview || '';
   const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
   const dateStr = sentAt
@@ -1479,9 +1485,62 @@ function EmailItemRow({ item, selected, checked, onSelect, onCheck }: {
           <span className="email-item-sender">{sender}</span>
           <span className="email-item-date">{dateStr}</span>
         </div>
-        <div className="email-item-subject">{subject}</div>
+        <div className="email-item-subject">
+          {subject}
+          {archiveProcessing && <ArchiveProcessingPill />}
+        </div>
         {preview && <div className="email-item-preview">{preview}</div>}
       </div>
+    </div>
+  );
+}
+
+// Small "processing" pill shown on archive rows whose opaque blob hasn't been
+// staged into previewable JSON yet. The item is fully backed up and
+// restorable/exportable now — only the in-browser preview is still building.
+function ArchiveProcessingPill() {
+  return (
+    <span
+      className="archive-processing-pill"
+      role="note"
+      tabIndex={0}
+      aria-label="Preview processing — this archived item is backed up; its preview is still being prepared"
+      data-tooltip="Backed up & restorable now — building a readable preview. Refresh in a moment."
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+           strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+      Processing
+    </span>
+  );
+}
+
+// Detail-panel state for an archive item whose opaque MAPI blob hasn't been
+// staged into readable JSON yet. Reassures that the data IS captured and
+// restorable/exportable right now — only the in-browser preview is pending.
+function ArchiveProcessingPreview({ item }: { item: any }) {
+  const kind = item.metadata?.kind || 'Archived item';
+  return (
+    <div className="archive-processing-preview">
+      <div className="archive-processing-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+             strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      </div>
+      <h3 className="archive-processing-title">Preparing preview</h3>
+      <p className="archive-processing-body">
+        This {kind.toLowerCase()} from the Online Archive is <strong>fully backed up</strong>.
+        We&rsquo;re converting it into a readable preview in the background — this
+        usually takes a moment. Reopen it shortly to read it here.
+      </p>
+      <p className="archive-processing-hint">
+        You can <strong>restore</strong> or <strong>export</strong> it right now — those
+        don&rsquo;t wait for the preview.
+      </p>
     </div>
   );
 }
@@ -1495,6 +1554,14 @@ export function ItemPreview({ item }: { item: any }) {
     return <ChatPreview item={item} />;
   if (type === 'CALENDAR_EVENT') return <CalendarPreview item={item} />;
   if (type === 'USER_CONTACT' || type === 'CONTACT') return <ContactPreview item={item} />;
+
+  // Exchange Online Archive — enriched items ARE Graph email JSON in
+  // metadata.raw, so they render through the same EmailPreview as primary mail.
+  // Un-enriched items show the processing state (backed up + restorable now).
+  if (type === 'ARCHIVE_ITEM')
+    return item.metadata?.enrich_status === 'enriched'
+      ? <EmailPreview item={item} />
+      : <ArchiveProcessingPreview item={item} />;
 
   // OneNote
   if (type === 'ONENOTE_PAGE' || type === 'ONENOTE_PAGE_CONTENT'
@@ -6500,6 +6567,7 @@ export default function Recovery() {
       chats: 'TEAMS_CHAT_MESSAGE',
       calendar: 'CALENDAR_EVENT',
       contacts: 'USER_CONTACT',
+      archive: 'ARCHIVE_ITEM',
     };
     const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
 
@@ -6560,6 +6628,7 @@ export default function Recovery() {
       chats: 'TEAMS_CHAT_MESSAGE',
       calendar: 'CALENDAR_EVENT',
       contacts: 'USER_CONTACT',
+      archive: 'ARCHIVE_ITEM',
     };
     const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
 
@@ -7543,6 +7612,9 @@ export default function Recovery() {
                     // provisioning in M365, so hide the tab.
                     const kind = selectedResource.kind;
                     if (type === 'onedrive' && (kind === 'shared_mailbox' || kind === 'room_mailbox')) return false;
+                    // Online Archive is opt-in per user — only surface the tab
+                    // when this resource actually has an archive backup.
+                    if (type === 'archive' && !contentSnapshots?.byContent?.archive) return false;
                     return true;
                   })
                   .map(type => {
@@ -7933,11 +8005,14 @@ export default function Recovery() {
                         // row component from the active tab.
                         const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
                         const isChatContentType = activeContentType === 'chats';
-                        const isEmailType = activeContentType === 'mail';
+                        // Archive rows render like mail — once enriched they ARE
+                        // email JSON; before that EmailItemRow shows the kind +
+                        // a "processing" pill.
+                        const isEmailType = activeContentType === 'mail' || activeContentType === 'archive';
                         const isContactsContentType = activeContentType === 'contacts';
                         return recoveryItems.map(item => {
                           const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
-                          const isEmailItem = isEmailType || item.itemType === 'EMAIL';
+                          const isEmailItem = isEmailType || item.itemType === 'EMAIL' || item.itemType === 'ARCHIVE_ITEM';
                           const isContactItem = isContactsContentType || item.itemType === 'USER_CONTACT' || item.itemType === 'CONTACT';
                           return isChatItem ? (
                           <ChatItemRow

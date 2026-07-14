@@ -5,14 +5,17 @@ import { API } from '../config/api';
 
 // Five fixed content tabs rendered on Recovery. Hardcoded — no longer derived
 // from snapshot contents at runtime.
-export type ContentTab = 'mail' | 'onedrive' | 'contacts' | 'calendar' | 'chats';
-export const CONTENT_TABS: ContentTab[] = ['mail', 'onedrive', 'contacts', 'calendar', 'chats'];
+export type ContentTab = 'mail' | 'onedrive' | 'contacts' | 'calendar' | 'chats' | 'archive';
+export const CONTENT_TABS: ContentTab[] = ['mail', 'onedrive', 'contacts', 'calendar', 'chats', 'archive'];
 export const CONTENT_TAB_LABELS: Record<ContentTab, string> = {
   mail: 'Mail',
   onedrive: 'OneDrive',
   contacts: 'Contacts',
   calendar: 'Calendar',
   chats: 'Chats',
+  // Exchange Online Archive. The tab is filtered out unless the resource has
+  // an archive backup (byContent.archive), so most users never see it.
+  archive: 'Online Archive',
 };
 
 export interface SnapshotItem {
@@ -319,6 +322,7 @@ export const SnapshotService = {
       contacts: API.SNAPSHOTS.CONTACTS(snapshotId),
       calendar: API.SNAPSHOTS.CALENDAR(snapshotId),
       chats: API.SNAPSHOTS.CHATS(snapshotId),
+      archive: API.SNAPSHOTS.ARCHIVE(snapshotId),
     };
     const base = contentType ? endpoint[contentType] : API.SNAPSHOTS.MAIL(snapshotId);
     let url = `${base}?page=${page}&size=${size}`;

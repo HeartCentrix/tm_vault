@@ -109,6 +109,7 @@ export const API = {
     CONTACTS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/contacts`,
     CALENDAR: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/calendar`,
     CHATS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats`,
+    ARCHIVE: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/archive`,
     CHAT_GROUPS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/chats/groups`,
     CONTACT_FOLDERS: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/contact-folders`,
     AZURE_DB_TABLE: (snapshotId: string) => `${API_URL}/resources/snapshots/${snapshotId}/azure-db/table`,

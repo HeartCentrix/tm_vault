@@ -3559,3 +3559,111 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   gap: 8px;
 }
 
+
+/* ============================================================
+   Exchange Online Archive — "processing" states
+   Archive items are opaque until the enrichment service stages
+   them into readable JSON. Until then the row shows a pill and
+   the detail panel shows a reassuring processing state.
+   (Blue "processing" variant of the .license-limited-pill pattern.)
+   ============================================================ */
+.archive-processing-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  vertical-align: middle;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: help;
+  white-space: nowrap;
+  outline: none;
+}
+.archive-processing-pill svg { width: 12px; height: 12px; flex-shrink: 0; }
+.archive-processing-pill:focus-visible { box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.35); }
+.archive-processing-pill[data-tooltip]::after {
+  content: attr(data-tooltip);
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1000;
+  width: max-content;
+  max-width: 260px;
+  white-space: normal;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.archive-processing-pill:hover[data-tooltip]::after,
+.archive-processing-pill:focus-visible[data-tooltip]::after { display: block; }
+
+.archive-processing-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  padding: 48px 32px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+.archive-processing-icon { color: #2563eb; margin-bottom: 16px; }
+.archive-processing-icon svg { width: 48px; height: 48px; }
+.archive-processing-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--tm-text, #1e293b);
+}
+.archive-processing-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--tm-muted, #64748b);
+  margin: 0 0 14px;
+}
+.archive-processing-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1e40af;
+  margin: 0;
+  padding: 10px 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+/* Gentle attention pulse on the panel icon; disabled for reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .archive-processing-icon svg { animation: archive-pulse 1.8s ease-in-out infinite; }
+  @keyframes archive-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+}
+
+/* Dark mode (this app themes via [data-theme="dark"]) */
+:root[data-theme="dark"] .archive-processing-pill {
+  background: rgba(37, 99, 235, 0.18);
+  color: #93c5fd;
+  border-color: rgba(96, 165, 250, 0.35);
+}
+:root[data-theme="dark"] .archive-processing-icon { color: #60a5fa; }
+:root[data-theme="dark"] .archive-processing-hint {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(96, 165, 250, 0.28);
+  color: #bfdbfe;
+}
