@@ -6127,6 +6127,11 @@ export default function Recovery() {
     }
     if (currentTab && currentTab !== activeContentType) {
       setActiveContentType(currentTab);
+      // Leaving a tab drops any archive-folder selection so the new tab's main
+      // list never stays stuck on the previous tab's archive branch (covers
+      // history back/forward too, not just the tab-button click handler).
+      setArchiveSelected(false);
+      setArchiveFolder(null);
     }
     const v = searchParams.get('view');
     const nextView = v === 'recent' ? 'recent' : 'my-drive';
@@ -6431,7 +6436,10 @@ export default function Recovery() {
       return;
     }
     let alive = true;
-    SnapshotService.getFolders(snap, 'ARCHIVE_ITEM', 1, 200)
+    // Per-kind folders + counts (mail vs contacts vs calendar) — a shared
+    // archive folder holds all kinds, so counts must be category-scoped or the
+    // Contacts tab shows the mail total.
+    SnapshotService.getArchiveFolders(snap, activeContentType as ContentTab)
       .then(r => { if (alive) setArchiveFolders(r.content || []); })
       .catch(() => { if (alive) setArchiveFolders([]); });
     return () => { alive = false; };
@@ -7961,7 +7969,8 @@ export default function Recovery() {
                         archive folder below preserves the RETAINED nested
                         hierarchy (full path, indented by depth). */}
                     {(activeContentType === 'mail' || activeContentType === 'contacts')
-                      && contentSnapshots?.byContent?.archive && (
+                      && contentSnapshots?.byContent?.archive
+                      && archiveTree.length > 0 && (
                       <>
                         <div className="folder-section-label">Online Archive</div>
                         <button

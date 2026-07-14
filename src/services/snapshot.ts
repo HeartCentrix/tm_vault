@@ -442,6 +442,21 @@ export const SnapshotService = {
     return data;
   },
 
+  // Archive folders + counts for ONE kind (mail|contacts|calendar). Archive
+  // folders are shared across kinds, so a kind-agnostic count would show the
+  // mail total on the Contacts tab — category makes the count match the items.
+  async getArchiveFolders(
+    archiveSnapshotId: string,
+    category: ContentTab,
+  ): Promise<{ content: SnapshotFolder[]; total: number; page: number; size: number; hasMore: boolean }> {
+    const url = `${API.SNAPSHOTS.FOLDERS}?snapshot_id=${archiveSnapshotId}&item_type=ARCHIVE_ITEM&category=${encodeURIComponent(category)}&size=500`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch archive folders');
+    const data = await res.json();
+    if (Array.isArray(data)) return { content: data, total: data.length, page: 1, size: data.length, hasMore: false };
+    return data;
+  },
+
   /**
    * Fetch all calendar events for a snapshot (reads from blob storage).
    */
