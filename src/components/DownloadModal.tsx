@@ -169,6 +169,7 @@ function getPstAutoLabel(
   if (types.includes('EMAIL'))          typeLabels.push('mail');
   if (types.includes('CALENDAR_EVENT')) typeLabels.push('calendar');
   if (types.includes('USER_CONTACT'))   typeLabels.push('contacts');
+  if (types.includes('ARCHIVE_ITEM'))   typeLabels.push('archive');
   const what = typeLabels.join(' + ');
 
   if (gran === 'MAILBOX') {
