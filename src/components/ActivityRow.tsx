@@ -32,6 +32,7 @@ const TYPE_LABEL: Record<string, string> = {
   USER_CHATS:      'Chats',
   USER_CALENDAR:   'Calendar',
   USER_CONTACTS:   'Contacts',
+  USER_ARCHIVE:    'Online Archive',
   MAILBOX:         'Mailbox',
   SHARED_MAILBOX:  'Shared Mailbox',
   ROOM_MAILBOX:    'Room Mailbox',
