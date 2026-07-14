@@ -17,6 +17,9 @@
 .download-modal .btn-download:hover:not(:disabled) {
   background: #b00f39;
   border-color: #b00f39;
+  /* Pin white text — the global `button:hover` rule (global.css) flips text to
+     the pink accent, which would otherwise show pink-on-dark-red on hover. */
+  color: #fff;
 }
 
 .download-modal .btn-download:disabled {

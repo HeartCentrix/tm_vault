@@ -56,7 +56,9 @@ function browserDownload(blob: Blob, filename: string) {
 async function poll(jobId: string, fallbackName: string, intervalMs: number) {
   for (let i = 0; i < 600; i++) {
     await new Promise((r) => setTimeout(r, intervalMs));
-    if (!jobs.has(jobId)) return; // dismissed by the user
+    // NOTE: we keep polling even if the toast was dismissed — dismissing hides
+    // the notification but must NOT cancel the export; the file still downloads
+    // when ready (set() below is a harmless no-op once the job is gone).
     let job: any;
     try {
       const res = await fetch(`${API.BASE_URL}/jobs/${jobId}`);
