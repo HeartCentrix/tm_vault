@@ -6980,7 +6980,8 @@ export default function Recovery() {
     // pagination walk hydrates selectedItems, but we open the modal
     // immediately because folderPaths is forwarded to the backend
     // resolver regardless. Works even if the walk finds zero rows.
-    if (selectedItems.size === 0 && genericFolderSelected.size > 0) {
+    if (selectedItems.size === 0 &&
+        (genericFolderSelected.size > 0 || (archiveSelected && archiveFolderChecked.size > 0))) {
       setRestoreModalOpen(true);
       return;
     }
@@ -7514,20 +7515,26 @@ export default function Recovery() {
                 // which forwards them to the backend folder_resolver.
                 const genericFolderScoped =
                   activeContentType !== 'chats' && genericFolderSelected.size > 0;
+                // Online Archive folder checkboxes are their own selection set
+                // (kept separate from nav) — a ticked archive folder is a valid
+                // empty-item selection for folder-level export/recover.
+                const archiveFolderScoped =
+                  archiveSelected && archiveFolderChecked.size > 0;
                 const allowEmptyDownload =
                   (isAzureDb && azureDbTab === 'configuration') ||
                   (isAzureVm && vmTab !== 'volumes') ||
                   vmVolumesHasPick ||
                   calendarFilterScoped ||
                   chatThreadScoped ||
-                  genericFolderScoped;
+                  genericFolderScoped ||
+                  archiveFolderScoped;
                 // Azure DB + VM Recover always rebuild the full resource,
                 // so no checkbox selection is needed regardless of tab.
                 // Chat Recover stays blocked by toolbarIsChat below —
                 // Graph has no app-only chat-post API, so enabling
                 // thread scope there would just open a dead modal.
                 const allowEmptyRecover =
-                  isAzureDb || isAzureVm || calendarFilterScoped || genericFolderScoped;
+                  isAzureDb || isAzureVm || calendarFilterScoped || genericFolderScoped || archiveFolderScoped;
                 // Chat restore is a Microsoft platform limit — no
                 // app-only API to post chat/channel messages as another
                 // user. Grey out Recover so users don't submit a no-op
