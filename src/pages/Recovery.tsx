@@ -6059,6 +6059,11 @@ export default function Recovery() {
   // null = all archive items of this tab's kind. Drives the listArchive folder
   // filter so the retained archive folder hierarchy is browsable, not flat.
   const [archiveFolder, setArchiveFolder] = useState<string | null>(null);
+  // Archive folders TICKED for export/recover (full nested paths). Kept
+  // separate from `archiveFolder` (which is navigation only) so the user can
+  // EITHER tick whole folders (folder-level PST) OR navigate into a folder and
+  // tick individual items (item-level PST) — the two no longer collide.
+  const [archiveFolderChecked, setArchiveFolderChecked] = useState<Set<string>>(new Set());
   const [archiveFolders, setArchiveFolders] = useState<SnapshotFolder[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(false);
   // Left-panel folders pagination — 50 at a time, infinite-scroll appends.
@@ -6132,6 +6137,7 @@ export default function Recovery() {
       // history back/forward too, not just the tab-button click handler).
       setArchiveSelected(false);
       setArchiveFolder(null);
+      setArchiveFolderChecked(new Set());
     }
     const v = searchParams.get('view');
     const nextView = v === 'recent' ? 'recent' : 'my-drive';
@@ -7991,21 +7997,42 @@ export default function Recovery() {
                           const depth = f.path.split('/').length - 1;
                           const leaf = f.path.split('/').pop() || f.path;
                           return (
-                            <button
+                            <div
                               key={f.path}
-                              className={`folder-item archive-folder-item ${archiveSelected && archiveFolder === f.path ? 'active' : ''}`}
+                              className={`folder-item archive-folder-item has-check ${archiveSelected && archiveFolder === f.path ? 'active' : ''}`}
                               style={{ paddingLeft: `${20 + depth * 16}px` }}
-                              onClick={() => { setArchiveSelected(true); setArchiveFolder(f.path); }}
-                              title={f.path}
                             >
-                              <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
-                                   stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                                   strokeLinejoin="round" aria-hidden="true">
-                                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                              </svg>
-                              <span className="folder-name">{leaf}</span>
-                              {f.count > 0 && <span className="folder-count">{f.count}</span>}
-                            </button>
+                              {/* Checkbox = pick this whole folder for export/
+                                  recover (folder-level PST). Independent of the
+                                  name button, which only navigates to view the
+                                  folder's items so individual items can be
+                                  ticked (item-level PST). */}
+                              <input
+                                type="checkbox"
+                                className="folder-check"
+                                checked={archiveFolderChecked.has(f.path)}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => setArchiveFolderChecked(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(f.path)) next.delete(f.path); else next.add(f.path);
+                                  return next;
+                                })}
+                                title="Select this archive folder for export / recover"
+                              />
+                              <button
+                                className="folder-name-btn"
+                                onClick={() => { setArchiveSelected(true); setArchiveFolder(f.path); }}
+                                title={f.path}
+                              >
+                                <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                                     strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                                </svg>
+                                <span className="folder-name">{leaf}</span>
+                                {f.count > 0 && <span className="folder-count">{f.count}</span>}
+                              </button>
+                            </div>
                           );
                         })}
                       </>
@@ -8269,9 +8296,11 @@ export default function Recovery() {
               resourceKind={effectiveResourceKind}
               chatRestoreUnsupported={isChatRestoreUnsupported}
               folderPaths={
-                // Whole archive folder → recover every item in it.
-                archiveSelected && archiveFolder
-                  ? [archiveFolder]
+                // Online Archive: recover every item in the TICKED folders
+                // (folder-level). Navigation no longer scopes recover, so
+                // ticking individual items gives item-level recover.
+                archiveSelected && archiveFolderChecked.size > 0
+                  ? Array.from(archiveFolderChecked)
                   : activeContentType !== 'chats' && genericFolderSelected.size > 0
                   ? Array.from(genericFolderSelected)
                   : undefined
@@ -8294,11 +8323,12 @@ export default function Recovery() {
               contentType={effectiveContentType}
               preserveTree={oneDriveFolderSelected.size > 0 || genericFolderSelected.size > 0}
               folderPaths={
-                // Online Archive folder selected → export EVERY item in that
-                // folder (archiveFolder=null "All items" falls through to the
-                // whole-archive path).
-                archiveSelected && archiveFolder
-                  ? [archiveFolder]
+                // Online Archive: export every item in the TICKED folders
+                // (folder-level PST). Navigation (archiveFolder) no longer
+                // scopes the export, so navigating a folder to tick individual
+                // items gives item-level PST instead.
+                archiveSelected && archiveFolderChecked.size > 0
+                  ? Array.from(archiveFolderChecked)
                   : activeContentType === 'calendar' && selectedCalendarPaths.length > 0
                   ? selectedCalendarPaths
                   : activeContentType !== 'chats' && genericFolderSelected.size > 0

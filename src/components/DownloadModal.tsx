@@ -68,10 +68,11 @@ function hasPstCompatibleWorkload(
 ): boolean {
   if (scope === 'selected') {
     if (folderPaths && folderPaths.length > 0) return true;
-    // Contacts + Online Archive: no folder gate — itemIds alone is enough
-    // (each archive item is a self-contained enriched message).
-    if (contentType === 'contacts' && itemCount > 0) return true;
-    if (isArchive && itemCount > 0) return true;
+    // Any explicitly-ticked items are PST-exportable — mail, contacts,
+    // calendar, and Online Archive all support item-level PST (one PST per
+    // item, or rebuilt into a folder tree). Don't gate mail behind a folder
+    // pick: selecting a single email must keep PST available.
+    if (itemCount > 0) return true;
     return false;
   }
   // "all" scope: the Online Archive is itself PST-compatible.
@@ -770,12 +771,12 @@ export function DownloadModal({
                   // which sidebar section enables PST for their tab.
                   // Contacts is exempt — itemIds alone unlock PST.
                   if (isArchive)
-                    return 'Select one or more archived items to enable PST export.';
+                    return 'Select one or more archived items — or tick archive folders in the left sidebar — to enable PST export.';
                   if (contentType === 'calendar')
                     return 'Tick one or more calendars in the "Calendar" filter sidebar to enable PST export. Multiple calendars produce one PST per calendar.';
                   if (contentType === 'contacts')
                     return 'Select one or more contacts to enable PST export.';
-                  return 'Tick one or more folders in the left sidebar to enable PST export. Multiple folders produce one PST containing the source folder tree.';
+                  return 'Select one or more items, or tick folders in the left sidebar, to enable PST export. Multiple folders produce one PST containing the source folder tree.';
                 })();
                 return formats.map(f => {
                   const pstDisabled = f.value === 'PST' && pstDisabledGlobal;
