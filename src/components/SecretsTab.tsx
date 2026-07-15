@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { API } from '../config/api';
 import AddSecretModal from './AddSecretModal';
+import EncryptionPanel from './EncryptionPanel';
 import './SecretsTab.css';
 
 /**
@@ -84,10 +85,11 @@ export default function SecretsTab({ tenantId }: { tenantId: string }) {
 
   return (
     <div className="secrets-tab">
+      <EncryptionPanel />
+
       <p className="secrets-blurb">
-        All backup data is encrypted with service-managed AES-256 encryption by default.
-        You can configure the service to use an external Key Management System.
-        <span className="secrets-info-icon" title="External KMS is used to wrap the per-tenant DEK. Supported providers: GCP, AWS, Azure Key Vault.">ⓘ</span>
+        Connection secrets (database logins, KMS references) used during backup and restore.
+        <span className="secrets-info-icon" title="Encryption keys are configured in the At-rest encryption panel above. Secret material is never stored here.">ⓘ</span>
       </p>
 
       {error && <div className="secrets-error">{error}</div>}

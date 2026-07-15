@@ -1481,6 +1481,45 @@
   color: var(--tm-accent-soft) !important;
 }
 
+/* At-rest encryption panel — dark theme */
+[data-theme="dark"] .enc-panel {
+  background: var(--tm-surface) !important;
+  border: 1px solid var(--tm-border) !important;
+}
+[data-theme="dark"] .enc-panel--loading,
+[data-theme="dark"] .enc-panel-sub,
+[data-theme="dark"] .enc-help,
+[data-theme="dark"] .enc-note { color: var(--tm-body) !important; }
+[data-theme="dark"] .enc-panel-head h3,
+[data-theme="dark"] .enc-label,
+[data-theme="dark"] .enc-toggle { color: var(--tm-text) !important; }
+[data-theme="dark"] .enc-seg {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .enc-seg-btn { color: var(--tm-body) !important; }
+[data-theme="dark"] .enc-seg-btn:hover { color: var(--tm-text) !important; }
+[data-theme="dark"] .enc-seg-btn.is-active {
+  background: var(--tm-accent) !important;
+  color: #0b0f1a !important;
+}
+[data-theme="dark"] .enc-input {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-border) !important;
+  color: var(--tm-text) !important;
+}
+[data-theme="dark"] .enc-note {
+  background: var(--tm-surface-2) !important;
+  border-color: var(--tm-border) !important;
+}
+[data-theme="dark"] .enc-status--on   { background: rgba(22,163,74,0.15) !important; color: #6ee7b7 !important; }
+[data-theme="dark"] .enc-status--off  { background: var(--tm-surface-2) !important; color: var(--tm-body) !important; }
+[data-theme="dark"] .enc-ok {
+  background: rgba(22,163,74,0.12) !important;
+  border-color: rgba(22,163,74,0.4) !important;
+  color: #6ee7b7 !important;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    25. Recovery page — comprehensive dark-theme pass
    Covers the header (avatar, name/email, last-backup info), the stats
