@@ -17,7 +17,6 @@ export interface ReportConfig {
   email_recipients: string[];
   slack_webhooks: WebhookConfig[];
   teams_webhooks: WebhookConfig[];
-  googlechat_webhooks: WebhookConfig[];
   created_at: string;
   updated_at: string;
 }
@@ -50,7 +49,6 @@ export interface ReportConfigCreate {
   email_recipients: string[];
   slack_webhooks: WebhookConfig[];
   teams_webhooks: WebhookConfig[];
-  googlechat_webhooks: WebhookConfig[];
 }
 
 export interface ReportConfigUpdate {
@@ -62,7 +60,6 @@ export interface ReportConfigUpdate {
   email_recipients?: string[];
   slack_webhooks?: WebhookConfig[];
   teams_webhooks?: WebhookConfig[];
-  googlechat_webhooks?: WebhookConfig[];
 }
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };

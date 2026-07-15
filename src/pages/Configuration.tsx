@@ -23,27 +23,72 @@ export default function Configuration() {
   
   const [slackWebhooks, setSlackWebhooks] = useState<WebhookConfig[]>([]);
   const [teamsWebhooks, setTeamsWebhooks] = useState<WebhookConfig[]>([]);
-  const [googlechatWebhooks, setGooglechatWebhooks] = useState<WebhookConfig[]>([]);
+
+  // Snapshot of the last-saved config; the form is "dirty" when it diverges.
+  // Prevents the silent-loss trap where "+ Add" stages a change locally but the
+  // user navigates away before clicking Save.
+  const [savedSnapshot, setSavedSnapshot] = useState('');
 
   // Load configuration on mount
   useEffect(() => {
     loadConfiguration();
   }, []);
 
+  const buildPayload = (v: {
+    enabled: boolean; schedule_type: string; send_empty_report: boolean;
+    empty_message: string; send_detailed_report: boolean;
+    email_recipients: string[]; slack_webhooks: WebhookConfig[]; teams_webhooks: WebhookConfig[];
+  }) => ({
+    enabled: v.enabled,
+    schedule_type: v.schedule_type,
+    send_empty_report: v.send_empty_report,
+    empty_message: v.empty_message,
+    send_detailed_report: v.send_detailed_report,
+    email_recipients: v.email_recipients,
+    slack_webhooks: v.slack_webhooks,
+    teams_webhooks: v.teams_webhooks,
+  });
+
+  const currentPayload = () => buildPayload({
+    enabled: reportsEnabled, schedule_type: schedule, send_empty_report: sendEmptyReport,
+    empty_message: emptyMessage, send_detailed_report: sendDetailedReport,
+    email_recipients: emailRecipients, slack_webhooks: slackWebhooks, teams_webhooks: teamsWebhooks,
+  });
+
+  const dirty = savedSnapshot !== '' && JSON.stringify(currentPayload()) !== savedSnapshot;
+
+  // Warn before a browser refresh/close/URL navigation drops unsaved edits.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
   const loadConfiguration = async () => {
     try {
       setLoading(true);
       const config = await reportService.getConfig();
       
-      setReportsEnabled(config.enabled);
-      setSchedule(config.schedule_type);
-      setSendEmptyReport(config.send_empty_report);
-      setEmptyMessage(config.empty_message || 'No updates. No backups occurred.');
-      setSendDetailedReport(config.send_detailed_report ?? false);
-      setEmailRecipients(config.email_recipients || []);
-      setSlackWebhooks(config.slack_webhooks || []);
-      setTeamsWebhooks(config.teams_webhooks || []);
-      setGooglechatWebhooks(config.googlechat_webhooks || []);
+      const resolved = {
+        enabled: config.enabled,
+        schedule_type: config.schedule_type,
+        send_empty_report: config.send_empty_report,
+        empty_message: config.empty_message || 'No updates. No backups occurred.',
+        send_detailed_report: config.send_detailed_report ?? false,
+        email_recipients: config.email_recipients || [],
+        slack_webhooks: config.slack_webhooks || [],
+        teams_webhooks: config.teams_webhooks || [],
+      };
+      setReportsEnabled(resolved.enabled);
+      setSchedule(resolved.schedule_type);
+      setSendEmptyReport(resolved.send_empty_report);
+      setEmptyMessage(resolved.empty_message);
+      setSendDetailedReport(resolved.send_detailed_report);
+      setEmailRecipients(resolved.email_recipients);
+      setSlackWebhooks(resolved.slack_webhooks);
+      setTeamsWebhooks(resolved.teams_webhooks);
+      setSavedSnapshot(JSON.stringify(buildPayload(resolved)));
     } catch (error) {
       console.error('Failed to load configuration:', error);
       setMessage({ type: 'error', text: 'Failed to load configuration' });
@@ -72,17 +117,9 @@ export default function Configuration() {
       setSaving(true);
       setMessage(null);
 
-      await reportService.updateConfig({
-        enabled: reportsEnabled,
-        schedule_type: schedule,
-        send_empty_report: sendEmptyReport,
-        empty_message: emptyMessage,
-        send_detailed_report: sendDetailedReport,
-        email_recipients: emailRecipients,
-        slack_webhooks: slackWebhooks,
-        teams_webhooks: teamsWebhooks,
-        googlechat_webhooks: googlechatWebhooks,
-      });
+      const payload = currentPayload();
+      await reportService.updateConfig(payload);
+      setSavedSnapshot(JSON.stringify(payload));  // form is now clean
 
       setMessage({ type: 'success', text: 'Configuration saved successfully!' });
     } catch (error) {
@@ -106,43 +143,36 @@ export default function Configuration() {
   };
 
   // Webhook helpers
-  const addWebhook = (type: 'slack' | 'teams' | 'googlechat', url: string) => {
+  const addWebhook = (type: 'slack' | 'teams', url: string) => {
     const name = `Webhook ${getWebhooks(type).length + 1}`;
     const webhook: WebhookConfig = { name, url, enabled: true };
-    
+
     if (type === 'slack') {
       setSlackWebhooks([...slackWebhooks, webhook]);
-    } else if (type === 'teams') {
-      setTeamsWebhooks([...teamsWebhooks, webhook]);
     } else {
-      setGooglechatWebhooks([...googlechatWebhooks, webhook]);
+      setTeamsWebhooks([...teamsWebhooks, webhook]);
     }
   };
 
-  const removeWebhook = (type: 'slack' | 'teams' | 'googlechat', index: number) => {
+  const removeWebhook = (type: 'slack' | 'teams', index: number) => {
     if (type === 'slack') {
       setSlackWebhooks(slackWebhooks.filter((_, i) => i !== index));
-    } else if (type === 'teams') {
-      setTeamsWebhooks(teamsWebhooks.filter((_, i) => i !== index));
     } else {
-      setGooglechatWebhooks(googlechatWebhooks.filter((_, i) => i !== index));
+      setTeamsWebhooks(teamsWebhooks.filter((_, i) => i !== index));
     }
   };
 
-  const toggleWebhook = (type: 'slack' | 'teams' | 'googlechat', index: number) => {
+  const toggleWebhook = (type: 'slack' | 'teams', index: number) => {
     if (type === 'slack') {
       setSlackWebhooks(slackWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
-    } else if (type === 'teams') {
-      setTeamsWebhooks(teamsWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
     } else {
-      setGooglechatWebhooks(googlechatWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
+      setTeamsWebhooks(teamsWebhooks.map((w, i) => i === index ? { ...w, enabled: !w.enabled } : w));
     }
   };
 
-  const getWebhooks = (type: 'slack' | 'teams' | 'googlechat') => {
+  const getWebhooks = (type: 'slack' | 'teams') => {
     if (type === 'slack') return slackWebhooks;
-    if (type === 'teams') return teamsWebhooks;
-    return googlechatWebhooks;
+    return teamsWebhooks;
   };
 
   if (loading) {
@@ -330,22 +360,25 @@ export default function Configuration() {
               onRemove={(index) => removeWebhook('teams', index)}
               onToggle={(index) => toggleWebhook('teams', index)}
             />
-
-            {/* Google Chat Webhooks */}
-            <WebhookSection
-              title="Google Chat Webhooks"
-              webhooks={googlechatWebhooks}
-              onAdd={(url) => addWebhook('googlechat', url)}
-              onRemove={(index) => removeWebhook('googlechat', index)}
-              onToggle={(index) => toggleWebhook('googlechat', index)}
-            />
           </>
         )}
 
         {/* Save Button */}
-        <button className="save-btn" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Configuration'}
-        </button>
+        <div className="config-save-bar">
+          {dirty && (
+            <span className="config-unsaved" role="status">
+              <span className="config-unsaved-dot" aria-hidden="true" />
+              Unsaved changes — click Save to keep them
+            </span>
+          )}
+          <button
+            className={`save-btn${dirty ? ' save-btn--dirty' : ''}`}
+            onClick={handleSave}
+            disabled={saving || !dirty}
+          >
+            {saving ? 'Saving...' : dirty ? 'Save Configuration' : 'Saved'}
+          </button>
+        </div>
       </div>
     </div>
   );

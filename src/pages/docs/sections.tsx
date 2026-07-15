@@ -932,12 +932,12 @@ export function ServicesSection() {
         Scheduled reports — daily / weekly / monthly. Operator-defined
         schedules persisted in <code>report_configs</code>; history
         of past sends in <code>report_history</code> with per-channel
-        delivery status (email, Slack, Teams, Google Chat).
+        delivery status (email, Slack, Teams).
       </p>
       <ul>
         <li><strong>Endpoints (8):</strong> config CRUD, history listing, manual send / test send.</li>
         <li><strong>Tables:</strong> <code>report_configs</code>, <code>report_history</code>.</li>
-        <li><strong>External:</strong> SMTP for email; webhook URLs for Slack / Teams / Google Chat.</li>
+        <li><strong>External:</strong> SMTP for email; webhook URLs for Slack / Teams.</li>
       </ul>
 
       <h5>search-service</h5>

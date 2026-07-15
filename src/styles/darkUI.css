@@ -1519,6 +1519,8 @@
   border-color: rgba(22,163,74,0.4) !important;
   color: #6ee7b7 !important;
 }
+[data-theme="dark"] .config-unsaved { color: #fbbf24 !important; }
+[data-theme="dark"] .config-unsaved-dot { background: #fbbf24 !important; }
 
 /* ─────────────────────────────────────────────────────────────────────
    25. Recovery page — comprehensive dark-theme pass
