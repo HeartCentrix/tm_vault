@@ -4,6 +4,7 @@ import {
   ArchitectureSection,
   GettingStartedSection,
   GraphAppSetupSection,
+  ExchangeArchiveSection,
   ServicesSection,
   WorkersSection,
   DataModelSection,
@@ -52,6 +53,12 @@ export const DOCS_SECTIONS: DocSection[] = [
     title: 'Entra App Registration',
     level: 1,
     content: <GraphAppSetupSection />,
+  },
+  {
+    id: 'exchange-archive',
+    title: 'Exchange Online Archive',
+    level: 1,
+    content: <ExchangeArchiveSection />,
   },
   {
     id: 'services',

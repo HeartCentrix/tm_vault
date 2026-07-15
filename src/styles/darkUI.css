@@ -1365,7 +1365,10 @@
   box-shadow: inset 3px 0 0 var(--row-selected-accent) !important;
   border-left: none !important;
 }
-[data-theme="dark"] .resource-kind-pill,
+[data-theme="dark"] .resource-kind-pill {
+  background: rgba(211, 18, 69, 0.22) !important;
+  color: #ED8FA0 !important;
+}
 [data-theme="dark"] .kind-badge {
   background: var(--tm-hover) !important;
   color: var(--tm-text) !important;
@@ -1679,6 +1682,15 @@
   background: var(--tm-hover) !important;
   color: var(--tm-text) !important;
 }
+/* Outlook-tree twisty + folder glyph */
+[data-theme="dark"] .folder-twisty { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .folder-twisty:hover {
+  color: var(--tm-text) !important;
+  background: rgba(148, 163, 184, 0.16) !important;
+}
+[data-theme="dark"] .folder-glyph { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .folder-item:hover .folder-glyph { color: var(--tm-text) !important; }
+[data-theme="dark"] .folder-item.active .folder-glyph { color: var(--tm-accent-soft) !important; }
 
 /* Has-check folder rows (mail/contacts/chats) wrap a checkbox + an inner
    .folder-name-btn button. The generic [data-theme="dark"] button rule

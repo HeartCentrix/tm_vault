@@ -1,0 +1,251 @@
+/* ============================================================================
+ * Entra download / restore forms — AFI-style selectable card grid.
+ * Shared by EntraDownloadForm and EntraRestoreForm. Spans the full modal
+ * width (the modal wraps it in a 2-col .modal-columns grid; a lone child
+ * would otherwise sit in one 300px column).
+ * ==========================================================================*/
+.entra-form {
+  grid-column: 1 / -1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.entra-form__group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.entra-form__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+.entra-form__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.entra-form__selectall {
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #D31245;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.entra-form__selectall:hover { text-decoration: underline; }
+
+/* ---- segmented control (scope / format) ------------------------------------ */
+.entra-seg {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  gap: 3px;
+  background: #f1f5f9;
+  border-radius: 9px;
+}
+.entra-seg__btn {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background 0.15s, color 0.15s;
+}
+.entra-seg__btn:hover { color: #334155; }
+.entra-seg__btn[aria-checked='true'] {
+  background: #ffffff;
+  color: #D31245;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+/* ---- selectable card grid -------------------------------------------------- */
+.entra-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  .entra-grid { grid-template-columns: 1fr; }
+}
+
+.entra-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  text-align: left;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.entra-card:hover { border-color: #cbd5e1; }
+.entra-card--on {
+  border-color: #D31245;
+  background: #fdf2f5;
+}
+.entra-card__icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #64748b;
+  transition: background 0.15s, color 0.15s;
+}
+.entra-card--on .entra-card__icon {
+  background: #fbe0e7;
+  color: #D31245;
+}
+.entra-card__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  line-height: 1.3;
+}
+.entra-card__check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd5e1;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.entra-card--on .entra-card__check {
+  background: #D31245;
+  border-color: #D31245;
+}
+.entra-card__check svg { opacity: 0; transition: opacity 0.15s; }
+.entra-card--on .entra-card__check svg { opacity: 1; }
+
+/* ---- toggle-switch sub-options (membership, nested detail) ------------------ */
+.entra-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.entra-option--disabled { opacity: 0.5; cursor: not-allowed; }
+.entra-option input { position: absolute; opacity: 0; width: 0; height: 0; }
+.entra-switch {
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  position: relative;
+  transition: background 0.15s;
+}
+.entra-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
+  transition: transform 0.15s;
+}
+.entra-option input:checked + .entra-switch { background: #D31245; }
+.entra-option input:checked + .entra-switch::after { transform: translateX(16px); }
+.entra-option__text { display: flex; flex-direction: column; gap: 1px; }
+.entra-option__title { font-size: 13px; font-weight: 500; color: #334155; }
+.entra-option__sub { font-size: 12px; color: #64748b; line-height: 1.4; }
+
+/* ---- read-only / json-only informational note ------------------------------ */
+.entra-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #64748b;
+}
+.entra-note svg { flex-shrink: 0; margin-top: 1px; color: #94a3b8; }
+
+/* ---- focus rings: brand-pink, rounded (kill default blue rectangle) --------- */
+.entra-card:focus-visible,
+.entra-seg__btn:focus-visible,
+.entra-option:focus-within,
+.entra-form__selectall:focus-visible {
+  outline: 2px solid #D31245;
+  outline-offset: 2px;
+}
+.entra-card:focus:not(:focus-visible),
+.entra-seg__btn:focus:not(:focus-visible) { outline: none; }
+
+/* ============================ Dark mode ==================================== */
+[data-theme='dark'] .entra-form__title { color: #64748b; }
+[data-theme='dark'] .entra-form__selectall,
+[data-theme='dark'] .entra-seg__btn[aria-checked='true'] { color: #ED8FA0; }
+
+[data-theme='dark'] .entra-seg { background: #0f172a; }
+[data-theme='dark'] .entra-seg__btn { color: #94a3b8; }
+[data-theme='dark'] .entra-seg__btn:hover { color: #e2e8f0; }
+[data-theme='dark'] .entra-seg__btn[aria-checked='true'] {
+  background: #1e293b;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .entra-card {
+  background: #1e293b;
+  border-color: rgba(148, 163, 184, 0.22);
+}
+[data-theme='dark'] .entra-card:hover { border-color: rgba(148, 163, 184, 0.4); }
+[data-theme='dark'] .entra-card--on {
+  border-color: #ED8FA0;
+  background: rgba(211, 18, 69, 0.15);
+}
+[data-theme='dark'] .entra-card__icon { background: #0f172a; color: #94a3b8; }
+[data-theme='dark'] .entra-card--on .entra-card__icon { background: rgba(211, 18, 69, 0.25); color: #ED8FA0; }
+[data-theme='dark'] .entra-card__label { color: #e2e8f0; }
+[data-theme='dark'] .entra-card__check { border-color: #475569; }
+[data-theme='dark'] .entra-card--on .entra-card__check { background: #ED8FA0; border-color: #ED8FA0; color: #1e293b; }
+
+[data-theme='dark'] .entra-option { border-color: rgba(148, 163, 184, 0.22); }
+[data-theme='dark'] .entra-switch { background: #475569; }
+[data-theme='dark'] .entra-option input:checked + .entra-switch { background: #ED8FA0; }
+[data-theme='dark'] .entra-option__title { color: #e2e8f0; }
+[data-theme='dark'] .entra-option__sub { color: #94a3b8; }
+
+[data-theme='dark'] .entra-note { background: #0f172a; border-color: rgba(148, 163, 184, 0.22); color: #94a3b8; }
+
+[data-theme='dark'] .entra-card:focus-visible,
+[data-theme='dark'] .entra-seg__btn:focus-visible,
+[data-theme='dark'] .entra-option:focus-within,
+[data-theme='dark'] .entra-form__selectall:focus-visible { outline-color: #ED8FA0; }

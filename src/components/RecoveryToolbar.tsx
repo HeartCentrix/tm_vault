@@ -74,7 +74,12 @@ function VersionDropdown({
     };
   }, [open]);
 
-  const selected = items.find(s => s.id === value);
+  // For M365 content tabs the parent's `value` (a Tier-2 child snapshot id)
+  // isn't in this list of the parent's snapshots, so an exact `find` misses.
+  // The list is newest-first and the resolver already defaults to the latest
+  // backup, so fall back to items[0] (the newest) instead of showing a bare
+  // "Select version" — the newest version IS what's being viewed.
+  const selected = items.find(s => s.id === value) || items[0];
   const buttonLabel = items.length === 0
     ? 'No backups yet'
     : selected ? formatLabel(selected) : 'Select version';

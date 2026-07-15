@@ -203,11 +203,20 @@
 
 .resource-kind-pill {
   display: inline-block;
+  max-width: 100%;
   padding: 1px 8px;
   font-size: 11px;
   font-weight: 500;
-  background: #e2e8f0;
-  color: #475569;
+  /* nowrap + ellipsis: never wrap "Azure Active Directory" onto a 2nd line
+     (which made the pill box wider than its shorter second line). */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  /* On-brand tint instead of cold grey (#e2e8f0), which clashed with the
+     warm-cream row hover and read as a stray "light box" around the text. */
+  background: rgba(211, 18, 69, 0.08);
+  color: #b00f39;
   border-radius: 10px;
 }
 
@@ -251,7 +260,8 @@
 .resource-list-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;      /* pill stays one line; "Last backup" drops below if tight */
+  gap: 2px 6px;
   margin-top: 4px;
   font-size: 11px;
   color: #94a3b8;
@@ -860,9 +870,19 @@
 
 .folder-name {
   flex: 1;
+  min-width: 0;
+  /* Single line + ellipsis: long chat/thread names no longer wrap to 2-3
+     lines (which stretched the count pill vertically). Full name is in the
+     row's title attribute. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .folder-count {
+  flex-shrink: 0;
+  align-self: center;   /* never stretch to the row's (multi-line) height */
+  white-space: nowrap;
   background: #e2e8f0;
   color: #64748b;
   font-size: 11px;
@@ -870,6 +890,40 @@
   border-radius: 10px;
   font-weight: 500;
 }
+
+/* ── Outlook-style mailbox folder tree (mail / contacts) ─────────────────── */
+.folder-twisty {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.folder-twisty:hover { color: #475569; background: rgba(148, 163, 184, 0.18); }
+.folder-twisty svg { transition: transform 0.15s ease; }
+.folder-twisty--open svg { transform: rotate(90deg); }
+.folder-twisty--leaf { cursor: default; }
+.folder-twisty--leaf:hover { background: none; }
+
+.folder-glyph {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  transition: color 0.15s;
+}
+.folder-item:hover .folder-glyph { color: #64748b; }
+.folder-item.active .folder-glyph { color: var(--row-selected-accent); }
 
 /* Middle Panel: Item List */
 .panel-middle {
@@ -3550,13 +3604,15 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   border: 0;
   text-align: left;
   flex: 1;
+  min-width: 0;
   padding: 0;
   cursor: pointer;
   color: inherit;
   font: inherit;
   display: flex;
+  align-items: center;   /* keep the count pill centred, not stretched tall */
   justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
 }
 
 

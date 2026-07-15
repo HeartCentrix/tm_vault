@@ -111,15 +111,15 @@
 }
 
 .status-summary-row.success span::before {
-  background: #D31245;
+  background: #16a34a; /* green — was brand pink #D31245 */
 }
 
 .status-summary-row.warning span::before {
-  background: #f59e0b;
+  background: #f59e0b; /* amber */
 }
 
 .status-summary-row.failure span::before {
-  background: #ef7d73;
+  background: #dc2626; /* red — was washed salmon #ef7d73 */
 }
 
 .status-summary-btn {

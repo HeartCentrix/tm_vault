@@ -12,6 +12,7 @@ import AzureDbRecoverModal from '../components/AzureDbRecoverModal';
 import AzurePgRecoverModal from '../components/AzurePgRecoverModal';
 import AzureVmView, { type AzureVmViewHandle } from '../components/AzureVmView';
 import { DownloadModal } from '../components/DownloadModal';
+import { FolderGlyph } from '../components/FolderGlyph';
 import BackupSizeSummary from '../components/BackupSizeSummary';
 import RecoveryToolbar from '../components/RecoveryToolbar';
 import { API } from '../config/api';
@@ -51,6 +52,67 @@ function getKindLabel(kind: string): string {
     azure_postgresql: 'Azure PostgreSQL',
   };
   return labels[kind] || kind;
+}
+
+// ==================== Mailbox folder tree (Outlook-style) ====================
+// System-folder display order (Inbox first, then Drafts/Sent/…); everything
+// else sorts alphabetically. Applied per path segment so the ordering also
+// keeps children directly under their parent.
+const SYS_FOLDER_RANK: Record<string, number> = {
+  inbox: 0, drafts: 1, 'sent items': 2, sent: 2,
+  'deleted items': 3, deleted: 3, trash: 3,
+  'junk email': 4, junk: 4, spam: 4,
+  archive: 5, outbox: 6, 'conversation history': 7, notes: 8,
+};
+
+function folderLeaf(path: string): string {
+  const parts = path.split('/').filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : path;
+}
+
+// A comparable key that (a) keeps children right under their parent — the
+// parent's key is a prefix of the child's, and a prefix sorts first — and
+// (b) orders system folders before custom ones at each level.
+function folderSortKey(path: string): string {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map((seg) => `${SYS_FOLDER_RANK[seg.toLowerCase()] ?? 9} ${seg.toLowerCase()}`)
+    .join('');
+}
+
+type FolderRow = { folder: SnapshotFolder; depth: number; hasChildren: boolean };
+
+// Flatten the flat server folder list into an ordered, hierarchy-aware render
+// list: sorted parent-before-child, indented by depth, with descendants of a
+// collapsed folder omitted (collapse is ignored while searching so every match
+// stays visible). All rows carry the real path so the existing checkbox /
+// navigate handlers are unchanged.
+function buildFolderRows(
+  folders: SnapshotFolder[],
+  collapsed: Set<string>,
+  searching: boolean,
+): FolderRow[] {
+  const paths = folders.map((f) => f.path);
+  const hasChildren = (p: string) => paths.some((x) => x !== p && x.startsWith(p + '/'));
+  const sorted = [...folders].sort((a, b) => {
+    const ka = folderSortKey(a.path), kb = folderSortKey(b.path);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  const rows: FolderRow[] = [];
+  for (const f of sorted) {
+    const parts = f.path.split('/');
+    let hidden = false;
+    if (!searching) {
+      for (let i = parts.length - 1; i > 1; i--) {
+        if (collapsed.has(parts.slice(0, i).join('/'))) { hidden = true; break; }
+      }
+    }
+    if (!hidden) {
+      rows.push({ folder: f, depth: parts.filter(Boolean).length - 1, hasChildren: hasChildren(f.path) });
+    }
+  }
+  return rows;
 }
 
 // ==================== Teams chat helpers ====================
@@ -6041,6 +6103,15 @@ export default function Recovery() {
 
   // Folders (real from snapshot items)
   const [folders, setFolders] = useState<SnapshotFolder[]>([]);
+  // Outlook-style folder tree: paths whose subtree is collapsed in the rail.
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
+  const toggleFolderCollapse = useCallback((path: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }, []);
   const [selectedFolder, setSelectedFolder] = useState<string>(() => {
     const f = searchParams.get('folder');
     if (f !== null) return f;
@@ -6593,6 +6664,7 @@ export default function Recovery() {
   // overlapping resource switches).
   useEffect(() => {
     setFolders([]);
+    setCollapsedFolders(new Set());
     setFoldersPage(1);
     setFoldersHasMore(false);
     // Don't reset selectedFolder here — the URL-sync effect is the
@@ -7924,6 +7996,10 @@ export default function Recovery() {
                         className={`folder-item ${selectedFolder === 'all' && !archiveSelected ? 'active' : ''}`}
                         onClick={() => { setArchiveSelected(false); patchSearchParams({ folder: null }); }}
                       >
+                        <span className="folder-twisty folder-twisty--leaf" aria-hidden="true" />
+                        <span className="folder-glyph">
+                          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                        </span>
                         <span className="folder-name">All</span>
                       </button>
                     )}
@@ -7949,14 +8025,38 @@ export default function Recovery() {
                       // above (OneDriveLeftPanel), so by this point the tab
                       // is mail / contacts / chats — a flat list works.
 
+                      // Chats are flat conversation threads; mail / contacts
+                      // get the Outlook-style nested tree (leaf names, system-
+                      // folder icons, depth indent, collapsible subtrees).
+                      const isChats = activeContentType === 'chats';
+                      const rows: FolderRow[] = isChats
+                        ? visibleFolders.map(folder => ({ folder, depth: 0, hasChildren: false }))
+                        : buildFolderRows(visibleFolders, collapsedFolders, q.length > 0);
+
                       return (
                         <>
-                          {visibleFolders.map(folder => (
+                          {rows.map(({ folder, depth, hasChildren }) => {
+                            const collapsed = collapsedFolders.has(folder.path);
+                            return (
                             <div
                               key={folder.path}
                               className={`folder-item has-check ${selectedFolder === folder.path && !archiveSelected ? 'active' : ''}`}
+                              style={!isChats ? { paddingLeft: `${16 + depth * 15}px` } : undefined}
                             >
-                              {activeContentType === 'chats' ? (
+                              {!isChats && (hasChildren ? (
+                                <button
+                                  type="button"
+                                  className={`folder-twisty${collapsed ? '' : ' folder-twisty--open'}`}
+                                  onClick={(e) => { e.stopPropagation(); toggleFolderCollapse(folder.path); }}
+                                  aria-label={collapsed ? 'Expand folder' : 'Collapse folder'}
+                                  title={collapsed ? 'Expand' : 'Collapse'}
+                                >
+                                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+                                </button>
+                              ) : (
+                                <span className="folder-twisty folder-twisty--leaf" aria-hidden="true" />
+                              ))}
+                              {isChats ? (
                                 <input
                                   type="checkbox"
                                   className="folder-check"
@@ -8017,11 +8117,15 @@ export default function Recovery() {
                                 }}
                                 title={folder.path}
                               >
-                                <span className="folder-name">{folder.path}</span>
+                                {!isChats && (
+                                  <span className="folder-glyph"><FolderGlyph path={folder.path} tab={activeContentType} /></span>
+                                )}
+                                <span className="folder-name">{isChats ? folder.path : (folderLeaf(folder.path) || folder.path)}</span>
                                 {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
                               </button>
                             </div>
-                          ))}
+                            );
+                          })}
                           {!foldersLoading && visibleFolders.length === 0 && (
                             <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>
                           )}
@@ -8162,9 +8266,27 @@ export default function Recovery() {
                       />
                     </label>
                     <span className="item-count">
-                      {selectedItems.size > 0
-                        ? `${selectedItems.size} / ${itemCount} selected`
-                        : `Showing ${recoveryItems.length} of ${itemCount}`}
+                      {(() => {
+                        // When a folder (or every loaded folder in the "All"
+                        // view) is bulk-selected, the backend enumerates EVERY
+                        // item in it server-side — the download is complete
+                        // regardless of how many rows the UI has scrolled in.
+                        // So show the authoritative "All N selected" instead of
+                        // the transient loaded/merged selectedItems.size, which
+                        // otherwise leaves the user unsure whether 50 / 500 /
+                        // all were captured. Only claim "All" for the aggregate
+                        // view when every folder is actually loaded (!hasMore).
+                        const realFolders = folders.filter(f => f.path);
+                        const allBulk = activeContentType !== 'chats' && (
+                          (selectedFolder && selectedFolder !== 'all' && genericFolderSelected.has(selectedFolder))
+                          || (selectedFolder === 'all' && !foldersHasMore && realFolders.length > 0
+                              && realFolders.every(f => genericFolderSelected.has(f.path)))
+                        );
+                        if (allBulk) return `All ${itemCount} selected`;
+                        return selectedItems.size > 0
+                          ? `${selectedItems.size} / ${itemCount} selected`
+                          : `Showing ${recoveryItems.length} of ${itemCount}`;
+                      })()}
                     </span>
                     {/* Pagination replaced by infinite scroll — scroll the
                         list past 60% to auto-load the next page. */}

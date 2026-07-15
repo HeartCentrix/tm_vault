@@ -13,7 +13,7 @@ export const EXPORT_FORMATS: Record<ContentTab, ExportFormatOption[]> = {
   mail: [
     { value: 'MBOX', label: 'Export as MBOX' },
     { value: 'EML', label: 'Export as EML' },
-    { value: 'PST', label: 'Export as PST', hint: 'Outlook .pst archive — includes mail, calendar & contacts' },
+    { value: 'PST', label: 'Export as PST', hint: 'Outlook .pst archive — opens in Outlook. A single item or folder exports mail only; “Download all” bundles every ticked workload (mail, calendar, contacts) into one .pst.' },
   ],
   onedrive: [
     { value: 'ZIP', label: 'Export as ZIP' },

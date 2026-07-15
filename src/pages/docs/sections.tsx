@@ -2285,3 +2285,237 @@ export function TroubleshootingSection() {
     </>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+//  EXCHANGE ONLINE ARCHIVE
+// ─────────────────────────────────────────────────────────────────────────
+export function ExchangeArchiveSection() {
+  return (
+    <>
+      <p>
+        TMvault backs up each user's <strong>Exchange Online in-place
+        archive</strong> (the “Online Archive” mailbox) as a first-class
+        workload, separate from the primary mailbox. This section covers
+        everything an administrator must set up for archive backup,
+        restore, and preview to work end to end.
+      </p>
+
+      <Callout kind="note" title="How it differs from primary mail">
+        The standard Graph mail API (<code>/users/&#123;id&#125;/mailFolders</code>)
+        cannot reach the archive mailbox — it lives on a different server and
+        404s / 503s cross-server. Archive backup therefore uses the{' '}
+        <strong>Mailbox Import/Export API</strong>{' '}
+        (<code>/admin/exchange/mailboxes/&#123;mailboxId&#125;</code>), which
+        needs its own permission (below).
+      </Callout>
+
+      <h4>How archive backup works</h4>
+      <ul>
+        <li>
+          <strong>Backup unit = the opaque <code>exportItems</code> blob,
+          stored 1:1.</strong> Each item is captured as Microsoft's opaque MAPI
+          FastTransfer stream and stored verbatim — <em>never parsed</em>. This
+          is the only representation that round-trips losslessly (HTML bodies +
+          attachments live in separate MAPI properties, and Exchange-origin
+          items have no MIME at all).
+        </li>
+        <li>
+          <strong>Restore</strong> replays the blob verbatim via{' '}
+          <code>createImportSession</code> — a lossless round-trip back into the
+          mailbox.
+        </li>
+        <li>
+          <strong>Export to EML / MBOX / PST</strong> is a separate
+          restore-to-staging step, not a parse of the stored blob.
+        </li>
+        <li>
+          <strong>Incremental</strong> backups diff on each item's{' '}
+          <code>changeKey</code> (Graph delta is not available for the archive
+          on the beta API).
+        </li>
+        <li>
+          Attachment/blob dedup keys on a content hash
+          (<code>att_&lt;hash&gt;</code>), never on raw Graph ids, to stay under
+          the object-store key-length limit.
+        </li>
+      </ul>
+
+      <h4>1 · Graph app permissions</h4>
+      <p>
+        Add the <strong>application</strong> permission below to <em>every</em>{' '}
+        Entra app registration (the same set used for the rest of TMvault — see{' '}
+        <a href="#graph-app-setup"><strong>Entra App Registration</strong></a>),
+        then grant tenant admin consent.
+      </p>
+      <table>
+        <thead><tr><th>Permission</th><th>Status</th><th>Why it's needed</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>MailboxItem.ImportExport.All</code></td>
+            <td><strong>NEW</strong></td>
+            <td>
+              The Mailbox Import/Export API
+              (<code>/admin/exchange/mailboxes/…</code>) — enumerate archive
+              folders, <code>exportItems</code> (backup), and{' '}
+              <code>createImportSession</code> (restore). The only genuinely new
+              permission. (Export-only would be <code>MailboxItem.Export.All</code>;
+              TMvault also restores, so it needs the import+export variant.)
+            </td>
+          </tr>
+          <tr>
+            <td><code>User.Read.All</code></td>
+            <td>already held</td>
+            <td>
+              Resolves the archive mailbox id via{' '}
+              <code>GET /users/&#123;id&#125;/settings/exchange</code>. TMvault
+              already has this from Tier-1 discovery — no action needed.
+            </td>
+          </tr>
+          <tr>
+            <td><code>Mail.ReadWrite</code></td>
+            <td>already held</td>
+            <td>
+              Staging read-back + temp-folder cleanup during preview/export.
+              Already held by the primary-mail workload.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <Callout kind="note" title="Exact permission name (verified against Microsoft docs)">
+        The <strong>application</strong> permission is{' '}
+        <code>MailboxItem.ImportExport.All</code> — note the <code>.All</code>
+        suffix. The bare <code>MailboxItem.ImportExport</code> (no suffix) is the{' '}
+        <em>delegated</em> permission and won't work for TMvault's app-only flow.
+        Per Microsoft's API reference, <strong>no additional Exchange RBAC role
+        is required</strong> — the Graph application permission plus tenant admin
+        consent is sufficient. (RBAC for Applications only matters if your admin
+        has explicitly <em>restricted</em> app access tenant-wide, in which case
+        add these apps to the allowed scope.)
+      </Callout>
+      <Callout kind="note" title="API version">
+        Archive access uses the Graph Mailbox Import/Export API — the only
+        full-fidelity, lossless round-trip path to the archive. It runs on{' '}
+        <code>/beta</code> today; flip{' '}
+        <code>ARCHIVE_GRAPH_VERSION=v1.0</code> once the API reaches GA (v1.0
+        reference pages now exist — worth testing).
+      </Callout>
+
+      <Callout kind="tip" title="No staging mailbox to provision">
+        Preview enrichment and EML/MBOX/PST export stage data into a{' '}
+        <strong>temp folder inside the user's own primary mailbox</strong>,
+        then delete it when done — so there is <em>no separate staging
+        mailbox</em> to create or license. This reuses the existing
+        <code> Mail.ReadWrite</code> permission the primary-mail workload
+        already has.
+      </Callout>
+
+      <h4>2 · The enrichment service (new)</h4>
+      <p>
+        Because the stored blob is opaque, the Recovery UI cannot render an
+        archive item's subject/body/attachments directly. A new worker,{' '}
+        <strong><code>enrichment-worker</code></strong>, turns the opaque blob
+        into readable Graph JSON on demand:
+      </p>
+      <ul>
+        <li>
+          It consumes the <code>enrich.priority</code> queue. When a user opens
+          an un-enriched archive item, snapshot-service publishes an enrich
+          message and the worker stages that item (import into a temp folder of
+          the user's primary mailbox → read it back as Graph JSON → clean up →
+          store the readable preview).
+        </li>
+        <li>
+          A background <strong>bulk loop</strong> also enriches pending items
+          proactively so previews are warm before the user clicks
+          (controlled by the <code>ENRICH_BULK_*</code> vars below).
+        </li>
+        <li>
+          The original restore-grade blob is <em>never</em> modified — enrichment
+          only produces a read-time convenience copy.
+        </li>
+      </ul>
+      <Callout kind="warn" title="Deploy the new service">
+        <code>enrichment-worker</code> is a <strong>new deployable service</strong>
+        (<code>workers/enrichment-worker/</code>, its own Dockerfile). It must be
+        deployed alongside the existing workers and share the same database,
+        message-bus, storage, and Graph-app environment. Without it, archive
+        items back up and restore correctly but show a “processing” state in the
+        Recovery preview instead of readable content.
+      </Callout>
+
+      <h4>3 · Environment variables</h4>
+      <p>
+        All have safe defaults — you only need to set the ones you want to
+        change. Apply them to the workers that run archive backup, restore, and
+        enrichment.
+      </p>
+
+      <h5>Feature &amp; API version</h5>
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>ARCHIVE_BACKUP_ENABLED</code></td><td><code>true</code></td><td>Master switch for archive backup. Set <code>false</code> to disable the whole workload.</td></tr>
+          <tr><td><code>ARCHIVE_GRAPH_VERSION</code></td><td><code>beta</code></td><td>Graph API version segment for the archive endpoints. Archive support is beta today; flip to <code>v1.0</code> at GA — no code change.</td></tr>
+        </tbody>
+      </table>
+
+      <h5>Backup / export concurrency &amp; timeouts</h5>
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>ARCHIVE_IMPORT_TIMEOUT_S</code></td><td><code>120</code></td><td>Per-call timeout (seconds) for Import/Export Graph requests.</td></tr>
+          <tr><td><code>ARCHIVE_FOLDER_CONCURRENCY</code></td><td><code>8</code></td><td>Archive folders enumerated/exported in parallel per mailbox.</td></tr>
+          <tr><td><code>ARCHIVE_EXPORT_CONCURRENCY</code></td><td><code>8</code></td><td>Parallel <code>exportItems</code> batches (Graph caps each batch at 20 item ids).</td></tr>
+        </tbody>
+      </table>
+
+      <h5>Restore / staging &amp; PST export</h5>
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>ARCHIVE_STAGE_FOLDER_RESOLVE_ATTEMPTS</code></td><td><code>8</code></td><td>Retries to resolve the staged temp folder after an import (Exchange indexes it asynchronously).</td></tr>
+          <tr><td><code>ARCHIVE_STAGE_FOLDER_RESOLVE_DELAY_S</code></td><td><code>2.0</code></td><td>Delay (seconds) between those resolve retries.</td></tr>
+          <tr><td><code>ARCHIVE_PST_ROOT_FOLDER</code></td><td><code>Online Archive (Recovered)</code></td><td>Root folder name used when exporting archive items to PST.</td></tr>
+        </tbody>
+      </table>
+
+      <h5>Enrichment (preview) service</h5>
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>ARCHIVE_ENRICH_BATCH</code></td><td><code>50</code></td><td>Items enriched per on-demand enrichment batch.</td></tr>
+          <tr><td><code>ENRICH_BULK_ENABLED</code></td><td><code>true</code></td><td>Enable the background bulk-enrichment loop (proactive previews).</td></tr>
+          <tr><td><code>ENRICH_BULK_INTERVAL_S</code></td><td><code>300</code></td><td>How often (seconds) the bulk loop runs.</td></tr>
+          <tr><td><code>ENRICH_BULK_CONCURRENCY</code></td><td><code>4</code></td><td>Parallel enrichment workers inside the bulk loop.</td></tr>
+          <tr><td><code>ENRICH_BULK_BATCH_LIMIT</code></td><td><code>50</code></td><td>Max items processed per bulk-loop pass.</td></tr>
+        </tbody>
+      </table>
+
+      <h5>Retention / purge</h5>
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>ARCHIVED_PURGE_GRACE_DAYS</code></td><td><code>30</code></td><td>Grace period before archived/deleted items are eligible for purge.</td></tr>
+          <tr><td><code>ARCHIVED_PURGE_INTERVAL_S</code></td><td><code>3600</code></td><td>Interval (seconds) for the purge sweep.</td></tr>
+        </tbody>
+      </table>
+
+      <h4>4 · Setup checklist</h4>
+      <ol>
+        <li>Add <code>MailboxItem.ImportExport.All</code> (application — note the <code>.All</code> suffix) to every Entra app registration and grant tenant admin consent. (<code>User.Read.All</code> and <code>Mail.ReadWrite</code> are already consented.)</li>
+        <li>Deploy the new <code>enrichment-worker</code> service with the shared DB / message-bus / storage / Graph-app environment.</li>
+        <li>Ensure the message bus has the <code>enrich.priority</code> queue (declared automatically on worker start).</li>
+        <li>Leave <code>ARCHIVE_BACKUP_ENABLED=true</code> and <code>ARCHIVE_GRAPH_VERSION=beta</code> (flip to <code>v1.0</code> when Microsoft GAs the archive API).</li>
+        <li>Confirm users actually have an archive enabled (Exchange <em>In-Place Archive</em>); users without one are simply skipped.</li>
+        <li>Run one backup, then open an archive item in Recovery to confirm the preview enriches and a restore round-trips.</li>
+      </ol>
+
+      <Callout kind="note" title="What the client sees">
+        Once set up, the Recovery page shows an <strong>Online Archive</strong>
+        section under a user's Mail/Contacts, with the archive's folder tree,
+        item previews (after enrichment), and Download (EML/MBOX/PST) and
+        Restore actions — identical UX to the primary mailbox.
+      </Callout>
+    </>
+  );
+}
