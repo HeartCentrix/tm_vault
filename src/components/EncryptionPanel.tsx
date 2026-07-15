@@ -44,6 +44,8 @@ export default function EncryptionPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [needsRewrap, setNeedsRewrap] = useState(false);
+  const [rewrapping, setRewrapping] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -65,9 +67,16 @@ export default function EncryptionPanel() {
   const ref = REFERENCE_FIELD[provider];
   const refMissing = !!ref && !keyReference.trim();
 
+  const body = () => JSON.stringify({
+    provider,
+    key_reference: ref ? keyReference.trim() : null,
+    enabled,
+  });
+
   const save = async () => {
     setError(null);
     setSaved(false);
+    setNeedsRewrap(false);
     if (refMissing) {
       setError(`${ref!.label} is required for this provider.`);
       return;
@@ -77,18 +86,13 @@ export default function EncryptionPanel() {
       const res = await fetch(`${API.BASE_URL}/encryption/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider,
-          key_reference: ref ? keyReference.trim() : null,
-          enabled,
-        }),
+        body: body(),
       });
       if (res.status === 409) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(
-          (b.detail || 'Existing encrypted data uses the current key.') +
-            ' Re-wrap existing keys before switching provider so data stays decryptable.',
-        );
+        // Existing encrypted data uses the current key — offer a safe re-wrap.
+        setNeedsRewrap(true);
+        setError('Encrypted data already exists under the current key. Re-wrap it under the new key so it stays decryptable, then switch.');
+        return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSaved(true);
@@ -97,6 +101,28 @@ export default function EncryptionPanel() {
       setError(String(e?.message || e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const rewrap = async () => {
+    setError(null);
+    setSaved(false);
+    setRewrapping(true);
+    try {
+      const res = await fetch(`${API.BASE_URL}/encryption/rewrap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body(),
+      });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(b.detail || `HTTP ${res.status}`);
+      setNeedsRewrap(false);
+      setSaved(true);
+      setError(b.note || 'Re-wrapped. Restart the encryption services to load the new key.');
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setRewrapping(false);
     }
   };
 
@@ -174,13 +200,19 @@ export default function EncryptionPanel() {
         </span>
       </div>
 
-      {error && <div className="enc-error" role="alert">{error}</div>}
+      {error && <div className={needsRewrap ? 'enc-warn' : 'enc-error'} role="alert">{error}</div>}
       {saved && <div className="enc-ok" role="status">Saved. Encryption services apply this on their next restart.</div>}
 
       <div className="enc-actions">
-        <button type="button" className="enc-save" onClick={save} disabled={saving || refMissing}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        {needsRewrap ? (
+          <button type="button" className="enc-save enc-rewrap" onClick={rewrap} disabled={rewrapping || refMissing}>
+            {rewrapping ? 'Re-wrapping…' : 'Re-wrap existing keys & switch'}
+          </button>
+        ) : (
+          <button type="button" className="enc-save" onClick={save} disabled={saving || refMissing}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
       </div>
     </section>
   );
