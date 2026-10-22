@@ -1,4 +1,5 @@
 import { API } from '../config/api';
+import { collectIncompleteResourceIds, RETRY_DISPATCH_LIMIT } from '../utils/retryEligibility';
 
 export interface ActivityItem {
   id: string;
@@ -79,7 +80,10 @@ export interface ActivityListResponse {
   has_more: boolean;
 }
 
-export async function getActivities(params?: ActivityListParams): Promise<ActivityListResponse> {
+export async function getActivities(
+  params?: ActivityListParams,
+  signal?: AbortSignal,
+): Promise<ActivityListResponse> {
   let url = API.ACTIVITY.LIST;
   const queryParams = new URLSearchParams();
 
@@ -95,7 +99,10 @@ export async function getActivities(params?: ActivityListParams): Promise<Activi
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;
 
-  const res = await fetch(url);
+  // `signal` lets the caller abandon a superseded request instead of
+  // queueing another on top of it — five stacked date-filter fetches is
+  // what turned an 8s load into a >60s frozen tab (BUG-005).
+  const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) throw new Error(`Failed to fetch activities: ${res.statusText}`);
   const data = await res.json();
 
@@ -113,6 +120,59 @@ export async function cancelJob(jobId: string): Promise<void> {
   if (!res.ok && res.status !== 204) {
     throw new Error(`Failed to cancel job: ${res.statusText}`);
   }
+}
+
+export interface RetryOutcome {
+  /** Resource ids we dispatched successfully. */
+  dispatched: string[];
+  /** Resource ids whose dispatch call failed. */
+  failed: string[];
+  /** Incomplete resources left over after the per-click cap. */
+  remaining: number;
+}
+
+/**
+ * Re-run only the resources in a batch that did not complete.
+ *
+ * Fetches the batch's children, selects the PARTIAL/FAILED ones (see
+ * `collectIncompleteResourceIds` — IN_PROGRESS is deliberately excluded)
+ * and dispatches each one individually.
+ *
+ * Dispatches sequentially rather than with Promise.all: a wide batch
+ * could otherwise fire dozens of simultaneous triggers at the scheduler,
+ * and pool pressure is the root of the failures this button exists to
+ * recover from. Slower by a few hundred ms, and much better behaved.
+ *
+ * Never throws for a partial result — per-resource failures come back in
+ * `failed` so the UI can report "re-ran 3 of 4" honestly.
+ */
+export async function retryIncompleteResources(
+  batchId: string,
+): Promise<RetryOutcome> {
+  const children = await fetchBatchChildren(batchId);
+  const allTargets = collectIncompleteResourceIds(children.resources);
+
+  // Cap how many go out per click. Sequential dispatch paces the trigger
+  // calls but NOT the resulting walks — the scheduler runs everything it
+  // has been handed concurrently, which is how six at once saturated the
+  // DB pool and blanked this very page. See RETRY_DISPATCH_LIMIT.
+  const targets = allTargets.slice(0, RETRY_DISPATCH_LIMIT);
+  const remaining = allTargets.length - targets.length;
+
+  const dispatched: string[] = [];
+  const failed: string[] = [];
+
+  for (const resourceId of targets) {
+    try {
+      const res = await fetch(API.JOBS.TRIGGER_USER(resourceId), { method: 'POST' });
+      if (res.ok) dispatched.push(resourceId);
+      else failed.push(resourceId);
+    } catch {
+      failed.push(resourceId);
+    }
+  }
+
+  return { dispatched, failed, remaining };
 }
 
 export async function fetchBatchChildren(batchId: string): Promise<BatchChildren> {

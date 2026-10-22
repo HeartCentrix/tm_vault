@@ -237,7 +237,8 @@
 [data-theme="dark"] .activity-section,
 [data-theme="dark"] .storage-state-card,
 [data-theme="dark"] .storage-table-wrap,
-[data-theme="dark"] .storage-history-empty {
+[data-theme="dark"] .storage-history-empty,
+[data-theme="dark"] .storage-usage-card {
   background: var(--tm-surface) !important;
   border: 1px solid var(--tm-border) !important;
   color: var(--tm-text) !important;
@@ -249,7 +250,8 @@
 [data-theme="dark"] .panel:hover,
 [data-theme="dark"] .summary-card:hover,
 [data-theme="dark"] .info-card:hover,
-[data-theme="dark"] .storage-state-card:hover {
+[data-theme="dark"] .storage-state-card:hover,
+[data-theme="dark"] .storage-usage-card:hover {
   border-color: var(--tm-accent) !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
 }
@@ -1086,19 +1088,27 @@
 [data-theme="dark"] .storage-title,
 [data-theme="dark"] .storage-state-name,
 [data-theme="dark"] .storage-history-title,
+[data-theme="dark"] .storage-usage-title,
+[data-theme="dark"] .storage-usage-value,
 [data-theme="dark"] .storage-modal-title   { color: var(--tm-text) !important; }
 [data-theme="dark"] .storage-eyebrow,
+[data-theme="dark"] .storage-usage-label,
 [data-theme="dark"] .storage-state-label   { color: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .storage-desc,
 [data-theme="dark"] .storage-state-kind,
 [data-theme="dark"] .storage-state-meta,
 [data-theme="dark"] .storage-history-count,
-[data-theme="dark"] .storage-history-empty { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .storage-history-empty,
+[data-theme="dark"] .storage-usage-caption { color: var(--tm-body-2) !important; }
 [data-theme="dark"] .storage-state-meta strong { color: var(--tm-text) !important; }
 [data-theme="dark"] .storage-state-cooldown,
 [data-theme="dark"] .storage-no-alt,
 [data-theme="dark"] .storage-hash,
+[data-theme="dark"] .storage-usage-value.pending,
 [data-theme="dark"] .storage-modal-field-hint { color: var(--tm-body) !important; }
+
+/* Status / error text — dark-mode lifted out of #c62828 (unreadable on dark bg).
+   #ff8a8a / #ffb86b / #7ee787 chosen for WCAG-AA contrast against --tm-surface. */
 [data-theme="dark"] .storage-table th,
 [data-theme="dark"] .storage-table td     { color: var(--tm-text) !important; border-bottom-color: var(--tm-border) !important; }
 [data-theme="dark"] .storage-arrow        { color: var(--tm-accent-soft) !important; }
@@ -1115,6 +1125,7 @@
 [data-theme="dark"] .storage-err {
   color: #ff8a8a !important;
 }
+[data-theme="dark"] .storage-usage-error,
 [data-theme="dark"] .storage-error-msg {
   color: #ff8a8a !important;
   background: rgba(211, 18, 69, 0.12) !important;

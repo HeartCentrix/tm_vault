@@ -1,11 +1,25 @@
-import { useState, useRef, useEffect, useMemo, Fragment } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getResources, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, triggerBackup, triggerDiscovery, backupUserWithDiscovery } from '../services/resource';
+import { getResources, resourceMatchesQuery, type ResourceItem, type ResourceListResponse, assignPolicy, unassignPolicy, bulkAssignPolicy, bulkAssignPolicyByFilter, triggerBackup, triggerDiscovery, backupUserWithDiscovery } from '../services/resource';
+import { buildBulkFilter, selectAllBannerState } from '../utils/bulkSelection';
 import { getSlaPolicies, type SlaPolicy } from '../services/sla';
 // import { SnapshotService, type SnapshotItem as SnapshotListItem } from '../services/snapshot';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocalDate, fmtLocalTime, parseAsUtc } from '../utils/datetime';
+import { prettifyEnumLabel } from '../utils/display';
+import AvatarInitials from '../components/AvatarInitials';
 import './Protection.css';
+
+// ONE page size for the query AND for the page-count arithmetic.
+//
+// 2026-08-11 (TMV-006): the previous shape had each fetcher pass its own
+// literal while `totalPages` was always `item_number / 50`. When one
+// fetcher used a different size the indicator and the row set described
+// different queries — the same view rendered "1 / 563", then "1 / 15",
+// then "1 / 1", and clicking next gave "2 / 1". Every read of the list
+// goes through this constant so that divergence cannot be reintroduced by
+// editing one call site.
+const PAGE_SIZE = 50;
 
 type ResourceTab = 'all' | 'users' | 'shared' | 'rooms' | 'sharepoint' | 'groups' | 'entra' | 'power' | 'dynamic' | 'entra-groups' | 'virtual-machines' | 'sql-databases' | 'postgresql-servers' | 'resource-groups' | 'dynamic-groups';
 
@@ -28,10 +42,6 @@ const azureTabs: { key: ResourceTab; label: string }[] = [
   { key: 'sql-databases', label: 'Azure SQL databases' },
   { key: 'postgresql-servers', label: 'Azure PostgreSQL servers' },
 ];
-
-function getInitials(name: string): string {
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-}
 
 function formatSize(bytes: number): string {
   if (!bytes || bytes === 0) return '0 GB';
@@ -242,16 +252,89 @@ export default function Protection() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  // Total rows matching the current view across ALL pages (item_number)
+  // — drives the "Select all N matching" offer.
+  const [totalItems, setTotalItems] = useState(0);
   const [policies, setPolicies] = useState<SlaPolicy[]>([]);
+
+  // Gmail-style select-all-across-pages. When true, the selection is the
+  // FILTER (tab + query + status + sla), not the id list — bulk actions
+  // go down the server-side filter path and the id list is only what
+  // keeps the visible page's checkboxes painted.
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  // Dismissible result/status banner for bulk SLA actions. Every outcome
+  // lands here — the failures used to die in console.error and the page
+  // gave no sign anything had been attempted.
+  const [bulkNotice, setBulkNotice] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(null);
+  // Pending confirm for the filter path: dry-run resolved `matched`
+  // resources; nothing is written until the user confirms. Mandatory —
+  // policyId '' is bulk-UNASSIGN, and a mis-click must not silently strip
+  // protection at scale.
+  const [confirmBulk, setConfirmBulk] = useState<{ policyId: string; policyName: string; matched: number } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkModalRef = useRef<HTMLDivElement>(null);
+  // Read inside the modal's keydown listener without re-binding it on
+  // every busy toggle.
+  const bulkBusyRef = useRef(bulkBusy);
+  useEffect(() => { bulkBusyRef.current = bulkBusy; }, [bulkBusy]);
 
   const [resourceFilter, setResourceFilter] = useState<string | null>(null);
   const [sizeFilter, setSizeFilter] = useState<string | null>(null); // 'all' | 'top_total' | 'top_7d' | 'top_30d' | 'top_365d'
   const [slaFilter, setSlaFilter] = useState<string | null>(null);
+  // Server-side SLA filter param: the UI stores the policy NAME, the API
+  // filters by policy UUID ('none' = unprotected). Client-side filtering
+  // over the fetched page broke once 4,204 newly-discovered SharePoint
+  // sites pushed every SLA'd resource out of the newest-first window
+  // (2026-07-15: "Gold" filter matched nothing).
+  const slaParam = useMemo(() => {
+    if (!slaFilter) return undefined;
+    if (slaFilter === 'Not protected') return 'none';
+    return policies.find(p => p.name === slaFilter)?.id;
+  }, [slaFilter, policies]);
 
   const [showSlaDropdown, setShowSlaDropdown] = useState(false);
   const slaDropdownRef = useRef<HTMLDivElement>(null);
 
   const [refreshing, setRefreshing] = useState(false);
+
+  // ---- "latest response wins" guard for the resource list (TMV-006) ----
+  //
+  // FOUR independent code paths replace the whole `resources` array: the
+  // view-params effect, the focus/visibility reconcile, the 8-second
+  // in-flight-backup poll, and handleRefresh's discovery poll. Each used
+  // to carry its own local `cancelled` flag, which only covers the case
+  // where that effect's own deps changed — it does nothing when two live
+  // paths race each other, and the slower one then repaints the table
+  // with rows for a query the user has already moved on from while the
+  // page indicator still describes the newer one.
+  //
+  // issuedRef is stamped when a request goes out; appliedRef records the
+  // highest stamp that has been rendered. A response whose stamp is not
+  // strictly newer than what is already on screen is discarded, so an
+  // older in-flight response can never stomp newer state no matter which
+  // path issued it or in what order they land.
+  const issuedRef = useRef(0);
+  const appliedRef = useRef(0);
+  const beginListRequest = useCallback(() => ++issuedRef.current, []);
+  const applyListResponse = useCallback((seq: number, data: ResourceListResponse) => {
+    if (seq <= appliedRef.current) return false;
+    appliedRef.current = seq;
+    setResources(data.items || []);
+    setTotalItems(data.item_number || 0);
+    // Every path refreshes the count too. The poll used to update only
+    // the rows, so a discovery run that grew the tenant left the
+    // indicator pinned at the count from page load.
+    const pages = data.item_number > 0 ? Math.ceil(data.item_number / PAGE_SIZE) : 1;
+    setTotalPages(pages);
+    // Keep the cursor inside the count in the same commit that changes
+    // the count. When a filter (or a discovery run that removed rows)
+    // shrank item_number while the user was deep in the list, `page`
+    // kept its old value: the indicator read "7 / 3", both arrows were
+    // disabled (page <= 1 false, page >= totalPages true) and the table
+    // said "No resources found." with no way back.
+    setPage(p => (p > pages ? Math.max(1, pages) : p));
+    return true;
+  }, []);
 
   // Track which resources have a pending backup. Persisted so status survives navigation/refresh.
   // Map: resource_id -> ISO timestamp the backup was triggered. When a subsequent refetch shows
@@ -291,13 +374,21 @@ export default function Protection() {
   // (Replaces the old 2s progress-polling loop — progress % is no longer tracked in the UI.)
   useEffect(() => {
     if (!tenantId) return;
+    // Guard against a reconcile fetched for a previous tab/page/search
+    // landing after the deps changed — it would replace the newer view's
+    // rows with stale ones. `cancelled` covers this effect's own teardown;
+    // applyListResponse covers races against the other three fetchers.
+    let cancelled = false;
     const reconcile = async () => {
       try {
-        const data = searchQuery
-          ? await getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-          : await getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType);
+        const seq = beginListRequest();
+        const data = await getResources(
+          tenantId, activeTab, page, PAGE_SIZE, searchQuery,
+          slaParam, resourceFilter || undefined, serviceType,
+        );
+        if (cancelled) return;
         const items = data.items || [];
-        setResources(items);
+        if (!applyListResponse(seq, data)) return;
         // Clear backingUp entries once the server reflects any non-pending
         // state for that resource — either a fresh successful backup
         // (last_backup_at advanced past the trigger time) OR the latest job
@@ -330,10 +421,11 @@ export default function Protection() {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
+      cancelled = true;
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
+  }, [tenantId, activeTab, page, searchQuery, slaParam, resourceFilter, serviceType, beginListRequest, applyListResponse]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -351,29 +443,103 @@ export default function Protection() {
     // effect handles in-session updates; this handles every navigation.
     setBackingUp({});
 
-    // If there's a search query, fetch all resources and filter client-side
-    if (searchQuery) {
-      getResources(tenantId, activeTab, 1, 10000, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-        .then((data: ResourceListResponse) => {
-          const filtered = data.items || [];
-          setResources(filtered);
-          setTotalPages(filtered.length > 0 ? Math.ceil(filtered.length / 50) : 1);
-        })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    } else {
-      // No search query - use normal pagination
-      getResources(tenantId, activeTab, page, 50, searchQuery, slaFilter || undefined, resourceFilter || undefined, serviceType)
-        .then((data: ResourceListResponse) => {
-          setResources(data.items || []);
-          setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
-        })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    }
-  }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
+    // Search pages SERVER-side, exactly like the unfiltered list.
+    //
+    // This used to be a "fetch everything then filter client-side" mode
+    // (page=1&size=10000). Once getResources' multi-type branch started
+    // mapping the requested window onto real per-type offsets, a
+    // 10,000-wide window starting at 0 was swallowed whole by the FIRST
+    // type: any query matching >=10,000 of the pilot tenant's 11,190
+    // ENTRA_USERs ('com', '@', a common letter) returned 10,000 users and
+    // ZERO matching SharePoint sites / groups / flows. `query=` is honored
+    // server-side (build_by_type_search_filters), and item_number is the
+    // true match count, so ordinary pagination reaches every match in
+    // every type — and pulls 50 rows per page instead of 10,000.
+    // Stale-response guard: a slow response for a since-abandoned
+    // tab/page/search must not overwrite the newer view's rows — the
+    // header would say one tab while the rows (and any select-all +
+    // bulk SLA action over them) belonged to another.
+    let cancelled = false;
+    const seq = beginListRequest();
+    getResources(tenantId, activeTab, page, PAGE_SIZE, searchQuery, slaParam, resourceFilter || undefined, serviceType)
+      .then((data: ResourceListResponse) => {
+        if (cancelled) return;
+        applyListResponse(seq, data);
+      })
+      .catch(console.error)
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [tenantId, activeTab, page, searchQuery, slaParam, resourceFilter, serviceType, beginListRequest, applyListResponse]);
 
   useEffect(() => { setPage(1); }, [activeTab, searchQuery, slaFilter, resourceFilter]);
+
+  // Selection must not survive a change of the visible set. Row ids used
+  // to accumulate across pages/tabs/searches, and the next bulk SLA
+  // action (including 'Not protected', which the backend treats as
+  // unassign) then silently stripped backup coverage from resources the
+  // user could no longer see.
+  //
+  // selectAllMatching exits on the same guard: the mode is defined by the
+  // view's filter, so ANY change of tab/page/query/status/sla means the
+  // selection the user confirmed is no longer the selection on screen. A
+  // pending confirm modal is stale for the same reason.
+  useEffect(() => {
+    setSelectedResources([]);
+    setSelectAllMatching(false);
+    setConfirmBulk(null);
+  }, [tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
+
+  // The bulk result banner describes an action taken against a specific
+  // view — carrying "Assigned N resource(s)." (or a role=alert error) into
+  // another tab/query reads as describing rows it never touched. `page` is
+  // deliberately excluded from the deps: paging within the same filtered
+  // view keeps the notice relevant, and the post-write refetch can clamp
+  // the page cursor (applyListResponse) — clearing on that would wipe the
+  // result of the very action the banner reports.
+  useEffect(() => {
+    setBulkNotice(null);
+  }, [tenantId, activeTab, searchQuery, slaFilter, resourceFilter, serviceType]);
+
+  // Keyboard support for the bulk confirm modal: Escape cancels (unless a
+  // write is in flight) and Tab is trapped inside the dialog. Without
+  // this, focus stayed behind the overlay and keyboard users had no
+  // non-pointer way to close it. Cancel — the safe action — is first in
+  // DOM order, so it takes initial focus; the previously focused element
+  // gets focus back when the modal closes.
+  useEffect(() => {
+    if (!confirmBulk) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const modal = bulkModalRef.current;
+    const focusables = () =>
+      modal ? Array.from(modal.querySelectorAll<HTMLElement>('button:not([disabled])')) : [];
+    focusables()[0]?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (!bulkBusyRef.current) setConfirmBulk(null);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const els = focusables();
+      if (els.length === 0) return;
+      const first = els[0];
+      const last = els[els.length - 1];
+      const active = document.activeElement;
+      const inside = modal ? modal.contains(active) : false;
+      if (e.shiftKey && (!inside || active === first)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || active === last)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      previouslyFocused?.focus?.();
+    };
+  }, [confirmBulk]);
 
   // Silent auto-refresh while any resource has an in-flight backup.
   // Polls every 8s and stops the moment every row settles on a
@@ -390,78 +556,122 @@ export default function Protection() {
   // every resource in the tenant, so stray rows from other types
   // leaked into the list mid-backup. getResources() maps tab → enum
   // list via getTabTypeMap and handles the special "all" tab.
+  //
+  // The poll MUST re-issue the user's current query verbatim — same tab,
+  // same page, same PAGE_SIZE, same search/filters. Anything else and the
+  // refresh silently teleports the user: an earlier revision of this
+  // effect asked for `size = searchQuery ? 10000 : 50` and
+  // `page = searchQuery ? 1 : page`, so every 8 seconds the table was
+  // replaced by page 1 of a 10,000-row query while the indicator kept
+  // dividing item_number by 50. That is why one query rendered as
+  // "1 / 563", then "1 / 15", then "1 / 1", and why clicking next gave
+  // "2 / 1". PAGE_SIZE is now the only size any caller can pass.
+  const IN_FLIGHT_STATUSES = useMemo(() => new Set(['RUNNING', 'QUEUED', 'DISPATCHED']), []);
+  // Read inside the interval callback rather than through the dep array:
+  // the poll writes `resources`, so listing `resources` as a dependency
+  // tore the interval down and recreated it on every single response (and
+  // on every optimistic SLA edit), which reset the 8-second countdown and
+  // could starve the poll entirely on a busy list.
+  const anyLive = resources.some(
+    r => !!r.last_backup_status && IN_FLIGHT_STATUSES.has(r.last_backup_status),
+  );
+  const anyLiveRef = useRef(anyLive);
+  useEffect(() => { anyLiveRef.current = anyLive; }, [anyLive]);
   useEffect(() => {
     if (!tenantId) return;
-    const IN_FLIGHT = new Set(['RUNNING', 'QUEUED', 'DISPATCHED']);
-    const anyLive = resources.some(r => !!r.last_backup_status && IN_FLIGHT.has(r.last_backup_status));
-    if (!anyLive) return;
+    // cancelled stops a response issued by THIS effect after its deps
+    // changed; applyListResponse independently drops any response that is
+    // older than what is already rendered, whichever fetcher issued it.
+    let cancelled = false;
     const tick = async () => {
+      if (!anyLiveRef.current) return; // idle — no network chatter
       try {
-        const size = searchQuery ? 10000 : 50;
-        const pageN = searchQuery ? 1 : page;
+        const seq = beginListRequest();
         const data = await getResources(
-          tenantId, activeTab, pageN, size, searchQuery,
-          slaFilter || undefined, resourceFilter || undefined, serviceType,
+          tenantId, activeTab, page, PAGE_SIZE, searchQuery,
+          slaParam, resourceFilter || undefined, serviceType,
         );
-        setResources(data.items || []);
+        if (cancelled) return;
+        applyListResponse(seq, data);
       } catch { /* ignore transient failures — next tick retries */ }
     };
     const t = setInterval(tick, 8000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, tenantId, activeTab, page, searchQuery, slaFilter, resourceFilter, serviceType]);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [tenantId, activeTab, page, searchQuery, slaParam, resourceFilter, serviceType, beginListRequest, applyListResponse]);
 
-  // Apply client-side search filtering
+  // Belt-and-braces client-side pass over the already server-filtered page.
+  // resourceMatchesQuery is deliberately a SUPERSET of the server's
+  // predicate (it adds `kind`, which has no column) — a narrower predicate
+  // here would drop rows the server matched on web_url and leave holes in
+  // the page now that search is server-paginated.
   const filteredResources = useMemo(() => {
     if (!searchQuery.trim()) return resources;
-    
-    const query = searchQuery.toLowerCase().trim();
-    return resources.filter(resource => {
-      // Search in name
-      if (resource.name.toLowerCase().includes(query)) return true;
-      // Search in email
-      if (resource.email && resource.email.toLowerCase().includes(query)) return true;
-      // Search in kind
-      if (resource.kind && resource.kind.toLowerCase().includes(query)) return true;
-      return false;
-    });
+    return resources.filter(resource => resourceMatchesQuery(resource, searchQuery));
   }, [resources, searchQuery]);
 
-  // Apply SLA filtering + deterministic ordering.
+  // Apply SLA filtering, then the ordering the user explicitly asked for.
   //
-  // The default list order is strictly alphabetical by display name.
-  // Backend rows come back ordered by `r.created_at DESC`, which flips
-  // rows around after a backup for two reasons:
-  //   1. Bulk-discovered resources (dozens of ENTRA_USER inserted in
-  //      one transaction) share identical created_at values; Postgres
-  //      then returns tied rows in heap-scan order, which drifts
-  //      between refetches.
-  //   2. Size-filter sorts key off `usage.size` / size_delta_*, both
-  //      of which move when a backup completes, causing the row
-  //      itself to jump up or down.
-  // Anchoring on display_name as the primary sort — with a stable
-  // tie-break by id — keeps a row in the same visual slot before,
-  // during, and after a backup, regardless of what the backend
-  // returns. Size filters still override as the primary key, but
-  // display_name is the secondary so ties don't reorder rows.
+  // 2026-08-11 (TMV-006) — THE DEFAULT ALPHABETICAL SORT IS GONE. Read
+  // this before putting it back.
+  //
+  // The old code sorted every page by display_name before rendering. That
+  // sort is PAGE-LOCAL: it can only order the 50 rows the server just
+  // sent, never the other 29,591. The server orders by `created_at DESC,
+  // id DESC`, so page 1 is an arbitrary-looking 50 names that this code
+  // then rendered as a tidy A→Z run, and page 2 was a DIFFERENT arbitrary
+  // 50 names rendered as another tidy A→Z run. The list therefore looked
+  // like "page 2 restarts the alphabet, with entries interleaved between
+  // the pages" — which is how QA read it, and reasonably concluded that
+  // rows were being duplicated across pages and others made unreachable.
+  //
+  // They are not. Measured against production on 2026-08-11, the endpoint
+  // this page actually calls — /api/v1/resources/by-type, one request per
+  // type, which the multi-type branch of getResources() windows onto real
+  // per-type offsets — returns for type=ENTRA_USER (item_number 13,812):
+  //     page 1 ∩ page 2 = 0 ids
+  //     page 1 ∩ page 3 = 0 ids
+  //     page 2 ∩ page 3 = 0 ids
+  //     page 1 requested twice = byte-identical id order
+  // Pagination is sound and every row is reachable; the alphabet was the
+  // lie. (The bare /api/v1/resources LIST endpoint IS unstable — 22 of 50
+  // ids shared between its page 1 and page 2 in the same measurement —
+  // but this page only reaches that endpoint for a tab with no type
+  // mapping. Flagged to the backend separately.)
+  //
+  // So the rendered order is now exactly the server's order: what the
+  // page indicator counts and what the table shows are the same
+  // sequence. When the backend lands a global ORDER BY display_name, id,
+  // the list becomes genuinely alphabetical across all 593 pages with no
+  // change here. An explicit size filter still sorts client-side — that
+  // one is a user-chosen "top N on this page" view, not a claim about
+  // total order.
   const sortedResources = useMemo(() => {
     let filtered = [...filteredResources];
 
-    // SLA filter
-    if (slaFilter) {
-      if (slaFilter === 'Not protected') {
-        filtered = filtered.filter(r => !r.protections || r.protections.length === 0 || !r.protections[0]?.policy_id);
-      } else {
-        filtered = filtered.filter(r => {
-          const policyId = r.protections?.[0]?.policy_id;
-          if (!policyId) return false;
-          const policy = policies.find(p => p.id === policyId);
-          return policy?.name === slaFilter;
-        });
-      }
+    // SLA filter — belt-and-braces over the server's own `sla` param.
+    //
+    // Named-policy filtering maps NAME -> id through `policies`. Until
+    // that request lands `policies` is [], so every row failed the
+    // predicate and the table rendered "No resources found." while the
+    // indicator still said "1 / 12" — a row set that disagreed with the
+    // page count for as long as the policy fetch took. slaParam is
+    // likewise undefined in that window, so the server has not filtered
+    // either: the honest thing is to show the unfiltered page rather
+    // than an empty one. 'Not protected' needs no lookup and still
+    // filters immediately.
+    if (slaFilter === 'Not protected') {
+      filtered = filtered.filter(r => !r.protections || r.protections.length === 0 || !r.protections[0]?.policy_id);
+    } else if (slaFilter && policies.length > 0) {
+      filtered = filtered.filter(r => {
+        const policyId = r.protections?.[0]?.policy_id;
+        if (!policyId) return false;
+        const policy = policies.find(p => p.id === policyId);
+        return policy?.name === slaFilter;
+      });
     }
 
-    const byName = (a: any, b: any) => {
+    // Tie-break only — never the primary key of the default view.
+    const byName = (a: ResourceItem, b: ResourceItem) => {
       const an = String(a.name || '').toLowerCase();
       const bn = String(b.name || '').toLowerCase();
       if (an < bn) return -1;
@@ -470,8 +680,9 @@ export default function Protection() {
       return String(a.id || '').localeCompare(String(b.id || ''));
     };
 
+    // No size filter: render the server's page order verbatim.
     if (!sizeFilter) {
-      return filtered.sort(byName);
+      return filtered;
     }
 
     // `as const` + the narrow type annotation gives TS the specific
@@ -485,7 +696,9 @@ export default function Protection() {
       top_365d: 'size_delta_year',
     };
     const key = sizeKey[sizeFilter];
-    if (!key) return filtered.sort(byName);
+    // Unknown filter value — leave the server order alone rather than
+    // re-introducing the page-local alphabet described above.
+    if (!key) return filtered;
 
     return filtered.sort((a, b) => {
       const delta = (b.usage?.[key] || 0) - (a.usage?.[key] || 0);
@@ -494,14 +707,28 @@ export default function Protection() {
     });
   }, [filteredResources, sizeFilter, slaFilter, policies]);
 
-  // Apply client-side pagination when searching
-  const displayedResources = useMemo(() => {
-    if (searchQuery) {
-      const startIndex = (page - 1) * 50;
-      return sortedResources.slice(startIndex, startIndex + 50);
-    }
-    return sortedResources;
-  }, [sortedResources, searchQuery, page]);
+  // Search is server-paginated now (page, 50) exactly like the unfiltered
+  // list, so the page the server returned IS the page to render — slicing
+  // it again by `page` would blank every page after the first.
+  const displayedResources = sortedResources;
+
+  // The view-param effect above misses refetches that swap the visible
+  // window with no user-driven change: the discovery poll, the
+  // focus/visibility reconcile and the 8s in-flight-backup poll all
+  // replace `resources` on their own, and the server pages newest-first
+  // — a discovery run (4,204 SharePoint sites, 2026-07-15) can hand
+  // page 1 a completely different row set under a live selection, and a
+  // bulk 'Not protected' then strips backup coverage from rows the user
+  // can no longer see. Reconcile against the ids actually rendered.
+  useEffect(() => {
+    setSelectedResources(prev => {
+      if (prev.length === 0) return prev;
+      const visible = new Set(displayedResources.map(r => r.id));
+      const next = prev.filter(id => visible.has(id));
+      // Same reference when nothing dropped — no re-render, no loop.
+      return next.length === prev.length ? prev : next;
+    });
+  }, [displayedResources]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -514,10 +741,23 @@ export default function Protection() {
   const activeFilterCount = (resourceFilter ? 1 : 0) + (sizeFilter ? 1 : 0) + (slaFilter ? 1 : 0);
 
   const toggleSelectAll = () => {
-    setSelectedResources(selectedResources.length === displayedResources.length ? [] : displayedResources.map(r => r.id));
+    if (selectAllMatching || selectedResources.length === displayedResources.length) {
+      setSelectAllMatching(false);
+      setSelectedResources([]);
+    } else {
+      setSelectedResources(displayedResources.map(r => r.id));
+    }
   };
 
   const toggleSelect = (id: string) => {
+    // Touching an individual checkbox narrows the intent back to explicit
+    // ids — "all matching" no longer describes what's checked. Unchecking
+    // one row from that mode keeps the rest of the visible page selected.
+    if (selectAllMatching) {
+      setSelectAllMatching(false);
+      setSelectedResources(displayedResources.filter(r => r.id !== id).map(r => r.id));
+      return;
+    }
     setSelectedResources(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
@@ -533,21 +773,166 @@ export default function Protection() {
     }
   };
 
-  const handleBulkSlaAssign = async (policyId: string) => {
-    if (selectedResources.length === 0) return;
+  // Re-pull the current page after a filter-path bulk write — the rows'
+  // protections changed server-side, and unlike the id path there is no
+  // local list to patch optimistically. Returns whether the refresh
+  // landed: the caller just WROTE, so a failed follow-up read means the
+  // table still shows pre-write protections and the caller must say so
+  // instead of leaving an unqualified success banner over stale rows.
+  const refetchCurrentView = useCallback(async (): Promise<boolean> => {
+    if (!tenantId) return true; // nothing rendered, nothing to be stale
     try {
-      const result = await bulkAssignPolicy(selectedResources, policyId);
+      const seq = beginListRequest();
+      const data = await getResources(
+        tenantId, activeTab, page, PAGE_SIZE, searchQuery,
+        slaParam, resourceFilter || undefined, serviceType,
+      );
+      applyListResponse(seq, data);
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }, [tenantId, activeTab, page, searchQuery, slaParam, resourceFilter, serviceType, beginListRequest, applyListResponse]);
+
+  const currentBulkFilter = useCallback(() => {
+    if (!tenantId) return null;
+    return buildBulkFilter({
+      tenantId,
+      tab: activeTab,
+      serviceType,
+      searchQuery,
+      resourceFilter,
+      slaParam,
+    });
+  }, [tenantId, activeTab, serviceType, searchQuery, resourceFilter, slaParam]);
+
+  const handleBulkSlaAssign = async (policyId: string) => {
+    setBulkNotice(null);
+
+    // ---- Select-all-matching: server-side FILTER path. ----
+    // Dry-run first for the authoritative matched count, then a mandatory
+    // confirm modal (executeBulkByFilter) before anything is written —
+    // policyId '' is bulk-unassign across the whole match set.
+    if (selectAllMatching) {
+      setShowSlaDropdown(false);
+      const filter = currentBulkFilter();
+      if (!filter) {
+        setBulkNotice({ kind: 'error', text: 'Select all matching is not available for this view.' });
+        return;
+      }
+      try {
+        const dry = await bulkAssignPolicyByFilter(filter, policyId, true);
+        if (dry.matched === 0) {
+          // Exit select-all mode too: leaving it on kept the "All N
+          // matching resources are selected" banner (with a stale
+          // totalItems) sitting directly above this zero-match notice.
+          setSelectAllMatching(false);
+          setSelectedResources([]);
+          setBulkNotice({ kind: 'info', text: 'No resources match the current filters — nothing to change.' });
+          return;
+        }
+        setConfirmBulk({
+          policyId,
+          policyName: policyId ? (policies.find(p => p.id === policyId)?.name || 'SLA policy') : '',
+          matched: dry.matched,
+        });
+      } catch (err) {
+        setBulkNotice({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    if (selectedResources.length === 0) return;
+    // Second gate on top of the reconcile effect: a refetch landing
+    // between render and this click would otherwise post ids that are no
+    // longer on screen, and policyId='' means unassign. Never act on a
+    // row the user can't see — and say how many were left out.
+    const visible = new Set(displayedResources.map(r => r.id));
+    const targets = selectedResources.filter(id => visible.has(id));
+    const skippedStale = selectedResources.length - targets.length;
+    if (targets.length === 0) {
+      setSelectedResources([]);
+      setShowSlaDropdown(false);
+      setBulkNotice({
+        kind: 'info',
+        text: 'The selected rows are no longer on this page (the list refreshed underneath) — nothing was changed. Re-select and try again.',
+      });
+      return;
+    }
+    try {
+      const result = await bulkAssignPolicy(targets, policyId);
       // Update local state
       setResources(prev => prev.map(r =>
-        selectedResources.includes(r.id)
+        targets.includes(r.id)
           ? { ...r, protections: policyId ? [{ policy_id: policyId }] : null }
           : r
       ));
       setSelectedResources([]);
       setShowSlaDropdown(false);
-      console.log(`Assigned SLA to ${result.assigned} resources`);
+      const parts = [policyId
+        ? `Assigned ${result.assigned} resource(s).`
+        : `Removed protection from ${result.assigned} resource(s).`];
+      const notFound = result.not_found?.length || 0;
+      if (notFound > 0) parts.push(`${notFound} skipped (no longer found).`);
+      if (skippedStale > 0) parts.push(`${skippedStale} skipped (no longer on this page).`);
+      setBulkNotice({ kind: 'success', text: parts.join(' ') });
     } catch (err) {
-      console.error('Failed to bulk assign SLA:', err);
+      setShowSlaDropdown(false);
+      setBulkNotice({
+        kind: 'error',
+        text: `Failed to update SLA: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  };
+
+  // Confirmed filter-path execution — the only place a non-dry filter
+  // request is sent.
+  const executeBulkByFilter = async () => {
+    if (!confirmBulk || bulkBusy) return;
+    const { policyId, policyName, matched: confirmedCount } = confirmBulk;
+    const filter = currentBulkFilter();
+    if (!filter) {
+      setConfirmBulk(null);
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      const result = await bulkAssignPolicyByFilter(filter, policyId, false);
+      setConfirmBulk(null);
+      setSelectAllMatching(false);
+      setSelectedResources([]);
+      const parts = [policyId
+        ? `Assigned ${policyName} to ${result.assigned} resource(s).`
+        : `Removed protection from ${result.assigned} resource(s).`];
+      // The filter is re-resolved server-side at apply time, so the match
+      // set can drift between the dry-run count the user confirmed and
+      // what was actually written (a discovery run landing, another
+      // admin's edits). Surface the drift whenever the counts disagree —
+      // a true pre-write guard (send expectedMatched, backend 409s on
+      // mismatch) needs the backend contract and is flagged there.
+      if (result.matched !== confirmedCount) {
+        parts.push(
+          `Note: the set of matching resources changed while you were confirming (${confirmedCount} when the dialog opened, ${result.matched} when applied).`,
+        );
+      }
+      const successText = parts.join(' ');
+      setBulkNotice({ kind: 'success', text: successText });
+      // A write just happened; if this read fails the table still shows
+      // pre-write protections — downgrade the banner rather than leave
+      // stale coverage under an unqualified success message.
+      const refreshed = await refetchCurrentView();
+      if (!refreshed) {
+        setBulkNotice({
+          kind: 'info',
+          text: `${successText} The table could not be refreshed and may show outdated protection — use Refresh.`,
+        });
+      }
+    } catch (err) {
+      setConfirmBulk(null);
+      setBulkNotice({ kind: 'error', text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -598,26 +983,20 @@ export default function Protection() {
         
         try {
           // Fetch resources to check if discovery completed
+          const seq = beginListRequest();
           const data = await getResources(
             tenantId,
             activeTab,
-            searchQuery ? 1 : page,
-            searchQuery ? 10000 : 50,
+            page,
+            PAGE_SIZE,
             searchQuery,
-            slaFilter || undefined,
+            slaParam,
             resourceFilter || undefined,
             serviceType
           );
 
-          // Update resources
-          if (searchQuery) {
-            const filtered = data.items || [];
-            setResources(filtered);
-            setTotalPages(filtered.length > 0 ? Math.ceil(filtered.length / 50) : 1);
-          } else {
-            setResources(data.items || []);
-            setTotalPages(data.item_number > 0 ? Math.ceil(data.item_number / 50) : 1);
-          }
+          // Update resources (dropped if newer state has since rendered)
+          applyListResponse(seq, data);
           setRefreshing(false);
         } catch (err) {
           console.error('Error fetching resources during discovery poll:', err);
@@ -695,9 +1074,9 @@ export default function Protection() {
               </div>
               */}
             <div className="sla-assign-wrapper" ref={slaDropdownRef} style={{ position: 'relative' }}>
-              <button className="action-btn" disabled={selectedResources.length === 0} onClick={() => setShowSlaDropdown(!showSlaDropdown)}>
+              <button className="action-btn" disabled={!selectAllMatching && selectedResources.length === 0} onClick={() => setShowSlaDropdown(!showSlaDropdown)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                Assign SLA{selectedResources.length > 0 ? ` (${selectedResources.length})` : ''}
+                Assign SLA{selectAllMatching ? ` (${totalItems})` : selectedResources.length > 0 ? ` (${selectedResources.length})` : ''}
               </button>
               {showSlaDropdown && (
                 <div className="sla-dropdown-menu">
@@ -791,10 +1170,68 @@ export default function Protection() {
       </div>
 
       <div className="resources-table-container">
+        {/* Bulk SLA result / status. Dismissible; errors used to die in
+            console.error and the page gave no sign anything happened. */}
+        {bulkNotice && (
+          <div className={`bulk-notice ${bulkNotice.kind}`} role={bulkNotice.kind === 'error' ? 'alert' : 'status'}>
+            <span>{bulkNotice.text}</span>
+            <button
+              type="button"
+              className="bulk-notice-dismiss"
+              aria-label="Dismiss"
+              onClick={() => setBulkNotice(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {(() => {
+          const banner = selectAllBannerState({
+            selectAllMatching,
+            selectedCount: selectedResources.length,
+            visibleCount: displayedResources.length,
+            totalItems,
+          });
+          if (banner === 'offer-all') {
+            return (
+              <div className="selectall-banner" role="status">
+                <span>All {displayedResources.length} on this page are selected.</span>
+                <button type="button" className="selectall-link" onClick={() => setSelectAllMatching(true)}>
+                  Select all {totalItems} matching
+                </button>
+              </div>
+            );
+          }
+          if (banner === 'all-matching') {
+            return (
+              <div className="selectall-banner" role="status">
+                <span>All {totalItems} matching resources are selected.</span>
+                <button
+                  type="button"
+                  className="selectall-link"
+                  onClick={() => { setSelectAllMatching(false); setSelectedResources([]); }}
+                >
+                  Clear selection
+                </button>
+              </div>
+            );
+          }
+          return null;
+        })()}
         <table className="resources-table">
           <thead>
             <tr>
-              <th className="checkbox-cell"><input type="checkbox" checked={displayedResources.length > 0 && selectedResources.length === displayedResources.length} onChange={toggleSelectAll} /></th>
+              {/* TMV-030: the header checkbox was a bare <input> — the
+                  accessibility tree exposed no name at all, so a screen
+                  reader announced "checkbox, not checked" with nothing to
+                  say what it selects. */}
+              <th className="checkbox-cell"><input
+                type="checkbox"
+                checked={displayedResources.length > 0 && (selectAllMatching || selectedResources.length === displayedResources.length)}
+                onChange={toggleSelectAll}
+                disabled={displayedResources.length === 0}
+                aria-label={`Select all ${displayedResources.length} resources on this page`}
+              /></th>
               <th>Resources <span className="th-icon"></span></th>
               <th>SLA <span className="th-icon"></span></th>
               <th className="size-col"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4, verticalAlign: 'middle' }}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg>Total size</th>
@@ -826,13 +1263,14 @@ export default function Protection() {
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
-                      checked={selectedResources.includes(resource.id)}
+                      checked={selectAllMatching || selectedResources.includes(resource.id)}
                       onChange={() => toggleSelect(resource.id)}
+                      aria-label={`Select ${resource.name || 'unnamed resource'}`}
                     />
                   </label>
                 </td>
                 <td className="resource-name-cell">
-                  <div className="resource-avatar">{getInitials(resource.name)}</div>
+                  <AvatarInitials name={resource.name} />
                   <div className="resource-info">
                     <div className="resource-display-name">
                       <span className="name-text">{resource.name}</span>
@@ -851,9 +1289,22 @@ export default function Protection() {
                           Limited
                         </span>
                       )}
+                      {resource.group_connected && (
+                        <span
+                          className="group-connected-badge"
+                          title="This site is backed by a Microsoft 365 group / Teams channel. Group backups don't include site content — assign an SLA here to protect the site itself."
+                        >
+                          group-connected
+                        </span>
+                      )}
                     </div>
                     {resource.email && <div className="resource-email">{resource.email}</div>}
-                    {resource.kind && !resource.email && <div className="resource-email">{resource.kind.replace(/_/g, ' ')}</div>}
+                    {/* TMV-027: was `kind.replace(/_/g,' ')`, which printed
+                        the raw enum as the subtitle — "entra service
+                        principal", "azure sql", "sharepoint site".
+                        prettifyEnumLabel capitalises and keeps the product's
+                        acronyms intact (SQL / ID / OneDrive / SharePoint). */}
+                    {resource.kind && !resource.email && <div className="resource-email">{prettifyEnumLabel(resource.kind)}</div>}
                   </div>
                 </td>
                 <td className="sla-cell">
@@ -983,6 +1434,46 @@ export default function Protection() {
           </tbody>
         </table>
       </div>
+
+      {/* Mandatory confirm for the select-all-matching bulk path. The
+          count comes from the server's dry run — nothing has been written
+          when this renders, and nothing is until Confirm. */}
+      {confirmBulk && (
+        <div className="bulk-confirm-overlay" onClick={() => { if (!bulkBusy) setConfirmBulk(null); }}>
+          <div
+            ref={bulkModalRef}
+            className="bulk-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-confirm-title"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 id="bulk-confirm-title">{confirmBulk.policyId ? 'Assign SLA policy' : 'Remove protection'}</h3>
+            <p className="bulk-confirm-text">
+              {confirmBulk.policyId
+                ? `Assign ${confirmBulk.policyName} to ${confirmBulk.matched} resources?`
+                : `Remove protection from ${confirmBulk.matched} resources?`}
+            </p>
+            <p className="bulk-confirm-sub">
+              This applies to every resource matching the current tab, search and filters — including pages not shown.
+              {!confirmBulk.policyId && ' Resources without a policy are excluded from scheduled backups.'}
+            </p>
+            <div className="bulk-confirm-actions">
+              <button type="button" className="action-btn" onClick={() => setConfirmBulk(null)} disabled={bulkBusy}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`bulk-confirm-primary${confirmBulk.policyId ? '' : ' danger'}`}
+                onClick={executeBulkByFilter}
+                disabled={bulkBusy}
+              >
+                {bulkBusy ? 'Applying…' : confirmBulk.policyId ? `Assign to ${confirmBulk.matched} resources` : `Remove from ${confirmBulk.matched} resources`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Snapshot Modal - Currently disabled
       {snapshotModalOpen && selectedResource && (

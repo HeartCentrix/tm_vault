@@ -14,12 +14,23 @@ export type RestoreType =
 export interface RestoreRequest {
   restoreType: RestoreType;
   snapshotIds?: string[];
+  /** Whether itemIds is a real user selection or a deliberate
+   *  whole-resource operation. An empty selection and a whole-snapshot
+   *  restore are otherwise indistinguishable on the wire — both send
+   *  itemIds: [] — so job-service cannot refuse the dangerous one without
+   *  this. Callers that already mark themselves whole-resource some other
+   *  way (entraSections, recoverMode=directory, workloads, newSiteName,
+   *  azureRestoreMode) are exempt server-side and need not send it. */
+  selectionScope?: 'SELECTED' | 'ALL';
   itemIds?: string[];
   // Folder-checkbox scope (e.g. `/Inbox`, `Contacts`). Backend's
   // shared.folder_resolver expands these into item ids against the
   // folder_path index, so the UI doesn't have to materialise the full
   // list. Union with itemIds.
   folderPaths?: string[];
+  // Items un-ticked inside a ticked folder — the resolver subtracts
+  // these from the folderPaths expansion (see shared.folder_resolver).
+  excludedItemIds?: string[];
   targetUserId?: string;
   targetResourceId?: string;
   /** For Power Platform restores: target environment to restore the app/flow into.

@@ -417,6 +417,20 @@
   min-width: 0;
 }
 
+.group-connected-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6d28d9;
+  background: #ede9fe;
+  border: 1px solid #ddd6fe;
+  vertical-align: middle;
+  cursor: default;
+}
+
 .resource-display-name {
   font-weight: 600;
   font-size: 14px;
@@ -984,4 +998,153 @@
 .action-btn-sm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+
+/* ===== Bulk SLA notices + select-all-across-pages (fix/bulk-sla-errors-selectall) =====
+   Uses the --tm-* tokens (light values on :root, flipped by darkUI.css's
+   [data-theme="dark"] block) so no separate dark overrides are needed.
+   Pattern mirrors Activity's .retry-notice: a dismissible strip between
+   the toolbar and the table that never blocks the rows. */
+
+.bulk-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--tm-border, #E0D9D0);
+  border-radius: 6px;
+  background: var(--tm-surface, #F2EDE6);
+  color: var(--tm-text, #231F20);
+  font-size: 13px;
+}
+
+/* Semantic tints read on both themes: soft alpha wash + solid border. */
+.bulk-notice.error {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.bulk-notice.success {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.bulk-notice-dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+/* Gmail-style strip: "All 50 on this page are selected. [Select all N matching]" */
+.selectall-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--tm-border, #E0D9D0);
+  border-radius: 6px;
+  background: var(--tm-surface, #F2EDE6);
+  color: var(--tm-text, #231F20);
+  font-size: 13px;
+}
+
+.selectall-link {
+  border: none;
+  background: transparent;
+  color: var(--tm-accent, #D31245);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.selectall-link:hover {
+  color: var(--tm-accent-dark, #b00f39);
+}
+
+/* Confirm modal for the filter-path bulk action (mandatory — '' = unassign). */
+.bulk-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.bulk-confirm-modal {
+  background: var(--tm-bg, #F9F6F2);
+  border: 1px solid var(--tm-border, #E0D9D0);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 460px;
+  width: 90%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.bulk-confirm-modal h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.bulk-confirm-text {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--tm-text, #231F20);
+}
+
+.bulk-confirm-sub {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--tm-body, #6B6B6B);
+}
+
+.bulk-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bulk-confirm-primary {
+  padding: 8px 16px;
+  border: 1px solid var(--tm-accent, #D31245);
+  border-radius: 6px;
+  background: var(--tm-accent, #D31245);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulk-confirm-primary:hover:not(:disabled) {
+  background: var(--tm-accent-dark, #b00f39);
+  border-color: var(--tm-accent-dark, #b00f39);
+}
+
+.bulk-confirm-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Unassign at scale gets the starker treatment. */
+.bulk-confirm-primary.danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.bulk-confirm-primary.danger:hover:not(:disabled) {
+  background: #991b1b;
+  border-color: #991b1b;
 }

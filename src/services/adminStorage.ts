@@ -11,6 +11,30 @@ export interface StorageBackend {
   is_enabled: boolean;
 }
 
+/**
+ * Friendly display label for a storage backend, derived from its endpoint/kind
+ * (display-only — does not change which backend is used). The S3-compatible
+ * slot (kind `seaweedfs`) is pointed at Wasabi in this deployment, so an
+ * endpoint on `wasabisys.com` is surfaced as "Wasabi (S3)" rather than the raw
+ * "seaweedfs-local" name. If that slot is ever repointed at a real SeaweedFS
+ * host the label correctly falls back to SeaweedFS.
+ */
+export function backendLabel(b: StorageBackend): string {
+  const ep = (b.endpoint || '').toLowerCase();
+  if (ep.includes('wasabisys.com')) return 'Wasabi (S3)';
+  if (b.kind === 'azure_blob') return 'Azure Blob';
+  if (b.kind === 'seaweedfs') return 'SeaweedFS';
+  return b.name;
+}
+
+/** Short sub-label (region/host) shown beside the friendly name. */
+export function backendDetail(b: StorageBackend): string {
+  const ep = (b.endpoint || '').toLowerCase();
+  const wasabi = ep.match(/s3\.([a-z0-9-]+)\.wasabisys\.com/);
+  if (wasabi) return `wasabi · ${wasabi[1]}`;
+  return b.kind;
+}
+
 export interface ToggleStatus {
   active_backend: StorageBackend;
   transition_state: 'stable' | 'draining' | 'flipping';

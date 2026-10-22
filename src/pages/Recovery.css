@@ -1810,6 +1810,15 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   box-sizing: border-box;
 }
 
+/* Placeholder for a message that really has no renderable content —
+   empty body, no attachment, no quote (QA TMV-021). Muted + italic so
+   it reads as UI commentary rather than as something the sender typed,
+   and token-coloured so it stays legible in dark mode. */
+.chat-item-empty {
+  font-style: italic;
+  color: var(--tm-muted, #94a3b8);
+}
+
 /* Attachment chips under a chat message — reuses .email-ol-attach-chip
    styling. Wraps so a long filename doesn't blow out the row. */
 .chat-item-attachments {
@@ -2346,11 +2355,16 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   flex: 1 1 auto;
 }
 
+/* The chip is a <button> (it opens the event detail — QA TMV-019), so
+   it has to shed the UA button styling before it can look like the
+   inline label it always was. Colours stay inherited so the existing
+   dark-mode rules for .cal-day-event-label keep applying unchanged. */
 .cal-day-event-label {
   font-size: 10px;
   line-height: 1.25;
   color: #1e293b;
   padding: 1px 4px 1px 5px;
+  border: none;
   border-left: 3px solid #16a34a;
   background: #f1f5f9;
   border-radius: 2px;
@@ -2361,6 +2375,17 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cal-day-event-label:hover {
+  filter: brightness(0.96);
+}
+.cal-day-event-label:focus-visible {
+  outline: 2px solid var(--tm-accent, #D31245);
+  outline-offset: 1px;
 }
 /* Cancelled events — strike-through + muted colour + red badge.
    Applies both on the day-cell chip and inside the hover tooltip. */
@@ -2548,6 +2573,69 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The subject inside the day popover opens the event detail modal
+   (QA TMV-019). Button reset only — the visual treatment above and the
+   dark-mode rules for .cal-hover-subject apply to both variants. */
+.cal-hover-subject-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cal-hover-subject-btn:hover {
+  text-decoration: underline;
+}
+
+/* ── Event detail modal (QA TMV-019) ─────────────────────────────────
+   The calendar tab hides the shared right-hand preview pane (the month
+   grid takes the full width), so an event's details ride in a modal
+   over the grid. Colours come from the theme tokens so the panel works
+   in both themes without a dark-mode override; .calendar-preview
+   inside already has its own dark rule. */
+.cal-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.cal-detail-modal {
+  position: relative;
+  background: var(--tm-surface, #fff);
+  color: var(--tm-text, #0f172a);
+  border: 1px solid var(--tm-border, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.32);
+  width: min(680px, 100%);
+  max-height: min(80vh, 720px);
+  overflow-y: auto;
+}
+.cal-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 1;
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--tm-body, #64748b);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.cal-detail-close:hover {
+  background: var(--tm-hover, #f1f5f9);
+  color: var(--tm-text, #0f172a);
 }
 
 .cal-hover-time {
@@ -2785,6 +2873,31 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
 .od-th-arrow {
   margin-left: 4px;
   color: #94a3b8;
+}
+/* Only Name and Last modified are sortable — those are the only two
+   orderings /onedrive implements (see OneDriveSort in Recovery.tsx).
+   They are real buttons so they carry aria-sort and keyboard focus; the
+   arrow now renders on the ACTIVE column only, instead of sitting
+   permanently on Name and implying four sortable columns where clicking
+   did nothing (QA TMV-014). Owner and File size stay plain <div>s with
+   the default cursor so they never look interactive. */
+.od-th-sort {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.od-th-sort:hover {
+  color: var(--tm-text, #0f172a);
+  text-decoration: underline;
+}
+.od-th-owner,
+.od-th-size {
+  cursor: default;
 }
 
 .od-table-body {

@@ -182,6 +182,118 @@ export interface ContentSnapshotsResponse {
 // callers spread it.
 const getAuthHeaders = (): Record<string, string> => ({});
 
+/** Max cached full-calendar walks (see listAllCalendarEventsCached). Two =
+ *  the account being viewed plus the one before it, which is what a
+ *  Calendar → Mail → Calendar / A → B → A round trip needs. Each entry can
+ *  hold 35k events with their inline Graph payloads, so this stays small on
+ *  purpose. */
+export const CALENDAR_EVENT_CACHE_MAX = 2;
+
+/** Per-session cache of completed calendar walks, keyed by snapshotId.
+ *  Insertion-ordered (Map) so the oldest entry is evicted first. */
+const calendarEventCache = new Map<
+  string, { events: CalendarEvent[]; total: number; truncated: boolean }
+>();
+
+/** Drop every cached calendar walk. Exported for the regression scripts —
+ *  nothing in the app needs it, because a new backup produces a new
+ *  snapshot id and therefore a natural cache miss. */
+export function clearCalendarEventCache(): void {
+  calendarEventCache.clear();
+}
+
+/**
+ * Hard ceiling on how many item ids the UI will ever enumerate into one
+ * export/restore POST body.
+ *
+ * The SPA's own nginx (frontend pod, nginx.conf) declares no
+ * `client_max_body_size`, so nginx's 1 MiB default applies — and every
+ * /api request is proxied through that pod (`location /api/` →
+ * api-gateway). A JSON id costs ~39 bytes ('"<uuid>",'), so the heaviest
+ * pilot account's 35,026 calendar events came to ~1.30 MiB and the
+ * frontend pod answered 413 before job-service ever saw the request.
+ * 12,000 ids ≈ 468 KB — under half the limit even with every other field
+ * present. Raising this means raising the proxy limit first.
+ */
+export const MAX_ENUMERATED_ITEM_IDS = 12000;
+
+/** The ambiguous folderPath /calendar emits when `folder_path` is NULL on
+ *  the row (`i.folder_path or "Calendar"` in list_snapshot_calendar). The
+ *  ENTRA_USER backup path writes CALENDAR_EVENT rows with no folder_path
+ *  at all, and shared.folder_resolver matches `folder_path IN ('Calendar')`
+ *  / LIKE 'Calendar/%' — neither matches NULL. A folder scope built on this
+ *  value would silently omit those events from an export, so it is treated
+ *  as un-scopable. */
+const AMBIGUOUS_CALENDAR_PATH = 'Calendar';
+
+export interface CalendarSelectionScope {
+  /** Explicit ids to send. Empty when a folder scope is used instead. */
+  itemIds: string[];
+  /** Server-resolved scope (shared.folder_resolver, sibling-snapshot
+   *  aware). Empty when ids are sent instead. */
+  folderPaths: string[];
+  /** Real size of the selection regardless of how it is expressed — the
+   *  toolbar/modal labels read this. */
+  count: number;
+  /** Set when the selection can be expressed neither way. The caller must
+   *  surface it and NOT submit: an approximation would either export
+   *  events the filter excluded (over-restore) or silently drop some. */
+  error?: string;
+}
+
+/**
+ * Decide how to express a Calendar-tab Download / Recover selection so the
+ * request body stays inside the proxy's 1 MiB limit without ever changing
+ * WHICH events are in scope.
+ *
+ *   1. ids fit the budget            → send the exact ids (unchanged path)
+ *   2. over budget, no type filter   → send the calendars the selection
+ *                                      covers as `folderPaths`; the backend
+ *                                      resolves the same rows itself
+ *   3. anything else                 → refuse, loudly
+ *
+ * Case 3 exists because the Event Type labels ("Recurring", "Meeting", …)
+ * are derived in snapshot-service from raw Graph fields and have no
+ * server-side equivalent, so a type-filtered subset can only travel as
+ * ids. Sending folderPaths anyway would widen the scope past what the grid
+ * shows; truncating the ids would silently export the wrong set.
+ */
+export function calendarSelectionScope(
+  events: { id: string; folderPath?: string | null }[],
+  opts: { typeFiltered: boolean; maxItemIds?: number },
+): CalendarSelectionScope {
+  const max = opts.maxItemIds ?? MAX_ENUMERATED_ITEM_IDS;
+  const count = events.length;
+  const empty = { itemIds: [] as string[], folderPaths: [] as string[], count };
+
+  if (count <= max) {
+    return { itemIds: events.map(e => e.id), folderPaths: [], count };
+  }
+  if (opts.typeFiltered) {
+    return {
+      ...empty,
+      error: `${count.toLocaleString()} events is too many to send in one `
+        + `request. Narrow the sidebar selection to `
+        + `${max.toLocaleString()} events or fewer — tick a single calendar, `
+        + `or fewer event types.`,
+    };
+  }
+  const paths = Array.from(new Set(events.map(e => e.folderPath || '')));
+  const unscopable = paths.filter(
+    p => p === '' || p === AMBIGUOUS_CALENDAR_PATH,
+  );
+  if (paths.length === 0 || unscopable.length > 0) {
+    return {
+      ...empty,
+      error: `${count.toLocaleString()} events can't be sent in one request, `
+        + `and some of them aren't filed under a named calendar so the `
+        + `whole-calendar scope can't be used safely either. Narrow the `
+        + `sidebar selection to ${max.toLocaleString()} events or fewer.`,
+    };
+  }
+  return { itemIds: [], folderPaths: paths, count };
+}
+
 export const SnapshotService = {
   /** Backend-computed "actually-used storage" rollup for the protection
    *  tab. The headline + 1w/1m/1y deltas + 7-day sparkline all come from
@@ -327,6 +439,13 @@ export const SnapshotService = {
     };
     const base = contentType ? endpoint[contentType] : API.SNAPSHOTS.MAIL(snapshotId);
     let url = `${base}?page=${page}&size=${size}`;
+    if (!contentType || contentType === 'mail') {
+      // List rows render only subject/from/date/bodyPreview — full HTML
+      // bodies made a 50-row page ~471KB (vs ~45KB slim) and dominated
+      // tab-in latency. EmailPreview lazy-fetches the selected email's
+      // body via getItemDetail (see its needsBody effect).
+      url += '&bodies=none';
+    }
     if (group !== undefined && group !== '' && group !== 'all') {
       // Uniform `folder` filter across all tabs — chats now also have
       // folder_path set ("chats/<friendly name>") by the backup handler.
@@ -458,13 +577,197 @@ export const SnapshotService = {
   },
 
   /**
-   * Fetch all calendar events for a snapshot (reads from blob storage).
+   * Fetch ONE page of calendar events for a snapshot (reads from blob storage).
    */
-  async listCalendarEvents(snapshotId: string, page = 1, size = 500): Promise<CalendarEventListResponse> {
+  async listCalendarEvents(snapshotId: string, page = 1, size = 500, signal?: AbortSignal): Promise<CalendarEventListResponse> {
     const url = `${API.SNAPSHOTS.CALENDAR(snapshotId)}?page=${page}&size=${size}`;
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await fetch(url, { headers: getAuthHeaders(), signal });
     if (!res.ok) throw new Error('Failed to fetch calendar events');
     return res.json();
+  },
+
+  /**
+   * Walk EVERY page of /calendar for a snapshot.
+   *
+   * The month grid, the type/calendar filter sidebar and the
+   * filtered-id set Download scopes off are all derived from one array,
+   * so a partial load isn't a partial view — it's silently missing
+   * events. /calendar dedups then paginates ordered by created_at DESC,
+   * so the old single `listCalendarEvents(id, 1, 1000)` call kept only
+   * the 1,000 most-recently-CAPTURED rows; accounts here hold 5,112 /
+   * 7,953 / 35,026 events.
+   *
+   * Bounded by `maxPages` (100 × 1,000 = 100k events) so a runaway
+   * totalPages can't spin forever, and `truncated` is set whenever
+   * fewer than `total` events were loaded — callers must never present
+   * a bounded load as the complete calendar. Pages after the first are
+   * fetched `concurrency`-at-a-time (35k events = 36 round trips) and
+   * reassembled in page order so capture order is preserved.
+   *
+   * Rejects on the first failed page and on abort rather than resolving
+   * with a partial set: a caller that switched accounts mid-walk must
+   * not be handed events that look complete. The first failure also
+   * aborts the remaining workers — each page is a COUNT(DISTINCT …) plus
+   * a DISTINCT ON dedup over the 22M-row snapshot_items table on a
+   * single-replica 500m-CPU pod, and a walk whose result has already been
+   * thrown away must not keep paying for 30 more of them behind an
+   * on-screen "Could not load events".
+   */
+  async listAllCalendarEvents(
+    snapshotId: string,
+    opts: {
+      pageSize?: number;
+      maxPages?: number;
+      concurrency?: number;
+      signal?: AbortSignal;
+      onProgress?: (loaded: number, total: number) => void;
+      /** Fired once, with page 1, as soon as it lands — before the
+       *  remaining pages are walked. Lets the caller paint a real (if
+       *  partial) month immediately instead of holding a blank grid for
+       *  the whole walk: 2026-08-11, page 1 of the 5,418-event pilot
+       *  calendar answers in ~1.3 s while the full six-page walk takes
+       *  ~3–4 s (QA TMV-023). The resolved value still carries the
+       *  COMPLETE, deduped set and must replace whatever this emitted —
+       *  page 1 is 1,000 of 5,418 events and is never the answer. */
+      onFirstPage?: (events: CalendarEvent[], total: number) => void;
+    } = {},
+  ): Promise<{ events: CalendarEvent[]; total: number; truncated: boolean }> {
+    const pageSize = opts.pageSize ?? 1000;
+    const maxPages = opts.maxPages ?? 100;
+    const concurrency = opts.concurrency ?? 4;
+    const { signal, onProgress, onFirstPage } = opts;
+
+    // Internal controller: cancels the in-flight siblings the moment any
+    // page fails. Chained to the caller's signal so an unmount still
+    // aborts everything.
+    const walk = new AbortController();
+    const relayAbort = () => walk.abort(signal?.reason);
+    if (signal) {
+      if (signal.aborted) relayAbort();
+      else signal.addEventListener('abort', relayAbort);
+    }
+    // The first REAL error, kept so the rejection isn't replaced by the
+    // AbortError the internal cancel raises in the sibling workers — the
+    // caller swallows AbortError as teardown, which would leave a failed
+    // load with no message on screen.
+    let failure: unknown = null;
+    const fail = (err: unknown) => {
+      if (failure === null) failure = err;
+      walk.abort();
+    };
+
+    try {
+      const first = await SnapshotService.listCalendarEvents(snapshotId, 1, pageSize, walk.signal);
+      const total = first.totalElements ?? (first.content || []).length;
+      const pages = Math.min(Math.max(1, first.totalPages || 1), maxPages);
+      // Indexed by page-1 so out-of-order completions still flatten in
+      // created_at DESC order.
+      const buckets: CalendarEvent[][] = [first.content || []];
+      let loaded = buckets[0].length;
+      onProgress?.(loaded, total);
+      // Paint-now hook. Guarded so a throwing consumer can't take down
+      // the walk it is only observing.
+      if (onFirstPage) {
+        try { onFirstPage(buckets[0], total); } catch { /* observer only */ }
+      }
+
+      let nextPage = 2;
+      const worker = async () => {
+        for (;;) {
+          walk.signal.throwIfAborted();
+          const page = nextPage++;
+          // `pages` is the only loop bound — an empty page mid-walk does NOT
+          // stop it. totalPages over-reporting is a snapshot-changed-under-us
+          // anomaly, and later pages may still hold real events; skipping them
+          // would drop recoverable data to save a round trip.
+          if (page > pages) return;
+          try {
+            const data = await SnapshotService.listCalendarEvents(snapshotId, page, pageSize, walk.signal);
+            const batch = data.content || [];
+            buckets[page - 1] = batch;
+            loaded += batch.length;
+            onProgress?.(loaded, total);
+          } catch (err) {
+            fail(err);
+            throw err;
+          }
+        }
+      };
+      walk.signal.throwIfAborted();
+      try {
+        await Promise.all(
+          Array.from({ length: Math.min(concurrency, Math.max(0, pages - 1)) }, worker),
+        );
+      } catch (err) {
+        throw failure ?? err;
+      }
+
+      // Dedupe by id before reporting. Each page is an independent
+      // LIMIT/OFFSET over the sibling snapshots ordered by si.created_at
+      // DESC, so a CALENDAR_EVENT insert during the walk shifts that
+      // ordering and one row can be served on two pages while another is
+      // skipped. Duplicates would otherwise reach the month grid's React
+      // keys and the Download id set, AND pad the count up to `total` so
+      // `truncated` read false while events were genuinely missing.
+      const seen = new Set<string>();
+      const events: CalendarEvent[] = [];
+      for (const ev of buckets.flat()) {
+        if (seen.has(ev.id)) continue;
+        seen.add(ev.id);
+        events.push(ev);
+      }
+      return { events, total, truncated: events.length < total };
+    } catch (err) {
+      fail(err);
+      throw failure ?? err;
+    } finally {
+      signal?.removeEventListener('abort', relayAbort);
+    }
+  },
+
+  /**
+   * Session-cached wrapper around `listAllCalendarEvents`.
+   *
+   * CalendarMonthView unmounts on every tab switch, so Calendar → Mail →
+   * Calendar used to re-walk all 36 pages of the heaviest account against
+   * snapshot-service. Same per-session SWR shape as `itemsCacheRef` /
+   * `foldersCacheRef` on Recovery, keyed strictly by snapshotId — a new
+   * Gold batch resolves to a NEW snapshot id, so a fresh backup misses
+   * naturally and there is nothing to revalidate: the event set behind a
+   * given snapshot id (that snapshot plus its older siblings) is fixed.
+   * Deliberately no background revalidate — revalidating would re-pay the
+   * exact 36-request cost this cache exists to remove.
+   *
+   * Only successful walks are cached; a failed or aborted walk must be
+   * retryable.
+   */
+  async listAllCalendarEventsCached(
+    snapshotId: string,
+    opts: {
+      pageSize?: number;
+      maxPages?: number;
+      concurrency?: number;
+      signal?: AbortSignal;
+      onProgress?: (loaded: number, total: number) => void;
+      onFirstPage?: (events: CalendarEvent[], total: number) => void;
+    } = {},
+  ): Promise<{ events: CalendarEvent[]; total: number; truncated: boolean }> {
+    const hit = calendarEventCache.get(snapshotId);
+    if (hit) {
+      opts.onProgress?.(hit.events.length, hit.total);
+      return hit;
+    }
+    const result = await SnapshotService.listAllCalendarEvents(snapshotId, opts);
+    // Bounded: one entry is up to 35k events with their full Graph
+    // payloads inline (`body` + `metadata.raw`), so this is real browser
+    // memory — keep the current account plus the previous one, no more.
+    calendarEventCache.set(snapshotId, result);
+    while (calendarEventCache.size > CALENDAR_EVENT_CACHE_MAX) {
+      const oldest = calendarEventCache.keys().next().value;
+      if (oldest === undefined) break;
+      calendarEventCache.delete(oldest);
+    }
+    return result;
   },
 
   /**

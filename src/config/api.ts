@@ -9,6 +9,11 @@ export const API = {
   // Base URL - change this or set VITE_API_URL in .env
   BASE_URL: API_URL,
 
+  // Application health (aggregated across services + subsystems)
+  HEALTH: {
+    STATUS: `${API_URL}/health`,
+  },
+
   // Auth
   AUTH: {
     LOGIN_URL: `${API_URL}/auth/microsoft/url`,
@@ -80,6 +85,11 @@ export const API = {
     RETRY: (id: string) => `${API_URL}/jobs/${id}/retry`,
     PROGRESS: (id: string) => `${API_URL}/jobs/${id}/progress`,
     TRIGGER_BACKUP: `${API_URL}/backups/trigger`,
+    // Per-resource dispatch. This is the path the Activity tab's Retry
+    // button uses — NOT JOBS.RETRY above, which only flips the job row to
+    // QUEUED and publishes nothing, so the work never actually runs.
+    TRIGGER_USER: (resourceId: string) =>
+      `${API_URL}/backups/trigger-user/${resourceId}`,
     TRIGGER_BULK: `${API_URL}/backups/trigger-bulk`,
     TRIGGER_DATASOURCE: `${API_URL}/backups/trigger-datasource`,
   },
@@ -189,6 +199,11 @@ export const API = {
   AUDIT: {
     LIST: `${API_URL}/audit/events`,
     DETAILS: (id: string) => `${API_URL}/audit/events/${id}`,
+  },
+
+  // App Settings
+  SETTINGS: {
+    APP: `${API_URL}/settings/app`,
   },
 
   // Reports

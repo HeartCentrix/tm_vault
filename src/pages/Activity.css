@@ -287,6 +287,18 @@
   color: #374151;
 }
 
+/* Status is the 4th column. Sized so its widest content — the
+   "In Progress" badge carrying a spinner and the inline cancel button —
+   fits on ONE line. Applied to th and td together so the header and the
+   body agree; `width: 1%` with nowrap is the standard table idiom for
+   "shrink to content but never below min-width". */
+.activity-table th:nth-child(4),
+.activity-table td:nth-child(4) {
+  width: 1%;
+  min-width: 168px;
+  white-space: nowrap;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -295,6 +307,13 @@
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
+  /* Never let the label break across two lines. `white-space` stops the
+     text wrapping; `flex-shrink: 0` stops the badge being compressed
+     below its natural width now that it is a flex item of .status-cell —
+     without it, "In Progress" (label + spinner + cancel button) folds
+     onto a second line in a narrow column. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .status-badge svg {
@@ -962,6 +981,9 @@
 .mini-glyph.glyph-partial { color: #d97706; }
 .mini-glyph.glyph-pending { color: #9ca3af; }
 .mini-glyph.glyph-skipped { color: #64748b; }
+/* NOT_IN_RUN: scoped but no snapshot in this batch (unlicensed / held /
+   policy-excluded) — neutral, must not read as activity. */
+.mini-glyph.glyph-na      { color: #6b7280; }
 .mini-glyph.glyph-spacer  { color: transparent; }
 
 .mini-type {
@@ -1208,4 +1230,71 @@
 .activity-row-shards {
   color: #6b7280;
   font-size: 12px;
+}
+
+/* ── Retry incomplete resources ─────────────────────────────────────
+   Sits beside the status badge, mirroring .status-badge-cancel. Only
+   rendered for terminal-but-incomplete runs (see shouldShowRetry), so
+   a clean backup shows nothing here at all. */
+.status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.status-badge-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-color, #3a3f4b);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary, #9aa4b2);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.status-badge-retry svg {
+  width: 13px;
+  height: 13px;
+}
+
+.status-badge-retry:hover:not(:disabled) {
+  background: var(--accent-soft, rgba(88, 133, 255, 0.14));
+  border-color: var(--accent, #5885ff);
+  color: var(--accent, #5885ff);
+}
+
+.status-badge-retry:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.retry-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent, #5885ff);
+  border-radius: 6px;
+  background: var(--accent-soft, rgba(88, 133, 255, 0.12));
+  color: var(--text-primary, #e6e9ef);
+  font-size: 13px;
+}
+
+.retry-notice-dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
 }

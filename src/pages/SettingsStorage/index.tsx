@@ -7,10 +7,13 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   AdminStorageService,
+  backendLabel,
+  backendDetail,
   type StorageBackend,
   type ToggleEvent,
   type ToggleStatus,
 } from '../../services/adminStorage';
+import { API } from '../../config/api';
 import './SettingsStorage.css';
 
 export default function SettingsStoragePage() {
@@ -103,9 +106,9 @@ export default function SettingsStoragePage() {
         <span className="storage-eyebrow">System · Org Admin</span>
         <h1 className="storage-title">Storage</h1>
         <p className="storage-desc">
-          Switch between Azure Blob and on-prem SeaweedFS. Toggling drains
-          in-flight jobs, promotes the replica DB, restarts workers, and runs a
-          smoke test before accepting new work.
+          Switch between Azure Blob and the configured S3-compatible object store.
+          Toggling drains in-flight jobs, promotes the replica DB, restarts
+          workers, and runs a smoke test before accepting new work.
         </p>
       </header>
 
@@ -118,15 +121,24 @@ export default function SettingsStoragePage() {
             data-backend-kind={targetBackend.kind}
             data-backend-name={targetBackend.name}
             onClick={() => setModalOpen(true)}
-            disabled={status.transition_state !== 'stable'}
+            // Self-describing regardless of how the two backends are named,
+            // and inert if they ever resolve to the same one — this control
+            // drains jobs, promotes the replica DB and restarts workers, so
+            // "switch to the thing you are already on" must be impossible
+            // (BUG-008).
+            disabled={
+              status.transition_state !== 'stable'
+              || targetBackend.kind === status.active_backend.kind
+            }
           >
-            Switch to {targetBackend.name}
+            Switch from {backendLabel(status.active_backend)} to {backendLabel(targetBackend)}
           </button>
         ) : (
           <span className="storage-no-alt">No alternate backend configured.</span>
         )}
       </div>
 
+      <StorageUsageCards />
       <HistoryCard events={events} />
 
       {modalOpen && targetBackend && (
@@ -166,9 +178,9 @@ function StateCard({
           data-backend-kind={status.active_backend.kind}
           data-backend-name={status.active_backend.name}
         >
-          {status.active_backend.name}
+          {backendLabel(status.active_backend)}
         </span>
-        <span className="storage-state-kind">{status.active_backend.kind}</span>
+        <span className="storage-state-kind">{backendDetail(status.active_backend)}</span>
         <span className={`storage-state-pill ${pillClass}`}>
           {status.transition_state}
         </span>
@@ -263,6 +275,106 @@ function HistoryCard({ events }: { events: ToggleEvent[] }) {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Shape of GET /api/v1/dashboard/backup/size — only the fields the
+ * usage squares consume. The raw-byte + projection fields ship with the
+ * 2026-08-20 dashboard-service; they are optional so a frontend deployed
+ * ahead of (or during) that rollout degrades to em-dashes, not a crash. */
+interface BackupSizeStats {
+  total: string;
+  totalBytes?: number;
+  dailyGrowthBytes?: number;
+  projectedBytes1y?: number;
+  projectedBytes3y?: number;
+}
+
+/** Mirrors the backend's format_bytes (1024-base, MB/GB) and extends it
+ * with a TB tier — 3-year projections can cross what the backend's
+ * headline formatter ever needed to render. */
+function formatBytes(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n < 1024 ** 4) return `${(n / 1024 ** 3).toFixed(1)} GB`;
+  return `${(n / 1024 ** 4).toFixed(2)} TB`;
+}
+
+function StorageUsageCards() {
+  const [stats, setStats] = useState<BackupSizeStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // One fetch per mount — the protected-data rollup is the expensive
+    // dashboard aggregate; it has no business on the page's 5s status poll.
+    // A cold rollup (right after a deploy or a fresh snapshot batch) can
+    // take minutes and has been seen 504ing at the gateway, so retry a
+    // failed fetch — by the second attempt the server-side cache is
+    // usually warm and the answer is instant.
+    let cancelled = false;
+    const RETRY_DELAYS_MS = [5_000, 20_000];
+    (async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const res = await fetch(API.DASHBOARD.BACKUP_SIZE);
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText || 'request failed'}`);
+          const data = (await res.json()) as BackupSizeStats;
+          if (!cancelled) setStats(data);
+          return;
+        } catch (e) {
+          if (cancelled) return;
+          if (attempt >= RETRY_DELAYS_MS.length) {
+            setStatsError(String(e instanceof Error ? e.message : e));
+            return;
+          }
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+          if (cancelled) return;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Pending = the fetch (or a retry) is still in flight. Rendered as an
+  // explicit "Calculating…" — a bare em-dash here reads as broken during
+  // the multi-minute cold rollup (operator report, 2026-08-20).
+  const pending = stats === null && statsError === null;
+
+  const growthCaption = pending
+    ? 'first load can take a minute or two'
+    : stats?.dailyGrowthBytes != null
+      ? `at +${formatBytes(stats.dailyGrowthBytes)}/day (30-day avg)`
+      : 'awaiting growth data';
+
+  const value = (formatted: string) => (pending ? 'Calculating…' : formatted);
+  const valueClass = `storage-usage-value${pending ? ' pending' : ''}`;
+
+  return (
+    <section className="storage-usage" aria-label="Storage utilization and projections">
+      <h2 className="storage-usage-title">Usage &amp; projections</h2>
+      {statsError && (
+        <div className="storage-usage-error">Usage stats unavailable: {statsError}</div>
+      )}
+      <div className="storage-usage-grid">
+        <div className="storage-usage-card">
+          <span className="storage-usage-label">Current utilization</span>
+          <span className={valueClass}>{value(stats ? stats.total : '—')}</span>
+          <span className="storage-usage-caption">protected data in the vault</span>
+        </div>
+        <div className="storage-usage-card">
+          <span className="storage-usage-label">1-year projection</span>
+          <span className={valueClass}>{value(formatBytes(stats?.projectedBytes1y))}</span>
+          <span className="storage-usage-caption">{growthCaption}</span>
+        </div>
+        <div className="storage-usage-card">
+          <span className="storage-usage-label">3-year projection</span>
+          <span className={valueClass}>{value(formatBytes(stats?.projectedBytes3y))}</span>
+          <span className="storage-usage-caption">{growthCaption}</span>
         </div>
       </div>
     </section>
@@ -421,7 +533,7 @@ function ToggleModal({
           data-backend-kind={target.kind}
           data-backend-name={target.name}
         >
-          Switch to {target.name}
+          Switch to {backendLabel(target)}
         </h2>
 
         <div className="storage-modal-warn">

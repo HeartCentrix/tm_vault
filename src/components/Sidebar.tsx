@@ -2,6 +2,20 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { getNavigationState } from '../services/navState';
 import './Sidebar.css';
 
+// The tenant sub-routes that are actually registered in App.tsx. `subRoute`
+// is free text restored from localStorage, and an unregistered value (''
+// from a partially-written state, or a path from an older build) produced a
+// target like `/tenants/<id>/<type>` that matches no route — which rendered
+// as a blank page and made the Service nav item look dead (BUG-007).
+// Anything not on this list falls back to the tenant picker.
+const VALID_SERVICE_SUBROUTES = [
+  '/overview',
+  '/protection',
+  '/protection/recovery',
+  '/protection/settings',
+  '/global-search',
+] as const;
+
 export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -13,15 +27,22 @@ export default function Sidebar() {
     return location.pathname.startsWith(route);
   };
 
+  /** Resolve the Service item to a real, registered path. */
+  const serviceHref = (): string => {
+    const state = getNavigationState();
+    if (state?.tenantId && state.serviceType
+        && (VALID_SERVICE_SUBROUTES as readonly string[]).includes(state.subRoute)) {
+      return `/tenants/${state.tenantId}/${state.serviceType}${state.subRoute}`;
+    }
+    return '/tenants';
+  };
+
+  /** The href a nav item points at — used for the real <a> and for navigate(). */
+  const hrefFor = (route: string): string => (route === 'service' ? serviceHref() : route);
+
   const handleNav = (route: string) => {
     if (route === 'service') {
-      // Restore last visited service sub-route with current tenant context
-      const state = getNavigationState();
-      if (state && state.tenantId && state.serviceType) {
-        navigate(`/tenants/${state.tenantId}/${state.serviceType}${state.subRoute}`);
-      } else {
-        navigate('/tenants');
-      }
+      navigate(serviceHref());
     } else if (route === '/activity' || route === '/configuration') {
       // Preserve tenant context by including it in the route
       const state = getNavigationState();
@@ -41,6 +62,7 @@ export default function Sidebar() {
     { label: 'Activity', route: '/activity' },
     { label: 'Configuration', route: '/configuration' },
     { label: 'Storage', route: '/settings/storage' },
+    { label: 'Health', route: '/health' },
   ];
 
   return (
@@ -56,16 +78,30 @@ export default function Sidebar() {
         <span className="logo-text">TM.vault</span>
       </div>
 
+      {/* Real anchors, not <div>s. As divs these were not keyboard focusable,
+          announced as generic containers rather than links, and offered no
+          href for middle-click / open-in-new-tab (BUG-007). onClick still
+          drives the SPA navigation; the href is what makes them links. */}
       <nav className="nav-menu">
-        {menuItems.map((item) => (
-          <div
-            key={item.route}
-            className={`nav-item ${isRouteActive(item.route) ? 'active' : ''}`}
-            onClick={() => handleNav(item.route)}
-          >
-            <span className="nav-label">{item.label}</span>
-          </div>
-        ))}
+        {menuItems.map((item) => {
+          const active = isRouteActive(item.route);
+          return (
+            <a
+              key={item.route}
+              href={hrefFor(item.route)}
+              className={`nav-item ${active ? 'active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+              onClick={(e) => {
+                // Let the browser handle modified clicks (new tab/window).
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                e.preventDefault();
+                handleNav(item.route);
+              }}
+            >
+              <span className="nav-label">{item.label}</span>
+            </a>
+          );
+        })}
       </nav>
 
       <div className="sidebar-footer">
