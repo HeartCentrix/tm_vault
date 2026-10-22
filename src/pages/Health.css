@@ -1,0 +1,136 @@
+.health-page {
+  padding: 24px 28px;
+  max-width: 1000px;
+}
+
+.health-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.health-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.health-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.health-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.health-updated {
+  font-size: 12px;
+  color: #6b6b6b;
+}
+
+.health-refresh {
+  padding: 6px 14px;
+  background: #ffffff;
+  border: 1px solid #e0d9d0;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b6b6b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.health-refresh:hover {
+  border-color: #d31245;
+  color: #d31245;
+}
+
+.health-services {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.health-services-down {
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.health-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.health-card-healthy { border-left-color: #22c55e; }
+.health-card-degraded { border-left-color: #f59e0b; }
+.health-card-unhealthy { border-left-color: #ef4444; }
+
+.health-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.health-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.health-card-detail {
+  font-size: 12.5px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.health-card-flag {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.health-empty {
+  padding: 40px;
+  text-align: center;
+  color: #6b6b6b;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.health-error { color: #991b1b; }
+
+[data-theme="dark"] .health-card,
+[data-theme="dark"] .health-empty {
+  background: var(--tm-surface, #1c232c);
+  border-color: var(--tm-border, #2a313a);
+}
+
+[data-theme="dark"] .health-card-title { color: #e2e8f0; }
+[data-theme="dark"] .health-card-detail { color: #94a3b8; }
+[data-theme="dark"] .health-refresh {
+  background: var(--tm-surface, #1c232c);
+  border-color: var(--tm-border, #2a313a);
+  color: #cbd5e1;
+}

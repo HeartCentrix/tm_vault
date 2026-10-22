@@ -57,6 +57,11 @@ export default function BackupSizeSummary({ summary: passed, resourceId }: Props
     if (passed || !resourceId) return;
     let cancelled = false;
     setErr(null);
+    // Drop the previous resource's numbers immediately. Without this,
+    // a failed fetch for the newly-selected account (e.g. backend
+    // restarting) left the PRIOR account's total on screen — jrue's
+    // 140.8 GiB rendered under jlucas's header (2026-07-14).
+    setFetched(null);
     SnapshotService.getStorageSummary(resourceId)
       .then((s) => { if (!cancelled) setFetched(s); })
       .catch((e) => { if (!cancelled) setErr(String(e?.message ?? e)); });

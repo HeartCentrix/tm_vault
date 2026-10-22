@@ -29,6 +29,10 @@ interface RestoreModalProps {
   // point at the archive child snapshot; restore must scope to the Archive
   // workload so its ARCHIVE_ITEM rows aren't filtered out.
   isArchive?: boolean;
+  // Items the user explicitly UN-ticked inside a ticked folder. The
+  // resolver subtracts these from the folder expansion — without them a
+  // visibly-deselected item would be restored anyway.
+  excludedItemIds?: string[];
 }
 
 const WORKLOADS = ['Mail', 'OneDrive', 'Contacts', 'Calendar', 'Chats'] as const;
@@ -38,7 +42,7 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths, isArchive = false }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths, excludedItemIds, isArchive = false }: RestoreModalProps) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
   // Shared + room mailboxes have no OneDrive in M365 — hide it so users
@@ -196,14 +200,37 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   // so success / error / loading / entraSelection would otherwise leak
   // from the previous restore and show the "Restore job queued" screen
   // on re-open instead of a fresh form.
+  //
+  // The form choices must reset too: a stale destination='another' +
+  // previous target UUID + originalSub='overwrite' surviving from an
+  // earlier restore session left a wrong-target DESTRUCTIVE restore one
+  // click away on the next open. Every open starts from the safe
+  // defaults. Workloads are re-derived from the resource actually being
+  // restored — the useState initializer only ran for the first resource
+  // this modal ever mounted with, so a shared-mailbox first open would
+  // otherwise permanently drop OneDrive from later full-account restores.
   useEffect(() => {
     if (isOpen) {
       setSuccess(null);
       setError(null);
       setLoading(false);
       setEntraSelection(null);
+      setScope('selected');
+      setDestination('original');
+      setOriginalSub('separate_folder');
+      setFolderName(
+        `Restored by/${new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', '-')}`
+      );
+      setTargetUserId('');
+      setTargetResourceId('');
+      setTargetEnvironmentId('');
+      setWorkloads(new Set(
+        resourceKind === 'shared_mailbox' || resourceKind === 'room_mailbox'
+          ? ['Mail', 'Contacts', 'Calendar']
+          : ['Mail', 'OneDrive', 'Contacts', 'Calendar'],
+      ));
     }
-  }, [isOpen]);
+  }, [isOpen, resourceKind]);
 
   if (!isOpen) return null;
 
@@ -325,11 +352,27 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
       const response = await RestoreService.triggerRestore({
         restoreType,
         snapshotIds,
+        // Declare WHICH scope this is. Without it the server cannot tell a
+        // deliberate whole-snapshot restore from an empty selection: both
+        // post {restoreType, snapshotIds, itemIds: []} byte-for-byte, so the
+        // SELECTION_EMPTY guard in job-service stays inert and a Recover
+        // clicked with nothing ticked replays the entire snapshot into the
+        // live mailbox (QA TMV-001). Set here per-call-site rather than
+        // blanket across every request, because the Entra branch above
+        // returns before this point and must stay exempt.
+        selectionScope: scope === 'selected' ? 'SELECTED' : 'ALL',
         itemIds: scope === 'selected' ? itemIds : [],
         folderPaths:
           scope === 'selected' && folderPaths && folderPaths.length > 0
             ? folderPaths
             : undefined,
+        // Only meaningful alongside folderPaths: the resolver subtracts
+        // these from the folder expansion so un-ticked items stay out.
+        excludedItemIds:
+          scope === 'selected' && folderPaths && folderPaths.length > 0
+            && excludedItemIds && excludedItemIds.length > 0
+              ? excludedItemIds
+              : undefined,
         // For SharePoint the dropdown's value IS the target resource id
         // (we store it in targetUserId state for UI parity, but forward
         // it as targetResourceId to the backend).

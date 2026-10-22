@@ -199,6 +199,90 @@
   font-style: italic;
 }
 
+/* ───── Usage & projections ───── */
+
+.storage-usage { margin-top: 8px; }
+
+.storage-usage-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #231F20;
+  margin: 0 0 16px;
+}
+
+.storage-usage-error {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: #c62828;
+  background: #FFF4F7;
+  border: 1px solid #FDDDE7;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+.storage-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.storage-usage-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  aspect-ratio: 1.25 / 1;
+  background: #F2EDE6;
+  border: 1px solid #E0D9D0;
+  border-radius: 8px;
+  padding: 28px;
+  box-shadow: 0 2px 12px rgba(35, 31, 32, 0.06);
+  transition: box-shadow 0.25s ease;
+}
+.storage-usage-card:hover {
+  box-shadow: 0 8px 28px rgba(35, 31, 32, 0.1);
+}
+
+.storage-usage-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #D31245;
+}
+
+.storage-usage-value {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: clamp(28px, 3vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: #231F20;
+}
+
+.storage-usage-caption {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: #6B6B6B;
+}
+
+.storage-usage-value.pending {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #6B6B6B;
+  animation: storageUsagePulse 1.6s ease-in-out infinite;
+}
+@keyframes storageUsagePulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
 /* ───── History ───── */
 
 .storage-history { margin-top: 8px; }
@@ -487,7 +571,9 @@
   }
   .storage-state-name { font-size: 22px; }
   .storage-state-row { gap: 10px; }
+  .storage-usage-title,
   .storage-history-title { font-size: 20px; }
+  .storage-usage-card { aspect-ratio: auto; padding: 22px 20px; }
   .storage-switch-btn { width: 100%; padding: 14px 20px; }
   .storage-modal { padding: 24px 20px; }
   .storage-modal-title { font-size: 22px; }

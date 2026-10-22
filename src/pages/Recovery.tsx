@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS,
+  SnapshotService, CONTENT_TABS, CONTENT_TAB_LABELS, calendarSelectionScope,
   type SnapshotItem, type SnapshotFolder, type ResourceWithBackups, type CalendarEvent, type ContentTab,
-  type ContentSnapshotsResponse,
+  type ContentSnapshotsResponse, type CalendarSelectionScope,
 } from '../services/snapshot';
 import { type RecoveryItem } from '../services/recovery';
 import { getResourcesByType } from '../services/resource';
@@ -17,7 +17,22 @@ import BackupSizeSummary from '../components/BackupSizeSummary';
 import RecoveryToolbar from '../components/RecoveryToolbar';
 import { API } from '../config/api';
 import { parseAsUtc, fmtLocal, fmtLocalDate, fmtLocalTime } from '../utils/datetime';
+import DOMPurify from 'dompurify';
 import './Recovery.css';
+
+// Attacker-authored M365 content (email/chat/calendar/Teams bodies) is
+// rendered via dangerouslySetInnerHTML. It MUST pass through this as the
+// FINAL transform before it hits the DOM — do any src/attachment string
+// rewrites on the SOURCE first, then sanitise the result. Scripts, style,
+// framed content and all inline event handlers are stripped so payloads
+// like <svg onload=…>, <details open ontoggle=…> and <iframe srcdoc=…>
+// cannot execute in the operator's session.
+function sanitizeHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'],
+    FORBID_ATTR: ['on*'],
+  });
+}
 
 // Five fixed content tabs — was previously a string discovered at runtime
 // from the snapshot's actual item types.
@@ -36,22 +51,62 @@ function getInitials(name: string): string {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+// Resource-kind enum → human label. Drives the resource rows' kind pill
+// AND the "Filter" dropdown above the resource list.
+//
+// 2026-08-11 (QA TMV-025): that dropdown rendered `entra_group` and
+// `entra_user` verbatim next to friendly labels ("Room", "Shared
+// mailbox", "SharePoint") because those two kinds had no map entry and
+// the old fallback returned the enum unchanged. Every kind this tenant
+// actually emits is mapped below, and anything still unmapped now falls
+// through to a title-cased rendering ("teams_chat" → "Teams Chat")
+// instead of leaking snake_case into the UI.
 function getKindLabel(kind: string): string {
   const labels: Record<string, string> = {
     office_user: 'User',
+    entra_user: 'User',
+    mailbox: 'Mailbox',
     shared_mailbox: 'Shared mailbox',
     room_mailbox: 'Room',
     onedrive: 'OneDrive',
     sharepoint_site: 'SharePoint',
     teams_channel: 'Teams channel',
     teams_chat: 'Teams chat',
+    entra_group: 'Group',
+    m365_group: 'Microsoft 365 group',
     entra_directory: 'Azure Active Directory',
     power_bi: 'Power BI workspace',
     azure_vm: 'Azure VM',
     azure_sql: 'Azure SQL',
     azure_postgresql: 'Azure PostgreSQL',
+    azure_postgresql_single: 'Azure PostgreSQL (single server)',
+    // Tier-2 content surfaces — normally collapsed into the parent
+    // identity row, but a kind filter can still surface them.
+    user_mail: 'Mail',
+    user_onedrive: 'OneDrive',
+    user_chats: 'Chats',
+    user_contacts: 'Contacts',
+    user_calendar: 'Calendar',
   };
-  return labels[kind] || kind;
+  if (labels[kind]) return labels[kind];
+  if (!kind) return 'Unknown';
+  return kind
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// ==================== Per-session SWR cache (perf) ====================
+// Bounded insertion-order eviction so a long session browsing many
+// accounts can't grow the caches unbounded. Entries are first-page-only
+// payloads (≤500 folder rows / 50 items), so 150 keys stays small.
+const SWR_CACHE_MAX = 150;
+function swrCachePut<V>(map: Map<string, V>, key: string, value: V): void {
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  if (map.size > SWR_CACHE_MAX) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
 }
 
 // ==================== Mailbox folder tree (Outlook-style) ====================
@@ -185,12 +240,79 @@ function stripAttachmentPlaceholders(html: string, ids: Set<string>): string {
 
 export function EmailPreview({ item }: { item: any }) {
   const raw = item.metadata?.raw || {};
+
+  // The mail LIST now ships without bodies (?bodies=none — a 50-row
+  // page went from ~471KB to ~45KB), so the selected email's body is
+  // fetched here on demand. getItemDetail returns the row's full
+  // metadata.raw, whose shape matches the slim raw minus the stripping.
+  //
+  // The fetched raw is stored WITH the item id it belongs to, and only
+  // used when it matches the currently-rendered item: this component
+  // stays mounted across selection changes (no key), and effects run
+  // after paint — an ungated detailRaw would render the PREVIOUS
+  // email's body under the new email's headers for a frame or more.
+  const listHasBody = !!(raw.body?.content || item.body);
+  const [detail, setDetail] = useState<{ forId: string; raw: any } | null>(null);
+  // Failure is also stored per-item-id — like `detail`, an ungated
+  // boolean would flash the previous email's error state for a frame
+  // after switching selection (effects run post-paint).
+  const [failedForId, setFailedForId] = useState<string | null>(null);
+  // Bumping this refires the fetch effect — clicking Retry is the only
+  // way to re-request the same item (its identity never changes).
+  const [bodyFetchNonce, setBodyFetchNonce] = useState(0);
+  const needsBody = !listHasBody && !!item.snapshotId && !!item.id;
+  useEffect(() => {
+    if (!needsBody) return;
+    let cancelled = false;
+    setFailedForId(prev => (prev === item.id ? null : prev));
+    (async () => {
+      try {
+        const d: any = await SnapshotService.getItemDetail(item.snapshotId, item.id);
+        const r = d?.metadata?.raw || d?.metadata || null;
+        if (r && typeof r === 'object' && Object.keys(r).length > 0) {
+          if (!cancelled) setDetail({ forId: item.id, raw: r });
+          return;
+        }
+        // An EMPTY detail raw means a legacy blob-backed email: the
+        // message JSON lives only in blob storage, so fall through to
+        // the content endpoint — the same source handleItemSelect's
+        // hydration uses. Owning the fallback here (instead of
+        // treating {} as failure) kills the false "Couldn't load"
+        // flash while hydration races, and makes Retry actually hit
+        // the body's real source for this population.
+        if (cancelled) return;  // don't fetch a full blob body for an abandoned item
+        const c: any = await SnapshotService.getItemContent(item.snapshotId, item.id);
+        const cr = c?.content;
+        if (!cancelled) {
+          if (cr && typeof cr === 'object' && Object.keys(cr).length > 0) {
+            setDetail({ forId: item.id, raw: cr });
+          } else {
+            setFailedForId(item.id);
+          }
+        }
+      } catch {
+        if (!cancelled) setFailedForId(item.id);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [needsBody, item.snapshotId, item.id, bodyFetchNonce]);
+
+  // Body fields prefer the lazily-fetched detail (when it belongs to
+  // THIS item); header fields stay on the list row's slim raw
+  // (subject/from/recipients survive slimming). Everything is gated on
+  // needsBody: when getItemContent hydrates a legacy blob-backed
+  // email's raw onto the item (needsBody flips false), the hydrated
+  // body must win over any stale lazy-fetch result or failure flag.
+  const detailRaw = needsBody && detail && detail.forId === item.id ? detail.raw : null;
+  const bodyFetchFailed = needsBody && failedForId === item.id;
+  const bodyLoading = needsBody && !detailRaw && !bodyFetchFailed;
+  const bodyRaw = detailRaw || raw;
   const from = raw.from?.emailAddress || {};
   const toList: any[] = raw.toRecipients || [];
   const ccList: any[] = raw.ccRecipients || [];
   const subject = raw.subject || item.subject || item.name || '(No subject)';
-  const bodyContent = raw.body?.content || item.body || item.preview || '';
-  const isHtml = raw.body?.contentType === 'html';
+  const bodyContent = bodyRaw.body?.content || item.body || item.preview || item.bodyPreview || '';
+  const isHtml = bodyRaw.body?.contentType === 'html';
   const sentAt = raw.sentDateTime || raw.receivedDateTime || item.date;
   const fromStr = [from.name, from.address ? `<${from.address}>` : ''].filter(Boolean).join(' ') || item.from || '—';
   const toStr = toList.map((r: any) => { const e = r.emailAddress || {}; return e.name ? `${e.name} <${e.address}>` : (e.address || ''); }).join('; ');
@@ -351,9 +473,29 @@ export function EmailPreview({ item }: { item: any }) {
         )}
       </div>
       <div className="email-body">
-        {isHtml
-          ? <iframe srcDoc={renderedBody} sandbox="allow-same-origin" className="email-iframe" title="email-body" />
-          : <pre className="email-plain">{bodyContent || 'No content'}</pre>
+        {bodyLoading
+          ? <div className="email-plain" style={{ color: '#888', padding: '12px 0' }}>Loading message…</div>
+          : bodyFetchFailed
+            // Without this, a failed detail fetch would render the
+            // ~255-char bodyPreview indistinguishably from a genuinely
+            // short email — dangerous when someone is exporting
+            // evidence from a backup.
+            ? (
+              <div className="email-plain" style={{ color: '#888', padding: '12px 0' }}>
+                Couldn't load the full message.{' '}
+                <button
+                  type="button"
+                  onClick={() => setBodyFetchNonce(n => n + 1)}
+                  style={{ background: 'none', border: 'none', color: '#4a9eda', cursor: 'pointer', padding: 0, textDecoration: 'underline', font: 'inherit' }}
+                >
+                  Retry
+                </button>
+                {bodyContent ? <pre className="email-plain" style={{ marginTop: 8 }}>{`Preview: ${bodyContent}`}</pre> : null}
+              </div>
+            )
+            : isHtml
+              ? <iframe srcDoc={renderedBody} sandbox="allow-same-origin" className="email-iframe" title="email-body" />
+              : <pre className="email-plain">{bodyContent || 'No content'}</pre>
         }
       </div>
     </div>
@@ -420,7 +562,7 @@ export function ChatPreview({ item }: { item: any }) {
           {isDeleted
             ? <div className="chat-deleted">This message was deleted</div>
             : isHtml
-              ? <div className="chat-body" dangerouslySetInnerHTML={{ __html: bodyContent }} />
+              ? <div className="chat-body" dangerouslySetInnerHTML={{ __html: sanitizeHtml(bodyContent) }} />
               : <div className="chat-body">{bodyContent || <em>No content</em>}</div>
           }
           {realAttachments.length > 0 && (
@@ -450,21 +592,122 @@ export function ChatPreview({ item }: { item: any }) {
   );
 }
 
-export function ContactPreview({ item }: { item: any }) {
-  const raw = item.metadata?.raw || {};
-  const name = raw.displayName || item.name || '(Unnamed)';
-  const given = raw.givenName;
-  const surname = raw.surname;
-  const company = raw.companyName;
-  const title = raw.jobTitle;
-  const initials = name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const emails: Array<{ address?: string; name?: string }> = raw.emailAddresses || [];
-  const phones: string[] = [
+// A stored contact name that is really a placeholder, not a name. The
+// backup path persists the literal string "(unnamed)" into the row's
+// `name`/`displayName` when Graph returned no displayName (163 of 163
+// rows carry it in the DB for the pilot account; snapshot-service
+// re-hydrates 152 of them from the blob, leaving 11 genuinely nameless).
+// Treated as "no name" everywhere so the UI can fall back to something
+// identifying instead of rendering the placeholder — and so the avatar
+// stops taking its initial from the "(" (QA TMV-017).
+function isPlaceholderContactName(v: unknown): boolean {
+  const s = String(v ?? '').trim().toLowerCase();
+  return s === '' || s === '(unnamed)' || s === '(no name)';
+}
+
+// Initials that ignore punctuation. "(unnamed)" used to render a "("
+// avatar; a fallback of "aaron@prodatacomm.com" should read "A", not "".
+function contactInitials(name: string): string {
+  const letters = name
+    .split(/\s+|@|\./)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
+  if (letters.length === 0) return '?';
+  return letters.slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+}
+
+// Normalise the two contact shapes the API can hand us into one.
+//
+// 2026-08-11 (QA TMV-018): the detail pane rendered only name / title /
+// Created because it read ONLY the Graph shape — `emailAddresses`,
+// `businessPhones`, `mobilePhone`. /contacts returns each row with BOTH
+// a flat projection (`emails: ["aaron@prodatacomm.com"]`, `phones`,
+// `primaryEmail`, `companyName`, `jobTitle`) and, when the blob
+// hydration succeeds, a Graph-shaped `metadata.raw`. When hydration is
+// skipped or the row predates it, `metadata.raw` is the flat row itself
+// (see SnapshotService.listItems' raw injection) and every Graph-shaped
+// read missed, hiding email + phone that were sitting right there.
+// 149 of this account's 163 contacts carry an email in the flat field.
+type ContactFields = {
+  displayName?: string;
+  givenName?: string;
+  surname?: string;
+  companyName?: string;
+  jobTitle?: string;
+  department?: string;
+  officeLocation?: string;
+  createdDateTime?: string;
+  /** Graph shape */
+  emailAddresses?: Array<{ address?: string; name?: string }>;
+  businessPhones?: string[];
+  homePhones?: string[];
+  mobilePhone?: string;
+  /** Flat /contacts projection */
+  emails?: string[];
+  phones?: string[];
+  primaryEmail?: string;
+};
+type ContactLike = ContactFields & {
+  name?: string;
+  createdAt?: string;
+  metadata?: { raw?: ContactFields };
+};
+
+function normalizeContact(item: ContactLike) {
+  const raw: ContactFields = item.metadata?.raw || {};
+  const graphEmails: Array<{ address?: string; name?: string }> =
+    Array.isArray(raw.emailAddresses) ? raw.emailAddresses : [];
+  const flatEmails: Array<string> = [
+    ...(Array.isArray(item.emails) ? item.emails : []),
+    ...(Array.isArray(raw.emails) ? raw.emails : []),
+    ...(item.primaryEmail ? [item.primaryEmail] : []),
+    ...(raw.primaryEmail ? [raw.primaryEmail] : []),
+  ].filter(Boolean);
+  const emails: Array<{ address?: string; name?: string }> = graphEmails.length > 0
+    ? graphEmails
+    : Array.from(new Set(flatEmails)).map((address) => ({ address }));
+  const graphPhones: string[] = [
     ...(raw.businessPhones || []),
     ...(raw.homePhones || []),
     ...(raw.mobilePhone ? [raw.mobilePhone] : []),
-  ];
-  const fullName = [given, surname].filter(Boolean).join(' ') || name;
+  ].filter(Boolean);
+  const flatPhones: string[] = [
+    ...(Array.isArray(item.phones) ? item.phones : []),
+    ...(Array.isArray(raw.phones) ? raw.phones : []),
+  ].filter(Boolean);
+  const phones = graphPhones.length > 0 ? graphPhones : Array.from(new Set(flatPhones));
+  const storedName = raw.displayName || item.displayName || item.name || '';
+  const given = raw.givenName || item.givenName || '';
+  const surname = raw.surname || item.surname || '';
+  const company = raw.companyName || item.companyName || '';
+  const title = raw.jobTitle || item.jobTitle || '';
+  const primaryEmail = emails[0]?.address || '';
+  // Identify the contact with whatever we DO have rather than printing
+  // the ingest placeholder: real name → given+surname → email → job
+  // title / company.
+  const displayName = !isPlaceholderContactName(storedName)
+    ? storedName
+    : ([given, surname].filter(Boolean).join(' ')
+      || primaryEmail
+      || [title, company].filter(Boolean).join(' · ')
+      || '(no name)');
+  return {
+    raw, emails, phones, given, surname, company, title,
+    primaryEmail, displayName,
+    department: raw.department || item.department || '',
+    office: raw.officeLocation || item.officeLocation || '',
+  };
+}
+
+export function ContactPreview({ item }: { item: any }) {
+  const c = normalizeContact(item);
+  const raw = c.raw;
+  const company = c.company;
+  const title = c.title;
+  const initials = contactInitials(c.displayName);
+  const emails = c.emails;
+  const phones = c.phones;
+  const fullName = [c.given, c.surname].filter(Boolean).join(' ') || c.displayName;
   const created = raw.createdDateTime || item.createdAt;
 
   return (
@@ -473,10 +716,8 @@ export function ContactPreview({ item }: { item: any }) {
         <div className="chat-avatar" aria-hidden style={{ width: 40, height: 40, fontSize: 14 }}>{initials}</div>
         <div>
           <div className="preview-status" style={{ fontSize: 16 }}>{fullName}</div>
-          {(title || company) && (
-            <div style={{ color: '#555', fontSize: 13 }}>
-              {[title, company].filter(Boolean).join(' · ')}
-            </div>
+          {title && (
+            <div style={{ color: '#555', fontSize: 13 }}>{title}</div>
           )}
         </div>
       </div>
@@ -499,8 +740,9 @@ export function ContactPreview({ item }: { item: any }) {
             {phones.map((p, i) => <div key={i} style={{ fontSize: 13 }}>{p}</div>)}
           </div>
         )}
-        <PreviewLabel label="Department" value={raw.department} />
-        <PreviewLabel label="Office" value={raw.officeLocation} />
+        <PreviewLabel label="Company" value={company} />
+        <PreviewLabel label="Department" value={c.department} />
+        <PreviewLabel label="Office" value={c.office} />
         <PreviewLabel label="Created" value={fmtDate(created)} />
       </div>
     </div>
@@ -511,18 +753,25 @@ function ContactItemRow({ item, selected, checked, onSelect, onCheck }: {
   item: any; selected: boolean; checked: boolean;
   onSelect: () => void; onCheck: (e: React.MouseEvent) => void;
 }) {
-  const raw = item.metadata?.raw || {};
-  const name = raw.displayName || item.name || '(Unnamed)';
-  const initials = name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
-  const email = (raw.emailAddresses?.[0]?.address) || '';
-  const subtitle = [raw.jobTitle, raw.companyName].filter(Boolean).join(' · ');
+  const c = normalizeContact(item);
+  const initials = contactInitials(c.displayName);
+  // Don't repeat the email in the trailing slot when it IS the row's
+  // headline (placeholder-name fallback).
+  const email = c.primaryEmail && c.primaryEmail !== c.displayName ? c.primaryEmail : '';
+  const subtitle = [c.title, c.company].filter(Boolean).join(' · ');
   return (
     <div className={`chat-item-row${selected ? ' selected' : ''}`} onClick={onSelect}>
-      <input type="checkbox" checked={checked} onChange={() => {}} onClick={onCheck} />
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={() => {}}
+        onClick={onCheck}
+        aria-label={`Select contact ${c.displayName}`}
+      />
       <div className="chat-item-avatar">{initials}</div>
       <div className="chat-item-body">
         <div className="chat-item-header">
-          <span className="chat-item-sender">{name}</span>
+          <span className="chat-item-sender">{c.displayName}</span>
           {email && <span className="chat-item-time">{email}</span>}
         </div>
         {subtitle && <div className="chat-item-text">{subtitle}</div>}
@@ -531,20 +780,53 @@ function ContactItemRow({ item, selected, checked, onSelect, onCheck }: {
   );
 }
 
+// snapshot-service synthesises a subject for recurring OCCURRENCES:
+// Graph stores the subject on the SERIES MASTER, so an occurrence's raw
+// payload has no `subject` field at all (verified 2026-08-11 — raw keys
+// are @odata.etag/@odata.type/end/id/seriesMasterId/start/type and
+// raw.subject === null on 946 of the first 1,000 events of the pilot
+// calendar). The generated string embeds the start time IN UTC —
+// "Event · 6:00 PM" for an event starting 18:00Z — which is the whole
+// of QA TMV-008: the chip showed that baked-in UTC clock while the day
+// popover formatted the same event's start in the viewer's zone
+// (America/Phoenix, UTC-7), a constant 7-hour disagreement. There is no
+// second formatter to reconcile; one of the "times" is a string the
+// backup produced. Render the synthetic subject as a neutral
+// placeholder so the popover's formatted time is the only time on
+// screen, and so a fabricated title never poses as the user's own.
+// The pattern is deliberately exact — the only false positive is a real
+// meeting literally named "Event · 6:00 PM".
+const GENERATED_EVENT_SUBJECT_RE = /^Event\s+·\s+\d{1,2}:\d{2}\s?[AP]M$/i;
+function calEventTitle(subject?: string | null): string {
+  const s = String(subject ?? '').trim();
+  if (!s || GENERATED_EVENT_SUBJECT_RE.test(s)) return '(no subject)';
+  return s;
+}
+
 export function CalendarPreview({ item }: { item: any }) {
   const raw = item.metadata?.raw || {};
-  const subject = raw.subject || item.subject || item.name || 'Event';
-  const start = raw.start?.dateTime || raw.start?.date || item.date;
-  const end = raw.end?.dateTime || raw.end?.date;
-  const location = raw.location?.displayName || '';
-  const organizer = raw.organizer?.emailAddress?.name || raw.organizer?.emailAddress?.address || '';
-  const attendees: any[] = raw.attendees || [];
+  // Flat fallbacks throughout: /calendar rows carry the event as flat
+  // fields (subject/start/end/location/organizer/attendees/body/…) and
+  // only sometimes a Graph-shaped metadata.raw — for a recurring
+  // occurrence raw holds nothing but ids and start/end. Reading raw
+  // alone left the detail view blank for exactly the events the QA pass
+  // clicked on (TMV-019).
+  const subject = calEventTitle(raw.subject || item.subject || item.name);
+  const start = raw.start?.dateTime || raw.start?.date || item.start || item.date;
+  const end = raw.end?.dateTime || raw.end?.date || item.end;
+  const location = raw.location?.displayName || item.location || '';
+  const organizer = raw.organizer?.emailAddress?.name
+    || raw.organizer?.emailAddress?.address
+    || item.organizer
+    || item.organizerEmail
+    || '';
+  const attendees: any[] = raw.attendees || item.attendees || [];
   const body = raw.body?.content || item.body || '';
-  const isHtml = raw.body?.contentType === 'html';
-  const isAllDay = raw.isAllDay || (!raw.start?.dateTime && !!raw.start?.date);
-  const isOnline = raw.isOnlineMeeting;
-  const recurrence = raw.recurrence?.pattern?.type;
-  const showAs = raw.showAs || '';
+  const isHtml = (raw.body?.contentType || item.bodyContentType) === 'html';
+  const isAllDay = raw.isAllDay ?? item.isAllDay ?? (!raw.start?.dateTime && !!raw.start?.date);
+  const isOnline = raw.isOnlineMeeting ?? item.isOnlineMeeting;
+  const recurrence = raw.recurrence?.pattern?.type || item.recurrenceType || '';
+  const showAs = raw.showAs || item.showAs || '';
 
   const startDate = parseAsUtc(start);
   const endDate = parseAsUtc(end);
@@ -657,7 +939,7 @@ export function CalendarPreview({ item }: { item: any }) {
       {body && (
         <div className="cal-event-body">
           {isHtml
-            ? <div dangerouslySetInnerHTML={{ __html: body }} />
+            ? <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(body) }} />
             : <pre className="cal-body-plain">{body}</pre>
           }
         </div>
@@ -1285,9 +1567,16 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
         <div className="chat-system-event">
           <span className="chat-system-event-label">{label}</span>
           {sentAt && (
+            // Year included, matching the normal message row below.
+            // 2026-08-11 (QA TMV-020): without it a "Sep 7" join event
+            // sitting above an "Apr 24" one looked out of order. It
+            // wasn't — Sep 7 2023 really does precede Apr 24 2024, and
+            // the server returns every thread strictly date-DESC (0
+            // order breaks across the 4 largest threads / 200 messages
+            // probed). The missing year was the entire illusion.
             <span className="chat-system-event-time">
               {fmtLocal(sentAt, {
-                month: 'short', day: 'numeric',
+                month: 'short', day: 'numeric', year: 'numeric',
                 hour: 'numeric', minute: '2-digit', hour12: true,
               })}
             </span>
@@ -1376,6 +1665,11 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
   // Fine in practice because of the infinite-scroll rendering window; if
   // it becomes a bottleneck we can batch by snapshot.
   const rawAttachments: any[] = Array.isArray(raw.attachments) ? raw.attachments : [];
+  // Attachments that will actually paint a chip — inline cards and
+  // message references are filtered out downstream, so the empty-body
+  // placeholder below has to test the same set or it would stay silent
+  // on a row that ends up showing nothing at all.
+  const renderableAttachments = rawAttachments.filter(isRenderableChatAttachment);
   const [chatAttachments, setChatAttachments] = useState<Array<{
     id: string; name: string; size: number; contentType: string | null;
     isInline: boolean; resolved: boolean; sourceUrl: string | null;
@@ -1422,8 +1716,22 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
             ))}
           </div>
         )}
-        <div className="chat-item-text">{displayBody || (quotedRefs.length > 0 ? '' : '\u00a0')}</div>
-        {rawAttachments.filter(isRenderableChatAttachment).length > 0 && (
+        {/* An empty bubble is indistinguishable from a rendering
+            failure. 2026-08-11 (QA TMV-021): 9 of 200 messages sampled
+            across the four largest threads come back with an empty
+            body.content, no attachments, no quoted reference and no
+            eventDetail — deleted/reaction-only/unsupported-content
+            messages. They used to render as a bare non-breaking space.
+            Their `name` is the SENDER's display name (not body text),
+            so there is nothing to recover — say so explicitly. */}
+        <div className="chat-item-text">
+          {displayBody
+            ? displayBody
+            : (quotedRefs.length > 0 || renderableAttachments.length > 0)
+              ? ''
+              : <span className="chat-item-empty">(no message content)</span>}
+        </div>
+        {renderableAttachments.length > 0 && (
           <div className="chat-item-attachments" onClick={(e) => e.stopPropagation()}>
             {chatAttachments.length === 0
               ? <span className="email-ol-attach-chip">Attachment{rawAttachments.length === 1 ? '' : 's'} (capturing…)</span>
@@ -1676,13 +1984,30 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   'Appointment':    '#16a34a',
 };
 
-function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredIdsChange, onCalendarFilterChange }: {
+// An explicitly empty calendar scope. Emitted while the event walk is
+// still in flight so the toolbar cannot act on a partial set — see the
+// onFilteredScopeChange effect below (QA TMV-023).
+const EMPTY_CALENDAR_SCOPE: CalendarSelectionScope = {
+  itemIds: [], folderPaths: [], count: 0,
+};
+
+function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredScopeChange, onCalendarFilterChange, onFilterActiveChange }: {
   snapshotId: string;
   selectedItems: Set<string>;
   onItemCheck: (itemId: string) => void;
+  // Emitted whenever the sidebar's "narrowed to a subset?" state flips.
+  // The parent needs this SEPARATELY from the scope: an untouched
+  // sidebar reports a scope of every event in the calendar, which is a
+  // view, not a selection. Gating Download / Recover on the scope alone
+  // left both enabled — and pointed at all 5,418 events — with nothing
+  // ticked (QA TMV-001).
+  onFilterActiveChange?: (active: boolean) => void;
   // Emitted whenever the sidebar filter set changes so the parent can
-  // scope Download to just those event IDs.
-  onFilteredIdsChange?: (ids: string[]) => void;
+  // scope Download / Recover to just those events. Carries the SCOPE, not
+  // a raw id list: on the heaviest account the filtered set is 35,026
+  // events and enumerating those ids into the export POST body blows past
+  // the 1 MiB proxy limit in front of the API (see calendarSelectionScope).
+  onFilteredScopeChange?: (scope: CalendarSelectionScope) => void;
   // Emitted whenever the per-calendar filter set changes (the
   // "Calendar" section of the sidebar — values are folderPath strings
   // like "Calendar/United States holidays"). Parent passes these to
@@ -1692,12 +2017,24 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
 }) {
   const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  // Rollup while the multi-page event walk is in flight (35,026 events on
+  // the heaviest account here = 36 round trips), and a settled notice when
+  // the walk did NOT yield the complete set. The grid, the filter sidebar
+  // and the Download id set are all derived from allEvents, so a partial
+  // load must be visible rather than looking like a smaller calendar.
+  const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [loadNotice, setLoadNotice] = useState<string | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   // Per-calendar filter — keys are the folderPath value stored on each
   // CALENDAR_EVENT item (e.g. "Calendar/United States holidays"). Empty
   // set = show events from every calendar.
   const [activeCalendarFilters, setActiveCalendarFilters] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date());
+  // Event opened in the detail modal. Null = closed. Mail and Contacts
+  // both have a preview pane; the calendar tab hides the right panel
+  // (the grid takes the width), so an event's details had nowhere to go
+  // and clicking one did nothing at all (QA TMV-019).
+  const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
   // Active popover state. Anchored to the day-cell's bounding rect (not
   // the cursor) so the popover stays put while the user moves toward it.
   // `pinned` flips to true on click — disables auto-close on mouseLeave.
@@ -1753,45 +2090,154 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
     };
   }, [popover?.pinned]);
 
-  // Load all events for this snapshot. viewDate stays on today's month
+  // Monotonic staleness key — same pattern as requestKeyRef /
+  // foldersKeyRef / contentSnapshotsKeyRef on the page below. This
+  // component is keyed on the snapshot id at its mount site, but the
+  // events effect must guard on its own too: with the Calendar tab active
+  // the component is not unmounted between account clicks, so a slow load
+  // for account A could otherwise land and render A's events under
+  // account B.
+  const eventsKeyRef = useRef(0);
+
+  // Load EVERY event for this snapshot. viewDate stays on today's month
   // (the initial value passed to useState) so the user always lands on
   // the current month when they open the Calendar tab.
   useEffect(() => {
-    if (!snapshotId) return;
+    if (!snapshotId) {
+      // Bump so an in-flight walk for the snapshot being torn down can't
+      // land later and repopulate the cleared grid.
+      eventsKeyRef.current++;
+      setAllEvents([]);
+      setLoadProgress(null);
+      setLoadNotice(null);
+      setLoading(false);
+      return;
+    }
+    const myKey = ++eventsKeyRef.current;
+    // Abort so switching account mid-walk stops the remaining page
+    // requests instead of finishing a 36-page load nobody is looking at.
+    const controller = new AbortController();
     setLoading(true);
-    SnapshotService.listCalendarEvents(snapshotId, 1, 1000)
-      .then(data => {
-        setAllEvents(data.content);
+    setLoadProgress(null);
+    setLoadNotice(null);
+    // Cached wrapper: re-opening the Calendar tab (this component unmounts
+    // on every tab switch) must not re-pay the 36-request walk against the
+    // 22M-row snapshot_items table. Keyed on snapshotId, so a fresh backup
+    // — which resolves this tab to a NEW snapshot id — still refetches.
+    SnapshotService.listAllCalendarEventsCached(snapshotId, {
+      signal: controller.signal,
+      onProgress: (loaded, total) => {
+        if (myKey !== eventsKeyRef.current) return;
+        setLoadProgress(loaded < total ? { loaded, total } : null);
+      },
+      // Paint the first 1,000 events the moment they land (~1.3 s)
+      // instead of holding a blank grid for the whole six-page walk
+      // (~3–4 s) — QA TMV-023. /calendar has no date-window parameter
+      // (probed 2026-08-11: start/end and from/to are ignored, and
+      // size > 1000 is a 422), and the sidebar's type/calendar counts
+      // plus the export scope are all derived from the full array, so
+      // "just fetch the visible month" is not on the table without a
+      // backend change. `loading` stays true and the progress readout
+      // keeps counting, so a partial grid is never presented as the
+      // whole calendar; the .then below replaces it wholesale.
+      onFirstPage: (firstPage) => {
+        if (myKey !== eventsKeyRef.current) return;
+        setAllEvents(firstPage);
+      },
+    })
+      .then(({ events, total, truncated }) => {
+        if (myKey !== eventsKeyRef.current) return;  // stale — a newer snapshot was selected
+        setAllEvents(events);
+        setLoadNotice(truncated
+          ? `Showing ${events.length.toLocaleString()} of ${total.toLocaleString()} events`
+          : null);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(err => {
+        if (myKey !== eventsKeyRef.current) return;
+        // Unmounting (tab switch) aborts the walk — that is teardown, not
+        // a failed load, so it must not be reported as one.
+        if (err?.name === 'AbortError') return;
+        console.error(err);
+        // Clear rather than leave a half-loaded month on screen — an
+        // empty grid with a notice beats a grid that looks complete.
+        setAllEvents([]);
+        setLoadNotice('Could not load events');
+      })
+      .finally(() => {
+        if (myKey === eventsKeyRef.current) {
+          setLoading(false);
+          setLoadProgress(null);
+        }
+      });
+    return () => { controller.abort(); };
   }, [snapshotId]);
 
-  // Collect unique event types for filter sidebar
-  const eventTypes = Array.from(new Set(allEvents.map(e => e.eventType))).sort();
+  // ── Derived state, all memoized ─────────────────────────────────────────
+  // Every one of these walks the whole event array, and re-renders here are
+  // HOVER-driven (the day-cell popover sets state on mouseEnter/mouseLeave).
+  // Unmemoized at 35,026 events that measured 59 ms of derivation per
+  // re-render — versus 2.5 ms at the old 1,000-event truncation cap —
+  // before React even started reconciling.
 
-  // Collect unique calendar folder paths for the per-calendar filter.
+  // Unique event types for the filter sidebar, with their counts (one pass
+  // instead of one allEvents.filter() per rendered type row).
+  const eventTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of allEvents) counts.set(e.eventType, (counts.get(e.eventType) || 0) + 1);
+    return counts;
+  }, [allEvents]);
+  const eventTypes = useMemo(
+    () => Array.from(eventTypeCounts.keys()).sort(), [eventTypeCounts],
+  );
+
+  // Unique calendar folder paths for the per-calendar filter, with counts.
   // Each event is tagged with folderPath = "Calendar/<calendarName>" at
   // backup time — we use the full path as the filter key and strip the
   // "Calendar/" prefix for display.
-  const calendarPaths = Array.from(new Set(
-    allEvents.map(e => e.folderPath).filter((p): p is string => !!p)
-  )).sort();
+  const calendarPathCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of allEvents) {
+      if (!e.folderPath) continue;
+      counts.set(e.folderPath, (counts.get(e.folderPath) || 0) + 1);
+    }
+    return counts;
+  }, [allEvents]);
+  const calendarPaths = useMemo(
+    () => Array.from(calendarPathCounts.keys()).sort(), [calendarPathCounts],
+  );
 
   // Apply both filters. Type filter and calendar filter are AND'ed; an
   // empty filter set on either side means "don't filter on that axis".
-  const visibleEvents = allEvents.filter(e => {
+  const visibleEvents = useMemo(() => allEvents.filter(e => {
     if (activeFilters.size > 0 && !activeFilters.has(e.eventType)) return false;
     if (activeCalendarFilters.size > 0 && (!e.folderPath || !activeCalendarFilters.has(e.folderPath))) return false;
     return true;
-  });
+  }), [allEvents, activeFilters, activeCalendarFilters]);
 
-  // Notify parent of the current filtered ID set so Download can scope
-  // to just these events. When all filter sets are empty this is all ids.
+  // Notify parent of the current selection SCOPE so Download / Recover can
+  // target exactly these events. Not a raw id list: enumerating 35,026 ids
+  // put the export POST body over the 1 MiB nginx default in front of the
+  // API and both actions started 413-ing on the heaviest account.
+  // calendarSelectionScope keeps ids while they fit and otherwise hands the
+  // backend the calendar folder paths to resolve itself.
+  const filteredScope = useMemo(
+    () => calendarSelectionScope(visibleEvents, { typeFiltered: activeFilters.size > 0 }),
+    [visibleEvents, activeFilters],
+  );
   useEffect(() => {
-    if (!onFilteredIdsChange) return;
-    onFilteredIdsChange(visibleEvents.map(e => e.id));
-  }, [allEvents, activeFilters, activeCalendarFilters, onFilteredIdsChange]);
+    if (!onFilteredScopeChange) return;
+    // NEVER emit a scope built from a PARTIAL event set. TMV-023 added an
+    // early first-page paint so the grid stops showing a 12s blank, but
+    // `allEvents` then holds 1,000 of 5,418 events while the walk continues.
+    // The Event Type sidebar renders straight off that array, so during the
+    // window a user could tick a type and arm Download/Recover against 3.5%
+    // of the data (measured on snapshot 6c726320: page 1 has 4 of the 8 real
+    // event types; "Online Meeting" reads 2 events instead of 57). Before the
+    // early paint, allEvents stayed [] and both buttons were hard-disabled —
+    // so the paint created this window and this guard closes it. An empty
+    // scope keeps them disabled until the set is complete.
+    onFilteredScopeChange(loading ? EMPTY_CALENDAR_SCOPE : filteredScope);
+  }, [filteredScope, onFilteredScopeChange, loading]);
 
   // Notify parent whenever the "Calendar" filter section selection
   // changes. The DownloadModal uses this to enable PST export — PST
@@ -1802,6 +2248,18 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
     if (!onCalendarFilterChange) return;
     onCalendarFilterChange(Array.from(activeCalendarFilters));
   }, [activeCalendarFilters, onCalendarFilterChange]);
+
+  // "Has the user narrowed the grid?" — the only thing that turns the
+  // filtered view into a selection the toolbar may act on. Reported
+  // separately from the scope because an untouched sidebar produces a
+  // scope of EVERY event (QA TMV-001).
+  const filterActive = activeFilters.size > 0 || activeCalendarFilters.size > 0;
+  useEffect(() => {
+    if (!onFilterActiveChange) return;
+    // Same reason as the scope emission above: a filter ticked against a
+    // partially-loaded set must not flip the toolbar live.
+    onFilterActiveChange(filterActive && !loading);
+  }, [filterActive, onFilterActiveChange, loading]);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -1815,19 +2273,29 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  // Group visible events by day. Parse UTC-as-UTC so the bucketed day
-  // reflects the viewer's local calendar.
-  const eventsByDay: Record<number, CalendarEvent[]> = {};
-  visibleEvents.forEach(ev => {
-    if (!ev.start) return;
-    const d = parseAsUtc(ev.start);
-    if (!d) return;
-    if (d.getFullYear() === year && d.getMonth() === month) {
-      const day = d.getDate();
-      if (!eventsByDay[day]) eventsByDay[day] = [];
-      eventsByDay[day].push(ev);
+  // Group visible events by day, and count them, in ONE memoized pass.
+  // Parse UTC-as-UTC so the bucketed day reflects the viewer's local
+  // calendar. Unmemoized this ran twice per hover-driven re-render (once
+  // here, once for the month total) — two parseAsUtc calls per event, 59 ms
+  // at 35,026 events.
+  const { eventsByDay, totalVisible } = useMemo(() => {
+    const y = viewDate.getFullYear();
+    const m = viewDate.getMonth();
+    const byDay: Record<number, CalendarEvent[]> = {};
+    let inMonth = 0;
+    for (const ev of visibleEvents) {
+      if (!ev.start) continue;
+      const d = parseAsUtc(ev.start);
+      if (!d) continue;
+      if (d.getFullYear() === y && d.getMonth() === m) {
+        const day = d.getDate();
+        if (!byDay[day]) byDay[day] = [];
+        byDay[day].push(ev);
+        inMonth++;
+      }
     }
-  });
+    return { eventsByDay: byDay, totalVisible: inMonth };
+  }, [visibleEvents, viewDate]);
 
   const today = new Date();
   const isToday = (day: number) =>
@@ -1840,13 +2308,6 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
       return next;
     });
   };
-
-  const totalVisible = visibleEvents.filter(e => {
-    if (!e.start) return false;
-    const d = parseAsUtc(e.start);
-    if (!d) return false;
-    return d.getFullYear() === year && d.getMonth() === month;
-  }).length;
 
   return (
     <div className="cal-full-view">
@@ -1883,7 +2344,7 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
         <div className="cal-filter-section">
           {eventTypes.map(type => {
             const color = EVENT_TYPE_COLORS[type] || '#64748b';
-            const count = allEvents.filter(e => e.eventType === type).length;
+            const count = eventTypeCounts.get(type) || 0;
             const isActive = activeFilters.has(type);
             return (
               <label
@@ -1916,7 +2377,7 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
             <div className="cal-filter-section">
               {calendarPaths.map(path => {
                 const display = path.includes('/') ? path.slice(path.indexOf('/') + 1) : path;
-                const count = allEvents.filter(e => e.folderPath === path).length;
+                const count = calendarPathCounts.get(path) || 0;
                 const isActive = activeCalendarFilters.has(path);
                 return (
                   <label
@@ -1950,6 +2411,9 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
         {loading && (
           <div className="cal-filter-loading">
             <div className="spinner-sm" />
+            {loadProgress && (
+              <span>{loadProgress.loaded.toLocaleString()} / {loadProgress.total.toLocaleString()}</span>
+            )}
           </div>
         )}
 
@@ -1957,6 +2421,11 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
         <div className="cal-filter-stat">
           <span>{totalVisible} event{totalVisible !== 1 ? 's' : ''} this month</span>
         </div>
+        {!loading && loadNotice && (
+          <div className="cal-filter-stat">
+            <span>{loadNotice}</span>
+          </div>
+        )}
       </div>
 
       {/* Right: Calendar grid */}
@@ -2062,16 +2531,22 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
                       <div className="cal-day-events-list" aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}>
                         {dayEvents.map(ev => {
                           const cancelled = ev.isCancelled || /^(canceled|cancelled):\s*/i.test(ev.subject || '');
+                          const title = calEventTitle(ev.subject);
                           return (
-                            <div
+                            <button
                               key={ev.id}
+                              type="button"
                               className={`cal-day-event-label${cancelled ? ' cancelled' : ''}`}
                               style={{ borderLeftColor: cancelled ? '#dc2626' : (EVENT_TYPE_COLORS[ev.eventType] || '#16a34a') }}
-                              title={(cancelled ? '[Cancelled] ' : '') + (ev.subject || '(no subject)')}
+                              title={(cancelled ? '[Cancelled] ' : '') + title}
+                              // Opening the detail must not also
+                              // re-anchor / toggle the day popover the
+                              // cell's own onClick drives.
+                              onClick={(e) => { e.stopPropagation(); setDetailEvent(ev); }}
                             >
                               {cancelled && <span className="cal-day-event-tag">Cancelled</span>}
-                              <span className="cal-day-event-name">{ev.subject || '(no subject)'}</span>
-                            </div>
+                              <span className="cal-day-event-name">{title}</span>
+                            </button>
                           );
                         })}
                       </div>
@@ -2098,6 +2573,7 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
             events={eventsByDay[popover.day] || []}
             selectedItems={selectedItems}
             onItemCheck={onItemCheck}
+            onOpenDetail={setDetailEvent}
             interactive={true}
             pinned={popover.pinned}
             onPopoverEnter={cancelClose}
@@ -2105,6 +2581,51 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
             onClose={() => setPopover(null)}
           />
         )}
+
+        {/* Event detail — the calendar tab has no right preview pane
+            (the grid takes the full width), so the detail rides in a
+            modal. Same CalendarPreview component the other tabs use. */}
+        {detailEvent && (
+          <CalendarEventModal event={detailEvent} onClose={() => setDetailEvent(null)} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Modal wrapper around CalendarPreview. Closes on Escape, on the
+ *  backdrop, and on the × — matching the pinned-popover dismissal the
+ *  grid already teaches. */
+function CalendarEventModal({ event, onClose }: {
+  event: CalendarEvent;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      className="cal-detail-overlay"
+      onClick={onClose}
+      onMouseDown={(e) => e.stopPropagation()}
+      role="presentation"
+    >
+      <div
+        className="cal-detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Event details"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="cal-detail-close"
+          onClick={onClose}
+          aria-label="Close event details"
+        >×</button>
+        <CalendarPreview item={event} />
       </div>
     </div>
   );
@@ -2112,7 +2633,7 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredI
 
 function CalendarHoverTooltip({
   day, cellLeft, cellRight, cellTop, cellBottom,
-  events, selectedItems, onItemCheck,
+  events, selectedItems, onItemCheck, onOpenDetail,
   interactive = false, pinned = false,
   onClose, onPopoverEnter, onPopoverLeave,
 }: {
@@ -2126,6 +2647,8 @@ function CalendarHoverTooltip({
   events: CalendarEvent[];
   selectedItems: Set<string>;
   onItemCheck: (id: string) => void;
+  /** Open the full detail modal for one event (QA TMV-019). */
+  onOpenDetail?: (ev: CalendarEvent) => void;
   interactive?: boolean;
   pinned?: boolean;
   onClose?: () => void;
@@ -2204,6 +2727,7 @@ function CalendarHoverTooltip({
           const when = ev.start
             ? fmtLocalTime(ev.start, { hour: 'numeric', minute: '2-digit' })
             : '';
+          const title = calEventTitle(ev.subject);
           return (
             <div key={ev.id} className={`cal-hover-row${isChecked ? ' checked' : ''}${cancelled ? ' cancelled' : ''}`}>
               <input
@@ -2212,12 +2736,21 @@ function CalendarHoverTooltip({
                 checked={isChecked}
                 onChange={() => onItemCheck(ev.id)}
                 onClick={e => e.stopPropagation()}
+                aria-label={`Select ${title}${when ? ` at ${when}` : ''}`}
               />
               <span className="cal-hover-dot" style={{ background: color }} />
-              <span className="cal-hover-subject" title={ev.subject}>
+              {/* The subject is the affordance that opens the detail —
+                  the checkbox keeps owning selection, so ticking an
+                  event never pops a modal over the grid. */}
+              <button
+                type="button"
+                className="cal-hover-subject cal-hover-subject-btn"
+                title={title}
+                onClick={(e) => { e.stopPropagation(); onOpenDetail?.(ev); }}
+              >
                 {cancelled && <span className="cal-day-event-tag" style={{ marginRight: 6 }}>Cancelled</span>}
-                {ev.subject || '(no subject)'}
-              </span>
+                {title}
+              </button>
               {when && <span className="cal-hover-time">{when}</span>}
             </div>
           );
@@ -2380,11 +2913,30 @@ function odFileIcon(name: string): React.ReactNode {
   return FIcon_Default;
 }
 
+// The only two orderings /onedrive actually implements. Probed against
+// the live endpoint on 2026-08-11: `name_asc` is the default and
+// `modified_desc` genuinely orders by lastModifiedDateTime (monotonic
+// over 50 rows, and a different row order from `created_desc`), while
+// `name_desc`, `created_asc`, `modified_asc` and `size_asc|desc` are all
+// silently ignored and fall back to name order. The header therefore
+// offers exactly these two and nothing else — the old UI drew a sort
+// arrow on Name with no handler anywhere, implying four sortable
+// columns where there were none (QA TMV-014).
+type OneDriveSort = 'name_asc' | 'modified_desc';
+
+// How far a pinned recovery point may reach when it is mapped onto
+// another content type's timeline. The five surface snapshots of ONE
+// "Backup now" land within a second or two of each other (2026-08-11:
+// contacts 18:11:56.836 → chats 18:11:57.524) while consecutive runs
+// are hours apart, so two minutes always resolves inside the run the
+// user picked and can never jump forward into the next one.
+const PIN_FANOUT_TOLERANCE_MS = 2 * 60 * 1000;
+
 function OneDriveTable({
   items, folders, view, selectedFolder, onOpenFolder,
-  selectedItems, onToggleItem, onSelectAll, allChecked,
+  selectedItems, onToggleItem, onSelectAll, allChecked, allIndeterminate,
   onFolderCheck, folderBusy, folderSelected,
-  snapshotId,
+  snapshotId, sort, onSortChange,
 }: {
   items: RecoveryItem[];
   folders: Array<{ path: string; count: number }>;
@@ -2395,10 +2947,15 @@ function OneDriveTable({
   onToggleItem: (id: string) => void;
   onSelectAll: (checked: boolean) => void;
   allChecked: boolean;
+  /** Some-but-not-all of the visible page is selected. Drives the
+   *  header checkbox's indeterminate dash (QA TMV-013). */
+  allIndeterminate: boolean;
   onFolderCheck: (folderPath: string) => void;
   folderBusy: Set<string>;
   folderSelected: Set<string>;
   snapshotId: string | null;
+  sort: OneDriveSort;
+  onSortChange: (next: OneDriveSort) => void;
 }) {
   // In My Drive mode we interleave direct subfolders at the top of the list
   // so the UX mirrors a real file explorer. In Recent mode we skip folders
@@ -2413,12 +2970,44 @@ function OneDriveTable({
           <input
             type="checkbox"
             checked={allChecked}
-            onChange={e => onSelectAll(e.target.checked)}
+            ref={(el) => { if (el) el.indeterminate = !allChecked && allIndeterminate; }}
+            // Intent from the rendered state, not from the browser's
+            // checked flip — an indeterminate box always reports
+            // checked=true, which would make a partial selection
+            // impossible to clear. See the mail header for the same
+            // rule.
+            onChange={() => onSelectAll(!(allChecked || allIndeterminate))}
+            aria-label="Select all files on this page"
           />
         </div>
-        <div className="od-th od-th-name">Name <span className="od-th-arrow">↓</span></div>
+        {/* Recent is a fixed most-recently-modified window, so its
+            order isn't the user's to change — the sort buttons only
+            appear in My Drive. */}
+        <div className="od-th od-th-name">
+          {view === 'my-drive' ? (
+            <button
+              type="button"
+              className="od-th-sort"
+              aria-sort={sort === 'name_asc' ? 'ascending' : 'none'}
+              onClick={() => onSortChange('name_asc')}
+            >
+              Name {sort === 'name_asc' && <span className="od-th-arrow" aria-hidden>↑</span>}
+            </button>
+          ) : 'Name'}
+        </div>
         <div className="od-th od-th-owner">Owner</div>
-        <div className="od-th od-th-modified">Last modified</div>
+        <div className="od-th od-th-modified">
+          {view === 'my-drive' ? (
+            <button
+              type="button"
+              className="od-th-sort"
+              aria-sort={sort === 'modified_desc' ? 'descending' : 'none'}
+              onClick={() => onSortChange('modified_desc')}
+            >
+              Last modified {sort === 'modified_desc' && <span className="od-th-arrow" aria-hidden>↓</span>}
+            </button>
+          ) : 'Last modified'}
+        </div>
         <div className="od-th od-th-size">File size</div>
       </div>
 
@@ -4674,11 +5263,12 @@ function PowerBiFilesView({
  *
  * Filters the latest snapshot's items by item_type prefix per tab.
  */
-type GroupTab = 'site' | 'mail' | 'channels';
+type GroupTab = 'site' | 'mail' | 'channels' | 'members';
 const GROUP_TAB_LABELS: Record<GroupTab, string> = {
   site: 'Site',
   mail: 'Mail',
   channels: 'Team Channels',
+  members: 'Members',
 };
 
 function groupTabMatches(tab: GroupTab, itemType: string): boolean {
@@ -4686,6 +5276,7 @@ function groupTabMatches(tab: GroupTab, itemType: string): boolean {
   if (tab === 'site') return t.startsWith('SHAREPOINT_');
   if (tab === 'mail') return t.startsWith('GROUP_MAILBOX_');
   if (tab === 'channels') return t === 'TEAMS_MESSAGE' || t === 'TEAMS_MESSAGE_REPLY';
+  if (tab === 'members') return t === 'GROUP_MEMBER' || t === 'GROUP_PROFILE';
   return false;
 }
 
@@ -4711,8 +5302,10 @@ function sanitizeMessageHtml(raw: any): string {
   }
   if (!html) return '';
   // Strip inline <img> tags (Teams embeds giant base64 images that make
-  // the right pane unreadable). Replace them with a small placeholder.
-  return String(html).replace(/<img[^>]*>/gi, '[image]');
+  // the right pane unreadable) on the SOURCE, then sanitise as the final
+  // transform so attacker-authored Teams HTML can't execute script in the
+  // operator's session.
+  return sanitizeHtml(String(html).replace(/<img[^>]*>/gi, '[image]'));
 }
 
 function GroupTeamsView({
@@ -4767,7 +5360,26 @@ function GroupTeamsView({
     site: items.filter(i => groupTabMatches('site', i.itemType)).length,
     mail: items.filter(i => (i.itemType || '').toUpperCase() === 'GROUP_MAILBOX_POST').length,
     channels: items.filter(i => (i.itemType || '').toUpperCase() === 'TEAMS_MESSAGE').length,
+    members: items.filter(i => (i.itemType || '').toUpperCase() === 'GROUP_MEMBER').length,
   }), [items]);
+
+  // Only offer surfaces the group actually has backed-up content for.
+  // A plain security group (has_team=false, mail_enabled=false) holds
+  // only GROUP_PROFILE + GROUP_MEMBER items — rendering Site / Mail /
+  // Team Channels for it made it look like a SharePoint site with no
+  // members (2026-07-14, Tanium - Software - Adobe Acrobat). Fall back
+  // to the legacy trio when nothing has loaded yet (or truly empty).
+  const visibleTabs = useMemo<GroupTab[]>(() => {
+    const withContent = (['site', 'mail', 'channels', 'members'] as GroupTab[])
+      .filter(t => tabCounts[t] > 0);
+    return withContent.length ? withContent : (['site', 'mail', 'channels'] as GroupTab[]);
+  }, [tabCounts]);
+  useEffect(() => {
+    if (!loading && !visibleTabs.includes(activeTab)) {
+      setActiveTab(visibleTabs[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, visibleTabs.join('|')]);
 
   const visibleItems = useMemo(
     () => items.filter(i => groupTabMatches(activeTab, i.itemType)),
@@ -4895,7 +5507,7 @@ function GroupTeamsView({
   return (
     <>
       <div className="content-type-tabs">
-        {(['site', 'mail', 'channels'] as GroupTab[]).map(tab => {
+        {visibleTabs.map(tab => {
           const count = tabCounts[tab];
           return (
             <button
@@ -4910,7 +5522,50 @@ function GroupTeamsView({
         })}
       </div>
 
-      {activeTab === 'site' ? (
+      {activeTab === 'members' ? (
+        /* Group membership — profile + members captured as
+           GROUP_PROFILE / GROUP_MEMBER snapshot items. View-only:
+           members restore as part of the group object, not as
+           individually recoverable items. */
+        <div className="three-panel-layout">
+          <div className="panel-middle" style={{ flex: 1 }}>
+            <div className="item-list-header">
+              <span>
+                {tabCounts.members.toLocaleString()} member{tabCounts.members === 1 ? '' : 's'} backed up
+              </span>
+            </div>
+            <div className="item-list">
+              {items
+                .filter(i => (i.itemType || '').toUpperCase() === 'GROUP_MEMBER')
+                .map(m => {
+                  const raw = m.metadata?.raw || {};
+                  const display = m.name || raw.displayName || '(unknown)';
+                  const sub = [raw.mail || raw.userPrincipalName, raw.jobTitle]
+                    .filter(Boolean).join(' — ');
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: 'flex', gap: 12, alignItems: 'center',
+                        padding: '10px 14px',
+                        borderBottom: '1px solid rgba(128,128,128,0.15)',
+                      }}
+                    >
+                      <div className="resource-avatar-sm">{getInitials(display)}</div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{display}</div>
+                        {sub && <div style={{ fontSize: 12, opacity: 0.7 }}>{sub}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              {tabCounts.members === 0 && (
+                <div className="folder-empty"><p>No members captured</p></div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : activeTab === 'site' ? (
         <div className="three-panel-layout od-layout-mode">
           <SharePointView
             resourceId={resourceId}
@@ -6099,7 +6754,7 @@ export default function Recovery() {
   // modals can route by tab: Site → file-family UX, Channels → chat
   // UX, Mail → mailbox UX. Legacy resources that don't use this view
   // ignore the state entirely.
-  const [groupTeamsTab, setGroupTeamsTab] = useState<'site' | 'mail' | 'channels'>('site');
+  const [groupTeamsTab, setGroupTeamsTab] = useState<GroupTab>('site');
 
   // Folders (real from snapshot items)
   const [folders, setFolders] = useState<SnapshotFolder[]>([]);
@@ -6156,6 +6811,20 @@ export default function Recovery() {
     return v === 'recent' ? 'recent' : 'my-drive';
   });
 
+  // OneDrive My Drive ordering. Only the two orders /onedrive actually
+  // implements (see OneDriveSort). Recent overrides this with its own
+  // fixed ordering below.
+  const [oneDriveSort, setOneDriveSort] = useState<OneDriveSort>('name_asc');
+
+  // How many files the OneDrive "Recent" view shows. Recent used to run
+  // the same unbounded listing as My Drive with the folder filter
+  // dropped, so it rendered all 8,295 files and "recent" meant nothing
+  // (QA TMV-016). There is no server-side recency WINDOW — only an
+  // ordering — so the window is enforced here: one page of the newest
+  // rows, infinite scroll switched off, and the header says how many
+  // are shown.
+  const OD_RECENT_LIMIT = 100;
+
   // OneDrive-only: folder paths whose bulk-select is currently fetching ids
   // from the backend. Used to disable the folder-row checkbox in-flight so
   // rapid clicks don't fire multiple overlapping requests for the same
@@ -6177,6 +6846,14 @@ export default function Recovery() {
   // content-type tabs.
   const [genericFolderBusy, setGenericFolderBusy] = useState<Set<string>>(new Set());
   const [genericFolderSelected, setGenericFolderSelected] = useState<Set<string>>(new Set());
+
+  // Items the user explicitly UN-ticked while a folder checkbox was
+  // active. The backend resolver ORs itemIds with the folderPaths
+  // expansion, so without an exclusion list a visibly-deselected item
+  // inside a ticked folder was restored/exported anyway. Forwarded to
+  // the modals as `excludedItemIds` (minus anything currently ticked)
+  // and subtracted server-side by shared.folder_resolver.
+  const [folderExcludedIds, setFolderExcludedIds] = useState<Set<string>>(new Set());
 
   // Merge current searchParams with a partial patch and push a new history
   // entry so the browser back/forward buttons walk back/forward through state
@@ -6241,6 +6918,35 @@ export default function Recovery() {
   // items request has already advanced to a new snapshot, and vice versa.
   const foldersKeyRef = useRef(0);
   const itemListRef = useRef<HTMLDivElement | null>(null);
+  // Readiness key set by the folders effect when its fetch settles, using
+  // the exact snapshot identity it fetched for ("<snapId>|<tab>"). The
+  // items effect gates the CHATS tab on this instead of foldersLoading —
+  // having foldersLoading in the items deps made that effect run once
+  // (early-return while folders loaded) and AGAIN when loading flipped
+  // false, firing the same /mail request twice per selection.
+  const [foldersReadyKey, setFoldersReadyKey] = useState('');
+  // Set by the resolver-swap effect below to the snapshot id it is about
+  // to move selectedSnapshotId to. While the two disagree, the items
+  // effect skips its run: selectedSnapshotId is transiently stale (the
+  // auto-seed or the previous tab's id) and fetching with it would issue
+  // a second, wrong-snapshot request. Null whenever the active tab has no
+  // resolver entry, so non-M365 resources and manual Version-dropdown
+  // picks are never gated.
+  const pendingSnapSwapRef = useRef<string | null>(null);
+  // Full view identity ("snapId|tab|folder|sort|search") of the last
+  // items fetch this effect issued. The items effect re-runs on dep
+  // changes that don't alter WHAT to fetch (foldersReadyKey flipping when
+  // the left rail resolves after the items fetch already started) — if
+  // the computed view key is unchanged, the run is skipped instead of
+  // duplicating the request. Reset to '' by every gated/cleared path so
+  // navigating away and back always refetches.
+  const lastItemsViewKeyRef = useRef('');
+  // Per-session SWR caches: revisiting Account A after browsing B renders
+  // A's folders + first items page instantly from here, then a background
+  // revalidate refreshes the entry. Keyed strictly by snapshotId, so a
+  // new Gold batch (new snapshot ids) naturally misses and refetches.
+  const foldersCacheRef = useRef<Map<string, { folders: SnapshotFolder[]; hasMore: boolean }>>(new Map());
+  const itemsCacheRef = useRef<Map<string, { items: RecoveryItem[]; total: number; totalPages: number }>>(new Map());
   // Flips to the "<snapshotId>|<tab>" of the current chats view after the
   // initial auto-scroll-to-bottom has run. The top-edge pagination trigger
   // stays disarmed until this matches — otherwise a scroll event firing
@@ -6309,6 +7015,48 @@ export default function Recovery() {
   // chats) — no snapshot dropdown to surface to the user. Clicking a tab
   // auto-jumps to the right snapshot ID.
   const [contentSnapshots, setContentSnapshots] = useState<ContentSnapshotsResponse | null>(null);
+  // Staleness key for the resolver fetch below — same pattern as
+  // foldersKeyRef. Without it, switching resources while a slow
+  // resolver response is in flight let the OLD resource's payload land
+  // last and win: clicking John Lucas then Jason Rue rendered Lucas's
+  // snapshot ids, tab badges and file list under Rue's header
+  // (2026-07-14 — Lucas's resolver was slow because his failed
+  // force-fulls left ~199k metadata rows). Every downstream fetch keys
+  // off this state, so guarding the root guards the whole page.
+  const contentSnapshotsKeyRef = useRef(0);
+
+  // The point in time the user picked in the Version dropdown, kept as
+  // a TIMESTAMP rather than as a snapshot id. null = "always the
+  // latest".
+  //
+  // A snapshot id only ever means something on one content type: every
+  // tab is backed by its OWN Tier-2 child resource with its own
+  // timeline (this pilot account: 22 calendar snapshots, 22 mail, 17
+  // OneDrive, 17 chats, 1 contacts — 110 in total across 7 resources).
+  // Carrying the id across a tab switch is what pointed one tab's query
+  // at another tab's snapshot (QA TMV-002). Carrying the TIMESTAMP
+  // instead lets each tab resolve the same recovery point on its own
+  // timeline, which is also what makes the selection survive a tab
+  // switch instead of snapping back to "Select version" (QA TMV-031).
+  //
+  // Not keyed on batchId even though a batch usually does span the
+  // children (2026-08-11: batch 2123e84f covers the parent + mail +
+  // onedrive + calendar): not every child is in every batch — this
+  // identity has 22 completed mail and calendar snapshots, 17 OneDrive,
+  // 16 chats and exactly 1 contacts — so a batch-id join returns
+  // nothing for the tabs that sat out that run. Nearest-at-or-before
+  // always has an answer, and inside a batch the surfaces land under a
+  // second apart, far inside the tolerance below.
+  const [pinnedVersionAt, setPinnedVersionAt] = useState<number | null>(null);
+  // WHICH content tab the pin was set on. A pin must never move another
+  // tab off its latest backup: clicking the sole Contacts entry (4 days
+  // stale) was measured moving Mail 8/11->8/7, OneDrive 8/11->8/7,
+  // Calendar 8/11->8/7 and Chats 2026-08-11->2026-07-31 — eleven days and
+  // 452,609 -> 227,539 items — with nothing on screen announcing it, and a
+  // Recover afterwards would have restored the older data. Cross-tab
+  // pinning was requested by no finding; TMV-031 only asked that the
+  // picker keep its LABEL instead of reading "Select version".
+  const [pinnedVersionFor, setPinnedVersionFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedResource) {
@@ -6325,7 +7073,12 @@ export default function Recovery() {
     // snapshots, not the old one → backend returns "No items found").
     setSelectedSnapshotId('');
     setSelectedItems(new Set());
+    // A recovery point picked on the previous resource says nothing
+    // about this one's backup history.
+    setPinnedVersionAt(null);
+    setPinnedVersionFor(null);
     setSnapshotsLoading(true);
+    const myKey = ++contentSnapshotsKeyRef.current;
     Promise.all([
       // Sparkline needs the historical snapshot list (date + size). For
       // ENTRA_USER parents the real content bytes live on Tier 2 children
@@ -6342,6 +7095,7 @@ export default function Recovery() {
       SnapshotService.getContentSnapshots(selectedResource.id).catch(() => null),
     ])
       .then(([list, content]) => {
+        if (myKey !== contentSnapshotsKeyRef.current) return; // stale — a newer resource was selected
         const snapList = list.content || [];
         setSnapshots(snapList);
         setContentSnapshots(content as any);
@@ -6362,34 +7116,144 @@ export default function Recovery() {
         }
       })
       .catch(console.error)
-      .finally(() => setSnapshotsLoading(false));
+      .finally(() => {
+        if (myKey === contentSnapshotsKeyRef.current) setSnapshotsLoading(false);
+      });
   }, [selectedResource]);
 
-  // When the resolver loads OR the active tab changes, swap selectedSnapshotId
-  // to whatever snapshot the backend says backs that tab. `null` means the
-  // tab has no content yet — render empty state, do NOT fall back to the
-  // parent's snapshot: each Tier 2 child owns its own snapshots, and the
-  // parent only holds identity items (profile/manager/group memberships),
-  // so cross-using its folder_paths on another tab leaks folder rows from
-  // an unrelated snapshot into the left panel.
+  // Resolver entry for the active tab (null on non-M365 kinds and on
+  // tabs with nothing backed up yet).
+  const activeContentEntry = (contentSnapshots
+      && activeContentType
+      && (CONTENT_TABS as string[]).includes(activeContentType as string))
+    ? contentSnapshots.byContent[activeContentType as ContentTab]
+    : null;
+
+  // The snapshots the ACTIVE TAB can legally be pointed at — i.e. the
+  // timeline of the Tier-2 child that actually holds this content type.
   //
-  // Skip when the resource isn't M365-shaped (Azure DB / VM / SharePoint /
-  // Power BI don't use contentSnapshots at all) — otherwise this effect
-  // would reset the selection to '' on every render and fight with the
-  // RecoveryToolbar's auto-select of the newest COMPLETED snapshot.
+  // 2026-08-11 (QA TMV-002): the Version dropdown was fed the whole
+  // `snapshots` array — 110 rows (102 COMPLETED) spanning the
+  // ENTRA_USER parent and all five Tier-2 children. RecoveryToolbar
+  // then collapses those into 45 entries keyed by batch and keeps the
+  // row with the highest itemCount as each entry's representative — so
+  // the newest entry resolves to snapshot 6c726320, the CALENDAR row of
+  // batch 2123e84f (2,297 items) rather than that batch's mail row
+  // (80). Picking it while the Mail tab was open sent the calendar
+  // snapshot id to /mail, exactly as the QA pass observed. The backend
+  // is not the problem: it scopes correctly, resolving successively
+  // newer calendar snapshots to 3 → 2,625 → 5,418 events. The dropdown
+  // just has to stop offering ids that belong to another surface.
+  //
+  // Scoping to the tab's own child makes an invalid (contentType,
+  // snapshotId) pair unrepresentable — and, because each child holds at
+  // most one snapshot per batch (mail 22/22 buckets, onedrive 17/17,
+  // calendar 22/22, chats 16/16), it also stops the toolbar's bucketing
+  // from HIDING the selected id: 57 of the 102 ids were unreachable
+  // representatives-of-nothing before, which is why the picker read
+  // "Select version" on OneDrive but showed a value on Calendar
+  // (QA TMV-031).
+  //
+  // Falls back to the unfiltered list when there is no resolver entry:
+  // Tier-1 direct mailboxes, Azure DB / VM / SharePoint / Power BI all
+  // own their snapshots directly and have nothing to filter by.
+  const tabSnapshots = useMemo(() => {
+    const childId = activeContentEntry?.childResourceId;
+    if (!childId) return snapshots;
+    const scoped = snapshots.filter(s => s.resourceId === childId);
+    // The snapshot this tab is ACTUALLY READING must always be selectable,
+    // even when /snapshots omits it. Verified live: the resolver puts
+    // Contacts on snapshot a37f4537, but /snapshots?include_children=true
+    // returns only ONE row for that child because the list endpoint drops
+    // item_count=0 snapshots (110 API rows vs 116 in the DB). Without this
+    // union the picker cannot find the displayed snapshot and falls back to
+    // reading "Select version" — i.e. TMV-031 unfixed on Contacts, which is
+    // exactly the tab the original finding was raised against.
+    const shown = activeContentEntry?.snapshotId;
+    const withShown = shown && !scoped.some(s => s.id === shown)
+      ? [...scoped, ...snapshots.filter(s => s.id === shown)]
+      : scoped;
+    // Deliberately NOT falling back to the unfiltered cross-surface list.
+    // That fallback made an invalid (contentType, snapshotId) pair
+    // representable — pick a "version" belonging to another content type and
+    // the tab reads the wrong timeline, which is TMV-002 restated. An empty
+    // picker on a tab with no listable snapshots is honest; offering another
+    // surface's snapshots is not.
+    return withShown;
+  }, [snapshots, activeContentEntry?.childResourceId, activeContentEntry?.snapshotId]);
+
+  // Map a pinned recovery point onto THIS tab's timeline: the newest of
+  // its snapshots that is not newer than the pin (see
+  // PIN_FANOUT_TOLERANCE_MS at module scope for the window).
+  const resolvePinnedSnapshot = useCallback((at: number, candidates: SnapshotItem[]): string | null => {
+    const completed = candidates
+      .filter(s => (s.status || '').toUpperCase() === 'COMPLETED' && s.createdAt)
+      .map(s => ({ id: s.id, t: new Date(/Z|[+-]\d{2}:?\d{2}$/.test(s.createdAt) ? s.createdAt : s.createdAt + 'Z').getTime() }))
+      .filter(s => !isNaN(s.t))
+      .sort((a, b) => b.t - a.t);
+    if (completed.length === 0) return null;
+    // The snapshot the user actually clicked always wins on the tab
+    // they clicked it — never let the tolerance window redirect a pick
+    // to a sibling that happens to be a few hundred ms newer.
+    const exact = completed.find(s => s.t === at);
+    if (exact) return exact.id;
+    const hit = completed.find(s => s.t <= at + PIN_FANOUT_TOLERANCE_MS);
+    // Every snapshot of this surface is NEWER than the pin — the tab
+    // simply wasn't being backed up yet at that point in time. Its
+    // oldest is the closest honest answer.
+    return (hit || completed[completed.length - 1]).id;
+  }, []);
+
+  // When the resolver loads OR the active tab changes, swap
+  // selectedSnapshotId to whatever snapshot backs that tab. `null` means
+  // the tab has no content yet — render empty state, do NOT fall back to
+  // the parent's snapshot: each Tier 2 child owns its own snapshots, and
+  // the parent only holds identity items (profile/manager/group
+  // memberships), so cross-using its folder_paths on another tab leaks
+  // folder rows from an unrelated snapshot into the left panel.
+  //
+  // Skip when the resource isn't M365-shaped (Azure DB / VM / SharePoint
+  // / Power BI don't use contentSnapshots at all) — otherwise this
+  // effect would reset the selection to '' on every render and fight
+  // with the RecoveryToolbar's auto-select of the newest COMPLETED
+  // snapshot.
   useEffect(() => {
-    if (!contentSnapshots) return;
-    if (!activeContentType || !(CONTENT_TABS as string[]).includes(activeContentType as string)) return;
-    const entry = contentSnapshots.byContent[activeContentType as ContentTab];
+    const entry = activeContentEntry;
+    // A pinned recovery point wins over the resolver's "latest", but it
+    // is always resolved WITHIN this tab's own timeline.
+    const target = (pinnedVersionAt != null && pinnedVersionFor === activeContentType)
+      ? (resolvePinnedSnapshot(pinnedVersionAt, tabSnapshots) ?? entry?.snapshotId ?? null)
+      : (entry?.snapshotId ?? null);
+    // Record the swap target unconditionally (null when there is no
+    // resolver entry) so the items effect can tell "a swap is incoming —
+    // this run's selectedSnapshotId is transient" apart from "no resolver
+    // for this tab — selectedSnapshotId is authoritative".
+    pendingSnapSwapRef.current = target;
     // Only propagate the resolver's choice when it actually has one —
     // otherwise leave selectedSnapshotId alone. Non-M365 resources
     // (Azure DB, VM, SharePoint, Power BI) use contentSnapshots with
     // every byContent key set to null, which used to blank the toolbar's
     // auto-select and keep Download disabled.
-    if (entry?.snapshotId) {
-      setSelectedSnapshotId(entry.snapshotId);
+    if (target) {
+      setSelectedSnapshotId(target);
     }
-  }, [contentSnapshots, activeContentType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentSnapshots, activeContentType, tabSnapshots, pinnedVersionAt, pinnedVersionFor, resolvePinnedSnapshot]);
+
+  // Version dropdown pick. Stores the point in time (see
+  // pinnedVersionAt) as well as switching to the id, so the choice
+  // survives a content-tab switch instead of resetting to
+  // "Select version" (QA TMV-031).
+  const handleSelectVersion = useCallback((id: string) => {
+    const snap = tabSnapshots.find(s => s.id === id) || snapshots.find(s => s.id === id);
+    const raw = snap?.createdAt;
+    const t = raw
+      ? new Date(/Z|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : raw + 'Z').getTime()
+      : NaN;
+    setPinnedVersionAt(isNaN(t) ? null : t);
+    setPinnedVersionFor(isNaN(t) ? null : activeContentType);
+    setSelectedSnapshotId(id);
+  }, [tabSnapshots, snapshots, activeContentType]);
 
   // Debounce the search box so we don't refetch on every keystroke. 300ms
   // strikes a reasonable balance between responsiveness and request volume
@@ -6400,12 +7264,29 @@ export default function Recovery() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  // Does the search term still narrow the ITEM list, or only the left
+  // rail? Clicking a chat thread out of a set of search hits used to
+  // wipe the search box (Recovery.tsx, chats branch of the folder-name
+  // button) so the user could read the whole conversation instead of
+  // just the matching messages — and lost their filtered thread list
+  // with it, one result at a time (QA TMV-011). Keeping the term but
+  // dropping it from the ITEMS query gets both: the rail stays filtered
+  // on "certificate", the opened thread shows every message. Any edit
+  // to the box re-arms it.
+  const [searchNarrowsItems, setSearchNarrowsItems] = useState(true);
+  useEffect(() => { setSearchNarrowsItems(true); }, [searchQuery]);
+  const itemSearch = searchNarrowsItems ? debouncedSearch : '';
+
   // Fresh load: any time the underlying filter (snapshot / tab / folder /
   // search) changes, reset to page 1, kill any in-flight older fetch via
   // requestKeyRef, and scroll the list back to the top so the user doesn't
   // land mid-page on the previous filter's scroll position.
   useEffect(() => {
     if (!selectedSnapshotId || !selectedResource || !activeContentType) {
+      // Bump the request key so an in-flight fetch for the view being
+      // torn down can't land later and repopulate the cleared list.
+      requestKeyRef.current++;
+      lastItemsViewKeyRef.current = '';
       setRecoveryItems([]);
       setItemCount(0);
       setItemTotalPages(1);
@@ -6419,6 +7300,8 @@ export default function Recovery() {
     // the same events through the generic /items endpoint — saves one
     // network round trip per calendar-tab open.
     if (activeContentType === 'calendar') {
+      requestKeyRef.current++;
+      lastItemsViewKeyRef.current = '';
       setRecoveryItems([]);
       setItemCount(0);
       setItemTotalPages(1);
@@ -6428,49 +7311,179 @@ export default function Recovery() {
       return;
     }
 
-    // Wait for the folders list (left panel) to land before firing the
-    // items fetch. On Chats the folders response also auto-selects the
-    // first chat into selectedFolder — if we fired items first we'd send
-    // an all-chats query then immediately refire against the selected
-    // chat, doubling the request count per tab switch.
-    if (foldersLoading) return;
+    // The resolver payload still belongs to a previously-selected resource
+    // (its refresh is in flight) — every snapshot id we could derive here
+    // is stale, so don't fetch. The effect re-runs when the new resolver
+    // lands (contentSnapshots is in the deps).
+    if (contentSnapshots?.resourceId && contentSnapshots.resourceId !== selectedResource.id) {
+      lastItemsViewKeyRef.current = '';
+      return;
+    }
+
+    // The resolver-swap effect above is about to move selectedSnapshotId
+    // to the active tab's child snapshot, but this run still sees the old
+    // value (the auto-seed or the previous tab's id). Skip — the re-run
+    // arrives in the next commit with the right id. Firing here was one
+    // source of doubled /mail requests per selection.
+    if (pendingSnapSwapRef.current && pendingSnapSwapRef.current !== selectedSnapshotId) {
+      lastItemsViewKeyRef.current = '';
+      return;
+    }
+    pendingSnapSwapRef.current = null; // swap observed (or none pending)
+
+    const isChats = activeContentType === 'chats';
+
+    // Only CHATS waits for the folders fetch: its folders response
+    // auto-selects the first chat into selectedFolder, so firing items
+    // early would send an all-chats query then immediately refire against
+    // the selected chat. Non-chats tabs fire immediately and let the
+    // left-rail folder list populate in parallel — folders (~1s) must not
+    // gate the dominant items fetch (~3.6s).
+    if (isChats) {
+      const entry = contentSnapshots?.byContent[activeContentType as ContentTab];
+      const kind = selectedResource.kind;
+      const isDirectMailbox = kind === 'mailbox' || kind === 'shared_mailbox' || kind === 'room_mailbox';
+      const foldersSnapId = entry?.snapshotId || (isDirectMailbox ? selectedSnapshotId : null);
+      if (!foldersSnapId) {
+        // No chats snapshot for this resource — same empty state as
+        // having no snapshot selected. The folders effect won't fetch
+        // (same null derivation), so readiness would never arrive.
+        requestKeyRef.current++;
+        lastItemsViewKeyRef.current = '';
+        setRecoveryItems([]);
+        setItemCount(0);
+        setItemTotalPages(1);
+        setHasMore(false);
+        setItemPage(1);
+        setItemsLoading(false);
+        return;
+      }
+      if (foldersReadyKey !== `${foldersSnapId}|${activeContentType}`) {
+        // Folders (and the first-chat auto-select) aren't ready for THIS
+        // snapshot identity yet. Hold in a loading state — the folders
+        // effect sets foldersReadyKey when it settles (batched with the
+        // auto-selected chat), re-running us exactly once. The identity
+        // is derived from the resolver, NOT `${selectedSnapshotId}|tab`,
+        // because selectedSnapshotId lags the resolver transiently.
+        requestKeyRef.current++;
+        lastItemsViewKeyRef.current = '';
+        setRecoveryItems([]);
+        setItemCount(0);
+        setItemTotalPages(1);
+        setHasMore(false);
+        setItemPage(1);
+        setItemsLoading(true);
+        return;
+      }
+    }
+
+    // OneDrive "Recent": drop the folder filter, order by
+    // lastModifiedDateTime DESC, and take ONE bounded page — Recent is a
+    // window onto the newest files, not a second copy of the whole
+    // drive (QA TMV-016). "My Drive" honours the column sort, defaulting
+    // to name_asc so folder listings read like a file explorer.
+    const isOneDrive = activeContentType === 'onedrive';
+    const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
+    const pageSize = oneDriveRecent ? OD_RECENT_LIMIT : 50;
+    const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
+    const sortParam = oneDriveRecent
+      ? 'modified_desc'
+      : (isOneDrive ? oneDriveSort : undefined);
+
+    // Deps like foldersReadyKey (left rail resolving ~1s after this
+    // effect already fired) and contentSnapshots re-run this effect
+    // without changing WHAT to fetch. Snapshot content is immutable, so
+    // an identical view key means the previous run's request (in flight
+    // or landed) is already correct — re-running would only duplicate
+    // it. This is the guard that keeps /mail at exactly ONE request per
+    // selection.
+    const archiveSnapshotId = archiveSelected ? contentSnapshots?.byContent?.archive?.snapshotId : undefined;
+    const archiveKey = archiveSelected ? `archive:${archiveSnapshotId ?? ''}:${archiveFolder ?? ''}` : 'primary';
+    const viewKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${effectiveFolder}|${sortParam ?? ''}|${itemSearch}`;
+    if (lastItemsViewKeyRef.current === viewKey) return;
+    lastItemsViewKeyRef.current = viewKey;
 
     const myKey = ++requestKeyRef.current;
     setItemPage(1);
-    setItemsLoading(true);
-    if (itemListRef.current) itemListRef.current.scrollTop = 0;
-    // Calendar tab returns early above, so by this point activeContentType
-    // is narrowed to non-calendar. Use a fixed page size of 50.
-    const pageSize = 50;
-    const isChats = activeContentType === 'chats';
-    // OneDrive "Recent" mode: drop the folder filter and ask backend to
-    // sort by createdDateTime DESC. "My Drive" uses default name_asc so
-    // folder listings look alphabetical like a file explorer.
-    const isOneDrive = activeContentType === 'onedrive';
-    const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
-    const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
-    const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
-    // "Online Archive" folder selected → fetch from the archive child's OWN
-    // snapshot, filtered to this tab's kind. Otherwise the normal per-tab fetch.
-    const _archiveEntry = contentSnapshots?.byContent?.archive;
-    const _firstPage = (archiveSelected && _archiveEntry?.snapshotId)
-      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, 1, pageSize, debouncedSearch, archiveFolder ?? undefined)
+
+    // SWR: serve a revisit instantly from the per-session cache, then let
+    // the fetch below revalidate in the background. Search results are
+    // intentionally not cached (unbounded key space, rarely revisited).
+    const cacheKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${effectiveFolder}|${sortParam ?? ''}`;
+    const cached = itemSearch ? undefined : itemsCacheRef.current.get(cacheKey);
+    if (cached) {
+      setRecoveryItems(cached.items);
+      setItemCount(cached.total);
+      setItemTotalPages(cached.totalPages);
+      setHasMore(!oneDriveRecent && 1 < cached.totalPages);
+      setItemsLoading(false);
+      if (isChats) {
+        // Mirror the fetch path's landing behavior: bottom-anchor the
+        // conversation and re-arm the top-edge paginator.
+        chatsAutoScrolledRef.current = '';
+        requestAnimationFrame(() => {
+          const el = itemListRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+          chatsAutoScrolledRef.current = `${selectedSnapshotId}|${activeContentType}`;
+          if (el && cached.totalPages > 1 &&
+              el.scrollHeight <= el.clientHeight + 200) {
+            setItemPage(p => Math.max(p, 2));
+          }
+        });
+      } else if (itemListRef.current) {
+        itemListRef.current.scrollTop = 0;
+      }
+    } else {
+      setItemsLoading(true);
+      if (itemListRef.current) itemListRef.current.scrollTop = 0;
+    }
+    const firstPage = archiveSnapshotId
+      ? SnapshotService.listArchive(archiveSnapshotId, activeContentType as ContentTab, 1, pageSize, itemSearch, archiveFolder ?? undefined)
       : SnapshotService.listItems(
           selectedSnapshotId, 1, pageSize,
-          activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
+          activeContentType as ContentTab, effectiveFolder, itemSearch, sortParam,
         );
-    _firstPage
+    firstPage
       .then((data) => {
-        if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
         // Chats: backend orders newest-first. We reverse each page so the
         // displayed list reads oldest-top → newest-bottom, matching
         // Teams/WhatsApp. Initial page is visually "the most recent
         // window of the conversation".
         const content = isChats ? [...data.content].reverse() : data.content;
+        // Cache write happens BEFORE the staleness guard on purpose: the
+        // payload is keyed by its own request identity, so even a slow
+        // response for a since-abandoned view correctly warms the cache
+        // for a future revisit — while the guard below still keeps it
+        // from touching the CURRENT view's state.
+        if (!itemSearch) {
+          swrCachePut(itemsCacheRef.current, cacheKey, {
+            items: content,
+            total: data.totalElements,
+            totalPages: data.totalPages || 1,
+          });
+        }
+        if (myKey !== requestKeyRef.current) return;  // stale fetch — filter changed
+        if (cached) {
+          // Background revalidate after a cache hit. Only swap the list
+          // if the user hasn't paginated past the cached first page (the
+          // append/prepend effect replaces the array, so a reference
+          // check detects it) — blindly setting page-1 content would
+          // clobber rows the user scrolled in. Counts are page-count
+          // properties of the whole filtered set and safe to refresh;
+          // hasMore is left to the pagination effect. Skip the chats
+          // re-scroll: the cache-hit path already bottom-anchored, and
+          // yanking scroll mid-read would be worse than a no-op.
+          setRecoveryItems(prev => (prev === cached.items ? content : prev));
+          setItemCount(data.totalElements);
+          setItemTotalPages(data.totalPages || 1);
+          return;
+        }
         setRecoveryItems(content);
         setItemCount(data.totalElements);
         setItemTotalPages(data.totalPages || 1);
-        setHasMore(1 < (data.totalPages || 1));
+        // Recent is deliberately a single bounded page — never arm the
+        // infinite scroll there or it walks the whole drive again.
+        setHasMore(!oneDriveRecent && 1 < (data.totalPages || 1));
         // For chats, auto-scroll to the bottom after render so the user
         // lands on the newest message. requestAnimationFrame waits for
         // the new children to be laid out. We mark the ref with the
@@ -6498,12 +7511,28 @@ export default function Recovery() {
       .catch((error) => {
         if (myKey !== requestKeyRef.current) return;
         console.error('Failed to load items:', error);
-        setRecoveryItems([]);
+        // A failed background revalidate keeps the cached view — the
+        // user already has meaningful content on screen.
+        if (!cached) {
+          setRecoveryItems([]);
+          // Release the idempotency claim so the next effect run can
+          // retry this view. Without this, a transient network/500 left
+          // the panel empty with NO auto-retry until the user changed
+          // folder/tab/search (the view-key guard suppressed every
+          // re-run). No duplicate risk: this request already failed, so
+          // the retry is the only request in flight for this view. The
+          // staleness check above keeps an abandoned request's failure
+          // from clearing the claim of the view that superseded it.
+          lastItemsViewKeyRef.current = '';
+        }
       })
       .finally(() => {
         if (myKey === requestKeyRef.current) setItemsLoading(false);
       });
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, debouncedSearch, oneDriveView, foldersLoading, archiveSelected, archiveFolder, contentSnapshots]);
+    // foldersLoading is deliberately NOT a dep: it caused a second
+    // identical items fetch when it flipped false. foldersReadyKey (set
+    // once per folder identity) replaced it for the chats gate.
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, itemSearch, oneDriveView, oneDriveSort, foldersReadyKey, contentSnapshots, archiveSelected, archiveFolder]);
 
   // Load the archive's real folder list (full nested paths) so the Online
   // Archive section renders its retained folder hierarchy instead of one flat
@@ -6564,14 +7593,18 @@ export default function Recovery() {
     const prevScrollTop = el ? el.scrollTop : 0;
     const isOneDrive = activeContentType === 'onedrive';
     const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
+    // Recent never paginates (hasMore is forced false above), so this
+    // path is My Drive / mail / contacts / chats only — but keep the
+    // parameters identical to the fresh load so an appended page can
+    // never come back in a different order than the page above it.
     const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
-    const sortParam = oneDriveRecent ? 'created_desc' : (isOneDrive ? 'name_asc' : undefined);
+    const sortParam = oneDriveRecent ? 'modified_desc' : (isOneDrive ? oneDriveSort : undefined);
     const _archiveEntry = contentSnapshots?.byContent?.archive;
     const _nextPage = (archiveSelected && _archiveEntry?.snapshotId)
-      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, itemPage, pageSize, debouncedSearch, archiveFolder ?? undefined)
+      ? SnapshotService.listArchive(_archiveEntry.snapshotId, activeContentType as ContentTab, itemPage, pageSize, itemSearch, archiveFolder ?? undefined)
       : SnapshotService.listItems(
           selectedSnapshotId, itemPage, pageSize,
-          activeContentType as ContentTab, effectiveFolder, debouncedSearch, sortParam,
+          activeContentType as ContentTab, effectiveFolder, itemSearch, sortParam,
         );
     _nextPage
       .then((data) => {
@@ -6646,6 +7679,7 @@ export default function Recovery() {
     setOneDriveFolderBusy(new Set());
     setGenericFolderSelected(new Set());
     setGenericFolderBusy(new Set());
+    setFolderExcludedIds(new Set());
   }, [selectedSnapshotId, activeContentType, searchParams.get('tab'), selectedFolder]);
 
   // Left-panel grouping is uniform across mail / onedrive / contacts /
@@ -6674,6 +7708,13 @@ export default function Recovery() {
     if (activeContentType === 'calendar') {
       return;
     }
+    // The resolver payload still belongs to a previously-selected
+    // resource (its refresh is in flight) — deriving a snapshot id from
+    // it here would refetch the OLD resource's folders during the
+    // transition. The effect re-runs when the new resolver lands.
+    if (contentSnapshots?.resourceId && selectedResource && contentSnapshots.resourceId !== selectedResource.id) {
+      return;
+    }
     // Tier 2 (USER_MAIL / USER_ONEDRIVE / …) ships a resolver
     // byContent[tab] → snapshotId. Tier 1 direct mailboxes (MAILBOX /
     // SHARED_MAILBOX / ROOM_MAILBOX / GROUP_MAILBOX) have no resolver
@@ -6682,9 +7723,44 @@ export default function Recovery() {
     const entry = contentSnapshots?.byContent[activeContentType as ContentTab];
     const kind = selectedResource?.kind;
     const isDirectMailbox = kind === 'mailbox' || kind === 'shared_mailbox' || kind === 'room_mailbox';
-    const snapId = entry?.snapshotId || (isDirectMailbox ? selectedSnapshotId : null);
+    // Follow the VERSION the user is looking at, not just the resolver's
+    // latest. 2026-08-11 (QA TMV-003): the item list queries
+    // selectedSnapshotId while this tree was pinned to
+    // `entry.snapshotId` forever, so picking an older version left the
+    // left rail showing the newest snapshot's folders and counts beside
+    // an older snapshot's items — two different points in time on one
+    // screen, and the counts are what an operator uses to decide what to
+    // restore. Only honoured when selectedSnapshotId belongs to THIS
+    // tab's timeline: mid-tab-switch it still holds the previous tab's
+    // id (the resolver-swap effect lands one commit later), and that id
+    // would fetch the wrong surface's folders.
+    const isTabScopedSelection = !!selectedSnapshotId
+      && tabSnapshots.some(s => s.id === selectedSnapshotId);
+    const snapId = (isTabScopedSelection ? selectedSnapshotId : null)
+      || entry?.snapshotId
+      || (isDirectMailbox ? selectedSnapshotId : null);
     if (!snapId) {
       return;
+    }
+
+    // The snapshot identity this run fetches for. Doubles as the items
+    // effect's chats readiness key and the folders cache key.
+    const readyKey = `${snapId}|${activeContentType}`;
+
+    // SWR: cached folders render instantly — including the chats
+    // first-chat auto-select — and readiness is marked synchronously so
+    // the chats items gate opens without waiting on the network. The
+    // fetch below then runs as a background revalidate.
+    const cached = foldersCacheRef.current.get(readyKey);
+    if (cached) {
+      setFolders(cached.folders);
+      setFoldersHasMore(cached.hasMore);
+      setFoldersPage(1);
+      if (activeContentType === 'chats') {
+        const firstChat = cached.folders.find(f => f.path);
+        if (firstChat) setSelectedFolder(firstChat.path);
+      }
+      setFoldersReadyKey(readyKey);
     }
 
     // StrictMode in dev intentionally mounts/unmounts each effect twice
@@ -6709,6 +7785,10 @@ export default function Recovery() {
       calendar: 'CALENDAR_EVENT',
       contacts: 'USER_CONTACT',
       archive: 'ARCHIVE_ITEM',
+      // Without this the folders request goes out untyped, the backend
+      // can't auto-resolve to the USER_ONEDRIVE sibling, and My Drive
+      // shows root files with zero folder rows (2026-07-13).
+      onedrive: 'ONEDRIVE_FILE',
     };
     const itemTypeForFolders = TYPE_BY_TAB[activeContentType];
 
@@ -6722,25 +7802,45 @@ export default function Recovery() {
     const firstPageSize = 500;
 
     const myKey = ++foldersKeyRef.current;
-    setFoldersLoading(true);
+    if (!cached) setFoldersLoading(true);
     SnapshotService.getFolders(snapId, itemTypeForFolders, 1, firstPageSize)
       .then((resp) => {
-        if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
         const data = resp.content;
         const folderList = [{ path: '', count: data.reduce((sum, f) => sum + f.count, 0) }, ...data];
-        setFolders(folderList);
-        setFoldersHasMore(!!resp.hasMore);
-        setFoldersPage(1);
-        // Chats tab: no "All" — auto-pick the top chat so the message list
-        // opens on real content instead of an aggregate view.
-        if (activeContentType === 'chats') {
-          const firstChat = data.find(f => f.path);
-          if (firstChat) setSelectedFolder(firstChat.path);
+        // Warm the cache even if this response is stale for the CURRENT
+        // view — it's keyed by its own request identity, so a revisit
+        // still benefits. The guard below protects live state only.
+        swrCachePut(foldersCacheRef.current, readyKey, {
+          folders: folderList,
+          hasMore: !!resp.hasMore,
+        });
+        if (myKey !== foldersKeyRef.current) return; // stale — a newer request started
+        if (!cached) {
+          setFolders(folderList);
+          setFoldersHasMore(!!resp.hasMore);
+          setFoldersPage(1);
+          // Chats tab: no "All" — auto-pick the top chat so the message list
+          // opens on real content instead of an aggregate view.
+          if (activeContentType === 'chats') {
+            const firstChat = data.find(f => f.path);
+            if (firstChat) setSelectedFolder(firstChat.path);
+          }
         }
+        // else: background revalidate after a cache hit. Folder listings
+        // are immutable per snapshot id — re-setting state would clobber
+        // infinite-scroll appends and re-yank a chat the user selected.
+        // Mark folders ready for this identity (idempotent on revalidate)
+        // — this is what un-gates the chats items fetch, replacing the
+        // old foldersLoading dependency.
+        setFoldersReadyKey(readyKey);
       })
       .catch((err) => {
         if (myKey !== foldersKeyRef.current) return;
         console.error(err);
+        // Unblock the chats items gate even on failure — mirrors the old
+        // behavior where foldersLoading flipped false and items proceeded
+        // with the aggregate (folder='all') view.
+        setFoldersReadyKey(readyKey);
       })
       .finally(() => {
         if (myKey === foldersKeyRef.current) {
@@ -6748,7 +7848,7 @@ export default function Recovery() {
           foldersInflightRef.current = '';
         }
       });
-  }, [contentSnapshots, activeContentType, selectedSnapshotId, selectedResource?.kind]);
+  }, [contentSnapshots, activeContentType, selectedSnapshotId, tabSnapshots, selectedResource?.kind, selectedResource?.id]);
 
   // Infinite-scroll append: when foldersPage advances (driven by the
   // scroll handler below), fetch the next page and append to the tree.
@@ -6757,7 +7857,13 @@ export default function Recovery() {
     const entry = contentSnapshots?.byContent[activeContentType as ContentTab];
     const kind = selectedResource?.kind;
     const isDirectMailbox = kind === 'mailbox' || kind === 'shared_mailbox' || kind === 'room_mailbox';
-    const snapId = entry?.snapshotId || (isDirectMailbox ? selectedSnapshotId : null);
+    // Same version-aware derivation as the first-page fetch above —
+    // page 2 of the tree must come from the snapshot page 1 came from.
+    const isTabScopedSelection = !!selectedSnapshotId
+      && tabSnapshots.some(s => s.id === selectedSnapshotId);
+    const snapId = (isTabScopedSelection ? selectedSnapshotId : null)
+      || entry?.snapshotId
+      || (isDirectMailbox ? selectedSnapshotId : null);
     if (!snapId) return;
     const inflightKey = `${snapId}|${activeContentType}|${foldersPage}`;
     if (foldersInflightRef.current === inflightKey) return;
@@ -6770,6 +7876,7 @@ export default function Recovery() {
       calendar: 'CALENDAR_EVENT',
       contacts: 'USER_CONTACT',
       archive: 'ARCHIVE_ITEM',
+      onedrive: 'ONEDRIVE_FILE',
     };
     const itemTypeForMore = TYPE_BY_TAB_2[activeContentType];
 
@@ -6791,7 +7898,7 @@ export default function Recovery() {
         setFoldersLoadingMore(false);
         foldersInflightRef.current = '';
       });
-  }, [foldersPage, contentSnapshots, activeContentType, selectedSnapshotId, selectedResource?.kind]);
+  }, [foldersPage, contentSnapshots, activeContentType, selectedSnapshotId, tabSnapshots, selectedResource?.kind]);
 
   // Scroll handler — near the bottom of the folder list, advance page.
   const handleFolderListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -6821,12 +7928,28 @@ export default function Recovery() {
   };
 
   const toggleSelectItem = (itemId: string) => {
+    const deselecting = selectedItems.has(itemId);
     setSelectedItems(prev => {
       const next = new Set(prev);
       if (next.has(itemId)) next.delete(itemId);
       else next.add(itemId);
       return next;
     });
+    // Folder-checkbox interplay: un-ticking a row while a folder is
+    // ticked must be an EXCLUSION, not just an id removal — the folder
+    // path is still forwarded and its server-side expansion would put
+    // the item straight back into the restore/export. Re-ticking lifts
+    // the exclusion. Excluding an id outside every ticked folder is a
+    // harmless no-op in the resolver.
+    if (deselecting && (genericFolderSelected.size > 0 || (archiveSelected && archiveFolderChecked.size > 0))) {
+      setFolderExcludedIds(prev => new Set(prev).add(itemId));
+    } else if (!deselecting && folderExcludedIds.has(itemId)) {
+      setFolderExcludedIds(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+    }
   };
 
   // OneDrive: recursive folder-select. Fetches every file id whose
@@ -6944,6 +8067,16 @@ export default function Recovery() {
         }
         return next;
       });
+      // (Re)ticking the folder means "everything in it" — earlier
+      // per-item exclusions under it must not keep subtracting items
+      // from the server-side expansion.
+      if (!alreadySelected) {
+        setFolderExcludedIds(prev => {
+          const next = new Set(prev);
+          for (const id of visibleIds) next.delete(id);
+          return next;
+        });
+      }
     }
     setGenericFolderBusy(prev => new Set(prev).add(folderPath));
     try {
@@ -6981,6 +8114,15 @@ export default function Recovery() {
         }
         return next;
       });
+      // Same as the visible-id flip above: a fresh folder tick lifts
+      // any stale exclusions across the whole (paged) expansion.
+      if (!alreadySelected) {
+        setFolderExcludedIds(prev => {
+          const next = new Set(prev);
+          for (const id of allIds) next.delete(id);
+          return next;
+        });
+      }
     } catch (e) {
       console.error('Folder-select fetch failed:', e);
       setGenericFolderSelected(prev => {
@@ -7088,6 +8230,10 @@ export default function Recovery() {
 
   const handleRecover = () => {
     if (!selectedSnapshotId) return;
+    // Record whether the calendar-tab selection is explicit per-event
+    // ticks BEFORE the scope hydration below rewrites selectedItems —
+    // the modal's folderPaths forwarding keys off this.
+    setCalendarTicksExplicit(activeContentType === 'calendar' && selectedItems.size > 0);
     // Azure DB resources open a dedicated modal — restoring rebuilds
     // the whole database, so content-type selection (Config/Database/
     // Schema) doesn't matter and we don't require items to be ticked.
@@ -7103,8 +8249,23 @@ export default function Recovery() {
     // filter has narrowed to a non-empty set, treat that filter set as
     // the recover scope so the button works consistently with what the
     // UI is showing.
-    if (activeContentType === 'calendar' && selectedItems.size === 0 && filteredCalendarIds.length > 0) {
-      setSelectedItems(new Set(filteredCalendarIds));
+    // `calendarFilterActive` mirrors the toolbar's enable rule exactly
+    // (QA TMV-001) so an unfiltered, unselected calendar can never reach
+    // the restore modal even if the button state is ever wrong again.
+    if (activeContentType === 'calendar' && selectedItems.size === 0
+        && calendarFilterActive && calendarScope.count > 0) {
+      // A scope we can't express is a hard stop, never an approximation:
+      // widening it would restore events the filter excluded, and trimming
+      // the id list would silently restore the wrong set.
+      if (calendarScope.error) {
+        setInlineDownloadError(calendarScope.error);
+        return;
+      }
+      setInlineDownloadError(null);
+      // Only the id form goes into selectedItems; the folder-path form is
+      // forwarded to RestoreModal as `folderPaths` (same shape the generic
+      // folder-checkbox path below already uses).
+      setSelectedItems(new Set(calendarScope.itemIds));
       setRestoreModalOpen(true);
       return;
     }
@@ -7122,21 +8283,44 @@ export default function Recovery() {
   };
   const [azureDbRecoverOpen, setAzureDbRecoverOpen] = useState(false);
 
-  // Calendar sidebar's currently-filtered event IDs. Empty filter =
-  // every event; otherwise only the event types the user ticked.
-  // Scopes Download on the calendar tab so the ZIP only contains the
-  // events matching the sidebar checkboxes.
-  const [filteredCalendarIds, setFilteredCalendarIds] = useState<string[]>([]);
+  // Calendar sidebar's currently-filtered selection, as a SCOPE rather
+  // than a raw id list. Empty filter = every event; otherwise only what
+  // the sidebar checkboxes leave visible. `itemIds` is populated while the
+  // selection fits the request-body budget; past that `folderPaths` carries
+  // a scope the backend resolves itself, and `error` means the selection
+  // can be expressed neither way and must not be submitted. See
+  // calendarSelectionScope — enumerating 35,026 ids here put the export
+  // POST over the 1 MiB nginx default and 413'd Download AND Recover on
+  // the heaviest account.
+  const [calendarScope, setCalendarScope] = useState<CalendarSelectionScope>(
+    { itemIds: [], folderPaths: [], count: 0 },
+  );
+  // True only while the calendar sidebar has actually narrowed the grid
+  // (an event-type and/or a per-calendar filter is ticked). Without this
+  // the scope above — which defaults to "every event" — read as a
+  // selection and armed Download / Recover with nothing selected
+  // (QA TMV-001).
+  const [calendarFilterActive, setCalendarFilterActive] = useState(false);
   // Per-calendar folder paths the user ticked in the "Calendar" filter
   // section of the calendar sidebar (e.g. "Calendar/Default",
   // "Calendar/United States holidays"). Forwarded to DownloadModal as
   // ``folderPaths`` so PST export becomes available and the backend
   // produces one PST per selected source-calendar.
   const [selectedCalendarPaths, setSelectedCalendarPaths] = useState<string[]>([]);
+  // Captured at Download/Recover click time, BEFORE the handlers hydrate
+  // selectedItems from the sidebar's filter scope: true means the
+  // calendar-tab selection is the user's own per-event ticks. Explicit
+  // ticks must be honoured exactly — forwarding the sidebar's calendar
+  // paths alongside them makes the backend resolver re-expand whole
+  // calendars and export/restore far more than the user picked.
+  const [calendarTicksExplicit, setCalendarTicksExplicit] = useState(false);
 
   const handleDownload = () => {
     if (!selectedSnapshotId) return;
     setDownloadError(null);
+    // Same capture as handleRecover: must run before the calendar scope
+    // hydration below rewrites selectedItems.
+    setCalendarTicksExplicit(activeContentType === 'calendar' && selectedItems.size > 0);
 
     // Azure DB gets its own download path — the generic DownloadModal
     // can't emit per-tab formats (config → JSON, table → CSV, schema →
@@ -7178,8 +8362,13 @@ export default function Recovery() {
     // individual events, inherit the sidebar's filtered set as the
     // download scope so "Meeting" + "Online Meeting" (or any combo)
     // narrows what lands in the export.
-    if (activeContentType === 'calendar' && selectedItems.size === 0 && filteredCalendarIds.length > 0) {
-      setSelectedItems(new Set(filteredCalendarIds));
+    if (activeContentType === 'calendar' && selectedItems.size === 0
+        && calendarFilterActive && calendarScope.count > 0) {
+      if (calendarScope.error) {
+        setInlineDownloadError(calendarScope.error);
+        return;
+      }
+      setSelectedItems(new Set(calendarScope.itemIds));
     }
     // Reset any previous inline error so the user gets a clean slate
     // for each new click.
@@ -7352,9 +8541,18 @@ export default function Recovery() {
                 'user_mail', 'user_onedrive', 'user_chats',
                 'user_contacts', 'user_calendar',
               ]);
+              // Mailbox kinds BEFORE entra_user: shared/room mailboxes
+              // exist as email-siblings of a bare ENTRA_USER identity
+              // row (not as its Tier-2 children), so an entra_user-first
+              // preference selected the 5KB identity surface and hid the
+              // real mailbox (dba_requests: 79MB SHARED_MAILBOX was
+              // unreachable behind the collapsed row, 2026-07-14). Real
+              // licensed users never carry a sibling mailbox row in
+              // with-backups — their mail is a Tier-2 child — so this
+              // reorder only affects shared/room mailbox identities.
               const PRIMARY_PREFERENCE = [
-                'entra_user', 'user', 'mailbox',
-                'shared_mailbox', 'room_mailbox', 'onedrive',
+                'mailbox', 'shared_mailbox', 'room_mailbox',
+                'entra_user', 'user', 'onedrive',
               ];
               const pickPrimary = (g: typeof filteredResources) => {
                 for (const k of PRIMARY_PREFERENCE) {
@@ -7617,14 +8815,25 @@ export default function Recovery() {
                   && (vmSelectionInfo?.count ?? 0) > 0;
                 // Calendar tab: the sidebar's Event Type / Calendar
                 // filters define a "soft" selection stored in
-                // filteredCalendarIds. Keep the buttons enabled when a
+                // calendarScope. Keep the buttons enabled when a
                 // filter has narrowed the view even if the user hasn't
                 // ticked individual events — handleDownload /
-                // handleRecover both seed selectedItems from the filter
-                // set on click, so the action still targets exactly
-                // what the grid is showing.
+                // handleRecover both apply that scope on click, so the
+                // action still targets exactly what the grid is showing.
+                //
+                // `calendarFilterActive` is the load-bearing half.
+                // 2026-08-11 (QA TMV-001): an UNTOUCHED sidebar reports
+                // a scope of every event in the calendar, so this read
+                // `count > 0` as consent and left Download AND Recover
+                // live, aimed at all 5,418 events, with the counter
+                // showing "0 selected" — a full-calendar restore one
+                // click away from a user who had selected nothing. A
+                // filter the user applied is a scoping gesture; the
+                // default view is not.
                 const calendarFilterScoped =
-                  activeContentType === 'calendar' && filteredCalendarIds.length > 0;
+                  activeContentType === 'calendar'
+                  && calendarFilterActive
+                  && calendarScope.count > 0;
                 // Chat thread scope: when the user ticks a thread in
                 // the left rail but hasn't clicked into any individual
                 // messages, `threadPath` is set and `selectedItems` is
@@ -7681,9 +8890,11 @@ export default function Recovery() {
                   || (isGroupLikeForTb && groupTeamsTab === 'channels');
                 return (
                   <RecoveryToolbar
-                    snapshots={snapshots}
+                    // Tab-scoped, NOT the whole 110-snapshot list —
+                    // see tabSnapshots (QA TMV-002).
+                    snapshots={tabSnapshots}
                     selectedSnapshotId={selectedSnapshotId}
-                    onSelectSnapshot={setSelectedSnapshotId}
+                    onSelectSnapshot={handleSelectVersion}
                     onDownload={handleDownload}
                     onRecover={handleRecover}
                     selectedCount={selectedItems.size}
@@ -7694,7 +8905,18 @@ export default function Recovery() {
                     allowEmptyRecover={allowEmptyRecover}
                     searchValue={showSearch ? searchQuery : undefined}
                     onSearchChange={showSearch ? setSearchQuery : undefined}
-                    onSearchSubmit={showSearch ? () => { /* debounced via searchQuery */ } : undefined}
+                    // The magnifier looked broken because it did
+                    // literally nothing — search is debounced, so by
+                    // the time anyone clicked it the results were
+                    // already on screen (QA TMV-032). Make it flush the
+                    // pending debounce instead: pressing Enter or
+                    // clicking it now applies the current text
+                    // immediately rather than 300 ms later, which is a
+                    // real (if small) behaviour a user can feel.
+                    onSearchSubmit={showSearch ? () => {
+                      setSearchNarrowsItems(true);
+                      setDebouncedSearch(searchQuery.trim());
+                    } : undefined}
                     searchPlaceholder="Search"
                   />
                 );
@@ -7858,11 +9080,21 @@ export default function Recovery() {
                       <div className="loading-container"><div className="spinner" /><p>Loading events...</p></div>
                     ) : (
                       <CalendarMonthView
+                        // Keyed on the snapshot so switching account (or
+                        // snapshot version) REMOUNTS the calendar. Without
+                        // this the component stayed mounted across account
+                        // clicks — itemsLoading is forced false for the
+                        // calendar tab, so nothing unmounted it — and kept
+                        // the previous account's events, per-calendar filter
+                        // set and month position on screen while the new
+                        // account's events loaded.
+                        key={selectedSnapshotId}
                         snapshotId={selectedSnapshotId}
                         selectedItems={selectedItems}
                         onItemCheck={toggleSelectItem}
-                        onFilteredIdsChange={setFilteredCalendarIds}
+                        onFilteredScopeChange={setCalendarScope}
                         onCalendarFilterChange={setSelectedCalendarPaths}
+                        onFilterActiveChange={setCalendarFilterActive}
                       />
                     )}
                   </div>
@@ -7888,12 +9120,60 @@ export default function Recovery() {
                     </div>
                     <div className="panel-middle od-panel-middle">
                       <div className="od-main-header">
+                        {/* Clickable path, same shape (and the same
+                            already-themed classes) as the SharePoint
+                            content breadcrumb above. Browsing into
+                            /Documents/_Archive used to print the path as
+                            dead text with no way back short of
+                            re-clicking a root entry in the sidebar, so
+                            deep trees were a dead end (QA TMV-015). Each
+                            segment navigates to its own prefix, and
+                            because it goes through patchSearchParams the
+                            browser Back button walks the same trail. */}
                         <span className="od-breadcrumb">
-                          {oneDriveView === 'recent'
-                            ? 'Recent'
-                            : (selectedFolder === 'all' || selectedFolder === '/' ? 'My Drive' : selectedFolder)}
+                          {oneDriveView === 'recent' ? 'Recent' : (() => {
+                            const parts = (selectedFolder === 'all' || selectedFolder === '/' || !selectedFolder)
+                              ? []
+                              : selectedFolder.split('/').filter(Boolean);
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  className="od-breadcrumb-link"
+                                  onClick={() => patchSearchParams({ view: 'my-drive', folder: '/' })}
+                                  disabled={parts.length === 0}
+                                >My Drive</button>
+                                {parts.map((seg, i) => {
+                                  const prefix = '/' + parts.slice(0, i + 1).join('/');
+                                  const isLast = i === parts.length - 1;
+                                  return (
+                                    <span key={prefix}>
+                                      <span className="od-breadcrumb-sep"> / </span>
+                                      <button
+                                        type="button"
+                                        className="od-breadcrumb-link"
+                                        onClick={() => patchSearchParams({ view: 'my-drive', folder: prefix })}
+                                        disabled={isLast}
+                                        title={prefix}
+                                      >{seg}</button>
+                                    </span>
+                                  );
+                                })}
+                              </>
+                            );
+                          })()}
                         </span>
-                        <span className="od-count">{itemCount ? `${itemCount.toLocaleString()} items` : ''}</span>
+                        <span className="od-count">
+                          {itemsLoading
+                            ? 'Loading…'
+                            : oneDriveView === 'recent'
+                              // Recent is a bounded window, so the drive
+                              // total would be a lie here.
+                              ? (recoveryItems.length
+                                ? `${recoveryItems.length.toLocaleString()} most recently modified`
+                                : '')
+                              : (itemCount ? `${itemCount.toLocaleString()} items` : '')}
+                        </span>
                       </div>
                       {itemsLoading ? (
                         <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
@@ -7946,10 +9226,19 @@ export default function Recovery() {
                                 && oneDriveFolderSelected.has(selectedFolder))
                               || (recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
                             }
+                            // Same honesty rule as the mail header
+                            // (QA TMV-013): a tick over one loaded page
+                            // of a larger folder is a PARTIAL selection.
+                            allIndeterminate={
+                              selectedItems.size > 0
+                              && !(recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
+                            }
                             onFolderCheck={handleOneDriveFolderCheck}
                             folderBusy={oneDriveFolderBusy}
                             folderSelected={oneDriveFolderSelected}
                             snapshotId={selectedSnapshotId}
+                            sort={oneDriveSort}
+                            onSortChange={setOneDriveSort}
                           />
                           {loadingMore && (
                             <div className="item-list-loading-more">
@@ -8101,16 +9390,20 @@ export default function Recovery() {
                               <button
                                 className="folder-name-btn"
                                 onClick={() => {
-                                  // Chats: clicking a thread from a search
-                                  // result should drop the search filter so
-                                  // the user sees the WHOLE conversation,
-                                  // not only the messages matching the
-                                  // body-search query. Matches Teams/Slack
-                                  // behavior. Other tabs keep the filter so
-                                  // "invoice in Inbox" -> click Inbox still
-                                  // narrows to invoices.
+                                  // Chats: opening a thread out of a set of
+                                  // search hits shows the WHOLE
+                                  // conversation, not just the matching
+                                  // messages (Teams/Slack behaviour). This
+                                  // used to clear the search box outright,
+                                  // which ALSO reset the filtered thread
+                                  // list in this rail — so the user lost
+                                  // their place after every single result
+                                  // (QA TMV-011). Narrow the scope instead
+                                  // of destroying the query: the rail stays
+                                  // filtered, the thread opens in full, and
+                                  // typing in the box re-arms it.
                                   if (activeContentType === 'chats') {
-                                    setSearchQuery('');
+                                    setSearchNarrowsItems(false);
                                   }
                                   setArchiveSelected(false);
                                   patchSearchParams({ folder: folder.path });
@@ -8210,87 +9503,108 @@ export default function Recovery() {
 
                 {/* Middle Panel: Item List */}
                 <div className="panel-middle">
-                  <div className="item-list-header">
-                    <label className="select-all-wrap" title="Select all">
-                      <input
-                        type="checkbox"
-                        checked={
-                          // Folder bulk-select drives the left-panel
-                          // folder checkbox; reflect it here so the
-                          // master checkbox flips immediately (no
-                          // flicker while the id-fetch resolves).
-                          (activeContentType !== 'chats'
-                            && selectedFolder
-                            && selectedFolder !== 'all'
-                            && genericFolderSelected.has(selectedFolder))
-                          || (recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
-                        }
-                        onChange={e => {
-                          const want = e.target.checked;
-                          // (a) Set selectedItems to the visible page
-                          // immediately. Keeps the toolbar count
-                          // showing "(N)" the moment the user clicks
-                          // — same feel as manually ticking each row
-                          // — and doesn't depend on the async
-                          // searchItems walk, which can occasionally
-                          // return zero rows due to backend folderPath
-                          // indexing nuances and would otherwise leave
-                          // the count stuck at 0.
-                          if (want) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
-                          else setSelectedItems(new Set());
+                  {(() => {
+                    // Selection coverage for the header checkbox, shared
+                    // by its checked / indeterminate / click-intent
+                    // logic so the three can never disagree.
+                    const folderTicked = activeContentType !== 'chats'
+                      && !!selectedFolder
+                      && selectedFolder !== 'all'
+                      && genericFolderSelected.has(selectedFolder);
+                    const covered = itemCount > 0 && selectedItems.size >= itemCount;
+                    const partial = !covered && (selectedItems.size > 0 || folderTicked);
+                    return (
+                      <div className="item-list-header">
+                        <label className="select-all-wrap" title="Select all">
+                          <input
+                            type="checkbox"
+                            // FULLY checked only when the selection really
+                            // does cover the whole folder.
+                            //
+                            // 2026-08-11 (QA TMV-013): ticking select-all in
+                            // /Deleted Items (2,951 messages) selected the 50
+                            // loaded rows and painted a solid check, so the
+                            // box claimed 2,951 items were selected while the
+                            // counter beside it read "50 / 2951" — and the
+                            // next click is Recover. The folder-walk that
+                            // hydrates the remaining ids is asynchronous and
+                            // can come back empty, so "I ticked the folder"
+                            // is not evidence the ids are in hand: coverage
+                            // is measured against itemCount, and anything
+                            // short of it shows the indeterminate dash.
+                            checked={covered}
+                            ref={(el) => { if (el) el.indeterminate = partial; }}
+                            aria-label="Select all items on this page"
+                            onChange={() => {
+                              // Intent comes from what the box is SHOWING,
+                              // not from the browser's checked flip. An
+                              // indeterminate box reports checked=true when
+                              // clicked, so a partial selection that never
+                              // reaches full coverage (the folder walk can
+                              // legitimately return zero rows) could only
+                              // ever be re-selected, never cleared. Partial
+                              // or full → clear; empty → select. Clearing is
+                              // also the safe direction to guess wrong in.
+                              const want = !(covered || partial);
+                              // (a) Set selectedItems to the visible page
+                              // immediately. Keeps the toolbar count
+                              // showing "(N)" the moment the user clicks
+                              // — same feel as manually ticking each row
+                              // — and doesn't depend on the async
+                              // searchItems walk, which can occasionally
+                              // return zero rows due to backend folderPath
+                              // indexing nuances and would otherwise leave
+                              // the count stuck at 0.
+                              if (want) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
+                              else setSelectedItems(new Set());
 
-                          // (b) Sync the left-panel folder checkbox.
-                          // handleGenericFolderCheck flips
-                          // genericFolderSelected immediately AND
-                          // fetches every id under the folder
-                          // (paginated items not yet on screen),
-                          // which then merges into selectedItems.
-                          // Chats use a per-thread (threadPath) model
-                          // and skip this. OneDrive has its own
-                          // panel above with separate handling.
-                          if (activeContentType === 'chats') return;
-                          if (selectedFolder && selectedFolder !== 'all') {
-                            const inSet = genericFolderSelected.has(selectedFolder);
-                            if (want !== inSet) handleGenericFolderCheck(selectedFolder);
-                            return;
-                          }
-                          // "All" view: every folder containing items
-                          // should flip too, so each left-panel folder
-                          // checkbox reflects the master selection.
-                          for (const folder of folders) {
-                            if (!folder.path) continue;
-                            const inSet = genericFolderSelected.has(folder.path);
-                            if (want !== inSet) handleGenericFolderCheck(folder.path);
-                          }
-                        }}
-                      />
-                    </label>
-                    <span className="item-count">
-                      {(() => {
-                        // When a folder (or every loaded folder in the "All"
-                        // view) is bulk-selected, the backend enumerates EVERY
-                        // item in it server-side — the download is complete
-                        // regardless of how many rows the UI has scrolled in.
-                        // So show the authoritative "All N selected" instead of
-                        // the transient loaded/merged selectedItems.size, which
-                        // otherwise leaves the user unsure whether 50 / 500 /
-                        // all were captured. Only claim "All" for the aggregate
-                        // view when every folder is actually loaded (!hasMore).
-                        const realFolders = folders.filter(f => f.path);
-                        const allBulk = activeContentType !== 'chats' && (
-                          (selectedFolder && selectedFolder !== 'all' && genericFolderSelected.has(selectedFolder))
-                          || (selectedFolder === 'all' && !foldersHasMore && realFolders.length > 0
-                              && realFolders.every(f => genericFolderSelected.has(f.path)))
-                        );
-                        if (allBulk) return `All ${itemCount} selected`;
-                        return selectedItems.size > 0
-                          ? `${selectedItems.size} / ${itemCount} selected`
-                          : `Showing ${recoveryItems.length} of ${itemCount}`;
-                      })()}
-                    </span>
-                    {/* Pagination replaced by infinite scroll — scroll the
-                        list past 60% to auto-load the next page. */}
-                  </div>
+                              // (b) Sync the left-panel folder checkbox.
+                              // handleGenericFolderCheck flips
+                              // genericFolderSelected immediately AND
+                              // fetches every id under the folder
+                              // (paginated items not yet on screen),
+                              // which then merges into selectedItems.
+                              // Chats use a per-thread (threadPath) model
+                              // and skip this. OneDrive has its own
+                              // panel above with separate handling.
+                              if (activeContentType === 'chats') return;
+                              if (selectedFolder && selectedFolder !== 'all') {
+                                const inSet = genericFolderSelected.has(selectedFolder);
+                                if (want !== inSet) handleGenericFolderCheck(selectedFolder);
+                                return;
+                              }
+                              // "All" view: every folder containing items
+                              // should flip too, so each left-panel folder
+                              // checkbox reflects the master selection.
+                              for (const folder of folders) {
+                                if (!folder.path) continue;
+                                const inSet = genericFolderSelected.has(folder.path);
+                                if (want !== inSet) handleGenericFolderCheck(folder.path);
+                              }
+                            }}
+                          />
+                        </label>
+                        {/* "Showing 0 of 0" is what an EMPTY folder looks
+                            like, and the header rendered it for the whole
+                            ~8 s the page spends resolving resource →
+                            snapshots → folders → items — so a slow load was
+                            indistinguishable from "this backup has nothing
+                            in it", including while a search was mid-flight
+                            (QA TMV-012, TMV-024). Say "Loading…" while it is
+                            loading, and use one locale-aware formatter for
+                            every number here. */}
+                        <span className="item-count">
+                          {itemsLoading
+                            ? 'Loading…'
+                            : selectedItems.size > 0
+                              ? `${selectedItems.size.toLocaleString()} / ${itemCount.toLocaleString()} selected`
+                              : `Showing ${recoveryItems.length.toLocaleString()} of ${itemCount.toLocaleString()}`}
+                        </span>
+                        {/* Pagination replaced by infinite scroll — scroll the
+                            list past 60% to auto-load the next page. */}
+                      </div>
+                    );
+                  })()}
 
                   <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
                     {/* Chats load older messages ABOVE the visible list when
@@ -8317,7 +9631,11 @@ export default function Recovery() {
                       </div>
                     ) : recoveryItems.length === 0 ? (
                       <div className="empty-state">
-                        <p>No items found</p>
+                        {/* Name the query when there is one — "No items
+                            found" over a search that IS filtering the
+                            left rail reads as "your backup is empty"
+                            (QA TMV-012). */}
+                        <p>{itemSearch ? `No items match “${itemSearch}”` : 'No items found'}</p>
                       </div>
                     ) : (
                       (() => {
@@ -8463,6 +9781,28 @@ export default function Recovery() {
         // toolbar Recover button so the user can't even open the
         // modal (which would just show the unsupported screen).
         const isChatRestoreUnsupported = effectiveContentType === 'chats';
+        // Calendar tab, selection too large to enumerate: calendarScope
+        // carries the folder paths the backend resolves itself
+        // (shared.folder_resolver, sibling-snapshot aware) and selectedItems
+        // is deliberately EMPTY, so this replaces the id list rather than
+        // widening it. Non-null only in that case — the backend ORs
+        // item_ids with the folder clauses, so handing it both would pull
+        // every event in the calendar on top of the ticked ones.
+        const calendarFolderScope =
+          activeContentType === 'calendar'
+          // Explicit per-event ticks (captured at click time, before the
+          // handlers hydrate selectedItems) replace the sidebar scope
+          // entirely — never forward its paths alongside them.
+          && !calendarTicksExplicit
+          && !calendarScope.error
+          && calendarScope.folderPaths.length > 0
+            ? calendarScope.folderPaths
+            : null;
+        // Un-ticked rows inside ticked folders, minus anything currently
+        // ticked (a later select-all / folder re-tick wins over an old
+        // un-tick — the resolver subtracts exclusions from the union, so
+        // an id in both lists would be dropped).
+        const folderExclusions = Array.from(folderExcludedIds).filter(id => !selectedItems.has(id));
         return (
           <>
             <RestoreModal
@@ -8487,10 +9827,13 @@ export default function Recovery() {
                 // ticking individual items gives item-level recover.
                 archiveSelected && archiveFolderChecked.size > 0
                   ? Array.from(archiveFolderChecked)
+                  : calendarFolderScope
+                  ? calendarFolderScope
                   : activeContentType !== 'chats' && genericFolderSelected.size > 0
                   ? Array.from(genericFolderSelected)
                   : undefined
               }
+              excludedItemIds={folderExclusions.length > 0 ? folderExclusions : undefined}
               snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
             />
             <DownloadModal
@@ -8505,7 +9848,14 @@ export default function Recovery() {
                   : (selectedSnapshotId ? [selectedSnapshotId] : [])
               }
               isArchive={archiveSelected}
-              selectedCount={selectedItems.size}
+              // Folder-scoped calendar selections put nothing in
+              // selectedItems, so fall back to the scope's real size —
+              // otherwise the modal would claim "0 events".
+              selectedCount={selectedItems.size || (
+                activeContentType === 'calendar' && calendarFilterActive
+                  ? calendarScope.count
+                  : 0
+              )}
               contentType={effectiveContentType}
               preserveTree={oneDriveFolderSelected.size > 0 || genericFolderSelected.size > 0}
               folderPaths={
@@ -8515,12 +9865,20 @@ export default function Recovery() {
                 // items gives item-level PST instead.
                 archiveSelected && archiveFolderChecked.size > 0
                   ? Array.from(archiveFolderChecked)
-                  : activeContentType === 'calendar' && selectedCalendarPaths.length > 0
+                  : calendarFolderScope
+                  ? calendarFolderScope
+                  // Same explicit-ticks rule as calendarFolderScope: N
+                  // ticked events + a ticked calendar filter must export
+                  // the N events, not the whole calendar (the PST path
+                  // drops itemIds when folderPaths is present, the ZIP
+                  // path unions them — both would return the calendar).
+                  : activeContentType === 'calendar' && !calendarTicksExplicit && selectedCalendarPaths.length > 0
                   ? selectedCalendarPaths
                   : activeContentType !== 'chats' && genericFolderSelected.size > 0
                   ? Array.from(genericFolderSelected)
                   : undefined
               }
+              excludedItemIds={folderExclusions.length > 0 ? folderExclusions : undefined}
               snapshotDate={
                 contentSnapshots?.byContent[activeContentType as ContentTab]?.createdAt
                 || snapshots.find(s => s.id === selectedSnapshotId)?.createdAt

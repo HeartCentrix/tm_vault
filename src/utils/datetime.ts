@@ -13,6 +13,18 @@ export function parseAsUtc(value: string | number | Date | null | undefined): Da
   let s = String(value).trim();
   const hasTime = /T\d{2}:\d{2}/.test(s);
   const hasTz = /(Z|[+-]\d{2}:?\d{2})$/.test(s);
+  // Date-only strings ("2026-07-13") are CALENDAR LABELS — the dashboard
+  // APIs bucket them in the operator's timezone already. JS parses bare
+  // YYYY-MM-DD as UTC midnight, so localizing shifted every chart label
+  // back one day for any viewer west of UTC (the Overview backup-size
+  // graph "ended at 7/12" while the API's last bucket was 7/13). Parse
+  // as LOCAL midnight so display formatting keeps the same calendar day.
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.exec(s);
+  if (dateOnly) {
+    const [y, m, day] = s.split('-').map(Number);
+    const d = new Date(y, m - 1, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
   if (hasTime && !hasTz) s = s + 'Z';
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;

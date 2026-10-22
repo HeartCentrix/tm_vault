@@ -698,6 +698,28 @@ function VolumeDetail({
           onChange={e => setQ(e.target.value)}
         />
       </div>
+      {/* This pane is served by /vm-volume-files, which runs
+          Get-ChildItem / ls on the SOURCE VM via Azure Run Command —
+          live disk content, NOT the selected backup version. Without
+          this label an admin looking for a deleted/encrypted file
+          would reasonably conclude the backup never captured it. */}
+      <div
+        style={{
+          margin: '8px 0',
+          padding: '8px 10px',
+          background: '#fef3c7',
+          border: '1px solid #fcd34d',
+          borderRadius: 6,
+          color: '#78350f',
+          fontSize: 12,
+          lineHeight: 1.4,
+        }}
+      >
+        <strong>Live view:</strong> this file browser reads the VM's{' '}
+        <strong>current</strong> filesystem via Azure Run Command — not the
+        contents of the selected backup version. Downloads retrieve files as
+        they exist on the running VM right now.
+      </div>
       <div className="vm-vol-sub-head">Name</div>
       {loading ? (
         <div className="vm-vol-empty">Loading files…</div>

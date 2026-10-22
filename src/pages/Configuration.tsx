@@ -1,14 +1,22 @@
 import { useState, useEffect } from 'react';
 import { reportService } from '../services/reports';
 import type { WebhookConfig } from '../services/reports';
+import { getAppSettings, updateAppSettings } from '../services/appSettings';
 import './Configuration.css';
 
 export default function Configuration() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [sending, setSending] = useState(false);
   const [manualReportType, setManualReportType] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // App settings state
+  const [discoveryTime, setDiscoveryTime] = useState('02:00');
+  const [timezone, setTimezone] = useState('America/Phoenix');
+  const [jobRetryMax, setJobRetryMax] = useState(3);
+  const [jobRetryDelay, setJobRetryDelay] = useState(5);
 
   // Report config state
   const [reportsEnabled, setReportsEnabled] = useState(false);
@@ -68,7 +76,10 @@ export default function Configuration() {
   const loadConfiguration = async () => {
     try {
       setLoading(true);
-      const config = await reportService.getConfig();
+      const [config, appSettings] = await Promise.all([
+        reportService.getConfig(),
+        getAppSettings().catch(() => null),
+      ]);
       
       const resolved = {
         enabled: config.enabled,
@@ -89,6 +100,13 @@ export default function Configuration() {
       setSlackWebhooks(resolved.slack_webhooks);
       setTeamsWebhooks(resolved.teams_webhooks);
       setSavedSnapshot(JSON.stringify(buildPayload(resolved)));
+
+      if (appSettings) {
+        setDiscoveryTime(appSettings.discovery_time);
+        setTimezone(appSettings.timezone);
+        if (typeof appSettings.job_retry_max === 'number') setJobRetryMax(appSettings.job_retry_max);
+        if (typeof appSettings.job_retry_delay_minutes === 'number') setJobRetryDelay(appSettings.job_retry_delay_minutes);
+      }
     } catch (error) {
       console.error('Failed to load configuration:', error);
       setMessage({ type: 'error', text: 'Failed to load configuration' });
@@ -109,6 +127,25 @@ export default function Configuration() {
       setMessage({ type: 'error', text: 'Failed to send report' });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      setSavingSettings(true);
+      setMessage(null);
+      await updateAppSettings({
+        discovery_time: discoveryTime,
+        timezone,
+        job_retry_max: jobRetryMax,
+        job_retry_delay_minutes: jobRetryDelay,
+      });
+      setMessage({ type: 'success', text: 'Settings saved' });
+    } catch (error) {
+      console.error('Failed to save app settings:', error);
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Failed to save settings' });
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -302,6 +339,92 @@ export default function Configuration() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+
+        {/* Discovery Schedule */}
+        <div className="config-section">
+          <h2 className="section-title">Discovery Schedule</h2>
+          <div className="config-card">
+            <div className="config-row">
+              <label className="config-label">Daily discovery time</label>
+              <input
+                type="time"
+                className="config-input"
+                value={discoveryTime}
+                onChange={(e) => setDiscoveryTime(e.target.value)}
+              />
+              <p className="config-help">Discovery runs once per day at this time, in the application timezone below.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Application Timezone */}
+        <div className="config-section">
+          <h2 className="section-title">Application Timezone</h2>
+          <div className="config-card">
+            <div className="config-row">
+              <label className="config-label">Timezone</label>
+              <select
+                className="config-select"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                <option value="America/Phoenix">America/Phoenix (Arizona, no DST)</option>
+                <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
+                <option value="America/Denver">America/Denver (Mountain)</option>
+                <option value="America/Chicago">America/Chicago (Central)</option>
+                <option value="America/New_York">America/New_York (Eastern)</option>
+                <option value="UTC">UTC</option>
+                <option value="Europe/London">Europe/London (GMT/BST)</option>
+              </select>
+              <p className="config-help">Used for the daily discovery schedule and time displays.</p>
+            </div>
+            <div className="config-row">
+              <button className="save-btn" onClick={handleSaveSettings} disabled={savingSettings}>
+                {savingSettings ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Job Retry Policy */}
+        <div className="config-section">
+          <h2 className="section-title">Job Retry Policy</h2>
+          <div className="config-card">
+            <div className="config-row">
+              <label className="config-label">Automatic retries</label>
+              <input
+                type="number"
+                className="config-input"
+                min={0}
+                max={10}
+                value={jobRetryMax}
+                onChange={(e) => setJobRetryMax(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+              />
+              <p className="config-help">
+                How many times a failed backup job is automatically retried before giving up. 0 disables automatic retries.
+              </p>
+            </div>
+            <div className="config-row">
+              <label className="config-label">Retry delay (minutes)</label>
+              <input
+                type="number"
+                className="config-input"
+                min={1}
+                max={1440}
+                value={jobRetryDelay}
+                onChange={(e) => setJobRetryDelay(Math.max(1, Math.min(1440, Number(e.target.value) || 1)))}
+              />
+              <p className="config-help">
+                How long to wait after a failure before retrying. Retries count per original failure, and each retry appears in Activity as "auto-retry".
+              </p>
+            </div>
+            <div className="config-row">
+              <button className="save-btn" onClick={handleSaveSettings} disabled={savingSettings}>
+                {savingSettings ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { getActivities, downloadActivityCSV, cancelJob, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
+import { getActivities, downloadActivityCSV, cancelJob, retryIncompleteResources, type ActivityItem as ActivityItemType, type ActivityListParams } from '../services/activity';
 import { getAudits, getAuditDetails, getRiskSignals, downloadAuditCSV, type AuditItem as AuditItemType, type AuditListParams, type AuditDetailsResponse, type RiskSignalItem, type RiskSignalParams } from '../services/audit';
 import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocal } from '../utils/datetime';
@@ -10,6 +10,19 @@ import './Activity.css';
 
 type ViewType = 'tasks' | 'audit' | 'risk';
 
+// Single source of truth for the Operation filter. DISCOVERY was missing
+// from the hard-coded <option> list while the feed emitted 37 DISCOVERY rows
+// per 200 and the API accepted `operation=DISCOVERY`, so discovery runs could
+// be neither isolated nor excluded (BUG-003). Any operation the API can
+// return must appear here — that is the whole point of the list existing
+// once instead of being retyped inline.
+const ACTIVITY_OPERATIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'BACKUP', label: 'Backup' },
+  { value: 'RESTORE', label: 'Restore' },
+  { value: 'EXPORT', label: 'Export' },
+  { value: 'DISCOVERY', label: 'Discovery' },
+];
+
 export default function Activity() {
   const { tenantId: routeTenantId, serviceType: routeServiceType } = useParams<{ tenantId?: string; serviceType?: string }>();
   const viewTabKeys = ['tasks', 'audit', 'risk'] as const;
@@ -18,6 +31,10 @@ export default function Activity() {
   // Date filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // An inverted range is a user error, not an empty result set (BUG-006).
+  // ISO yyyy-mm-dd compares correctly as a string, which is why the native
+  // input's value format is used directly.
+  const dateRangeInvalid = Boolean(startDate && endDate && startDate > endDate);
 
   // Task filters
   const [taskOperation, setTaskOperation] = useState('');
@@ -30,6 +47,20 @@ export default function Activity() {
   // Risk filters
   const [riskLevel, setRiskLevel] = useState('');
   const [minRiskScore] = useState(20);
+  // Real sort state for the Risk tab, sent to the server so ordering and
+  // pagination agree. Client-side sorting would only reorder the 50 rows of
+  // the current page out of 174 — a different bug wearing the same clothes.
+  const [riskSort, setRiskSort] = useState<'date' | 'risk_score'>('date');
+  const [riskOrder, setRiskOrder] = useState<'asc' | 'desc'>('desc');
+  const toggleRiskSort = (col: 'date' | 'risk_score') => {
+    if (riskSort === col) {
+      setRiskOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setRiskSort(col);
+      setRiskOrder('desc');
+    }
+    setRiskPage(1);
+  };
 
   // Data
   const [activities, setActivities] = useState<ActivityItemType[]>([]);
@@ -45,6 +76,23 @@ export default function Activity() {
   const [auditTotal, setAuditTotal] = useState(0);
   const [riskTotal, setRiskTotal] = useState(0);
   const pageSize = 50;
+  // Server-reported "another page exists". Authoritative for enabling Next:
+  // a `total` we don't trust must never be able to hide history (BUG-001 —
+  // the endpoint reported rows-fetched, so Next died at page 2 of ~6).
+  const [taskHasMore, setTaskHasMore] = useState(false);
+
+  // ── Request coordination (BUG-004 / BUG-005) ─────────────────────────
+  // The 8s silent poll used to be built from the closure it was created in,
+  // so the tick fired immediately after a filter change went out WITHOUT the
+  // new params and repainted the grid with unfiltered rows. Filters live in
+  // a ref so the poll always reads current state, and every request carries
+  // a generation number so a slow earlier response can never land last.
+  const filtersRef = useRef({ startDate: '', endDate: '', taskOperation: '', taskStatus: '', taskPage: 1 });
+  useEffect(() => {
+    filtersRef.current = { startDate, endDate, taskOperation, taskStatus, taskPage };
+  }, [startDate, endDate, taskOperation, taskStatus, taskPage]);
+  const reqGenRef = useRef(0);
+  const inFlightRef = useRef<AbortController | null>(null);
 
   // Modal
   const [selectedAudit, setSelectedAudit] = useState<AuditDetailsResponse | null>(null);
@@ -55,6 +103,10 @@ export default function Activity() {
   // Tracks job IDs we're awaiting a cancel response for, so the cross button
   // disables itself between click and the optimistic local status flip.
   const [cancellingJobs, setCancellingJobs] = useState<Set<string>>(new Set());
+  // Rows with a retry dispatch in flight, so the button can disable and
+  // spin without blocking the rest of the table.
+  const [retryingRows, setRetryingRows] = useState<Set<string>>(new Set());
+  const [retryNotice, setRetryNotice] = useState<string | null>(null);
 
   // Sort
   const [sortColumn, setSortColumn] = useState<string>('date');
@@ -124,7 +176,7 @@ export default function Activity() {
 
   useEffect(() => {
     fetchData();
-  }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage]);
+  }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage, riskSort, riskOrder]);
 
   // Silent polling — every 8s while the current list contains any
   // in-flight backup/restore (In Progress). Auto-stops the moment every
@@ -137,26 +189,55 @@ export default function Activity() {
     const anyLive = activities.some(a => a.status === 'In Progress');
     if (!anyLive) return;
     const t = setInterval(async () => {
+      // Read filters from the ref, never from this closure — the effect is
+      // keyed on `activities`, so its closure is stale the instant a filter
+      // changes (BUG-004: start_date was dropped from the very next tick).
+      const f = filtersRef.current;
+      const gen = ++reqGenRef.current;
       try {
         const params = new URLSearchParams({
-          page: String(taskPage), size: String(pageSize), _silent: '1',
+          page: String(f.taskPage), size: String(pageSize), _silent: '1',
         });
-        if (startDate) params.set('start_date', startDate);
-        if (endDate) params.set('end_date', endDate);
-        if (taskOperation) params.set('operation', taskOperation);
-        if (taskStatus) params.set('status', taskStatus);
+        if (f.startDate) params.set('start_date', f.startDate);
+        if (f.endDate) params.set('end_date', f.endDate);
+        if (f.taskOperation) params.set('operation', f.taskOperation);
+        if (f.taskStatus) params.set('status', f.taskStatus);
         const res = await fetch(`${API.ACTIVITY.LIST}?${params}`);
         if (!res.ok) return;
         const data = await res.json();
+        // Someone (a filter change, a page change, another poll) issued a
+        // newer request while this one was in flight — drop it. Correct
+        // params alone don't fix the race; a slow early response can still
+        // land last and repaint the grid with results nobody asked for.
+        if (gen !== reqGenRef.current) return;
         setActivities(data.items || []);
         if (typeof data.total === 'number') setTaskTotal(data.total);
+        setTaskHasMore(Boolean(data.has_more));
       } catch { /* ignore transient errors */ }
     }, 8000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // No exhaustive-deps suppression needed any more: the filters this
+    // callback used to close over now come from filtersRef, so [activities,
+    // viewType] really is the complete dependency list. The suppression was
+    // hiding the stale closure, not tolerating it.
   }, [activities, viewType]);
 
   const fetchData = useCallback(async () => {
+    // An inverted range can only ever return nothing, and "No activities
+    // found" reads as "there was no backup activity" — a dangerous
+    // misreading in an audit tool. Don't issue the request at all (BUG-006).
+    if (dateRangeInvalid) {
+      setActivities([]); setAudits([]); setRiskSignals([]);
+      setTaskTotal(0); setAuditTotal(0); setRiskTotal(0);
+      setTaskHasMore(false);
+      setLoading(false);
+      return;
+    }
+    // Supersede any request still in flight rather than racing it (BUG-005).
+    inFlightRef.current?.abort();
+    const ctl = new AbortController();
+    inFlightRef.current = ctl;
+    const gen = ++reqGenRef.current;
     setLoading(true);
     try {
       if (viewType === 'tasks') {
@@ -170,9 +251,11 @@ export default function Activity() {
           page: taskPage,
           size: pageSize,
         };
-        const response = await getActivities(params);
+        const response = await getActivities(params, ctl.signal);
+        if (gen !== reqGenRef.current) return;
         setActivities(response.items);
         setTaskTotal(response.total);
+        setTaskHasMore(response.has_more);
       } else if (viewType === 'audit') {
         const params: AuditListParams = {
           startDate,
@@ -193,17 +276,25 @@ export default function Activity() {
           minRiskScore,
           page: riskPage,
           size: pageSize,
+          sort: riskSort,
+          order: riskOrder,
         };
         const response = await getRiskSignals(params);
         setRiskSignals(response.items);
         setRiskTotal(response.total);
       }
     } catch (error) {
+      // An abort is us superseding our own request, not a failure.
+      if ((error as { name?: string })?.name === 'AbortError') return;
       console.error('Failed to fetch data:', error);
     } finally {
-      setLoading(false);
+      if (gen === reqGenRef.current) setLoading(false);
     }
-  }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage, minRiskScore, effectiveTenantId, effectiveServiceType]);
+  }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage, minRiskScore, effectiveTenantId, effectiveServiceType, dateRangeInvalid, riskSort, riskOrder]);
+
+  // Drop any in-flight request when the page unmounts so its response can't
+  // resolve into a dead component.
+  useEffect(() => () => { inFlightRef.current?.abort(); }, []);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -285,6 +376,78 @@ export default function Activity() {
       second: '2-digit',
       hour12: true,
     });
+  };
+
+  // Re-run only the resources in this run that did not complete.
+  //
+  // Deliberately does NOT change this row's status. The row is a record
+  // of what happened; the re-run is new work and appears as its own
+  // Activity entry on the next poll. Overwriting the historical status
+  // is what produced rows stuck reading "In Progress" forever.
+  const handleRetryRow = async (item: ActivityItemType) => {
+    if (retryingRows.has(item.id)) return;
+    if (!item.batchId) {
+      // Single-resource row (auto-retry / manual trigger): re-dispatch via
+      // the job — the server resolves the resource and runs the same
+      // trigger-user path. The old server endpoint only flipped the row to
+      // QUEUED and published nothing, which is why this button "did not
+      // work" for these rows (fixed 2026-08-18).
+      const jobId = item.jobIds && item.jobIds[0];
+      if (!jobId) return;
+      setRetryingRows(prev => new Set(prev).add(item.id));
+      setRetryNotice(null);
+      try {
+        const res = await fetch(API.JOBS.RETRY(jobId), { method: 'POST' });
+        if (res.ok) {
+          setRetryNotice('Re-running 1 resource — it will appear as new activity.');
+        } else {
+          const body = await res.text();
+          setRetryNotice(`Retry failed (${res.status}): ${body.slice(0, 160)}`);
+        }
+      } catch (e) {
+        console.error('Retry failed:', e);
+        setRetryNotice('Retry failed — see console for detail.');
+      } finally {
+        setRetryingRows(prev => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+      return;
+    }
+    setRetryingRows(prev => new Set(prev).add(item.id));
+    setRetryNotice(null);
+    try {
+      const { dispatched, failed, remaining } = await retryIncompleteResources(item.batchId);
+      // "N still to go" is the important half: the cap means one click
+      // does NOT necessarily retry everything, and silently doing less
+      // than the operator expects is worse than doing it slowly.
+      const more = remaining > 0
+        ? ` ${remaining} more still incomplete — click Retry again when these finish.`
+        : '';
+      if (dispatched.length === 0 && failed.length === 0) {
+        setRetryNotice('Nothing to retry — no incomplete resources in that run.');
+      } else if (failed.length > 0) {
+        setRetryNotice(
+          `Re-ran ${dispatched.length} of ${dispatched.length + failed.length} resource(s); ` +
+          `${failed.length} could not be dispatched.${more}`
+        );
+      } else {
+        setRetryNotice(
+          `Re-running ${dispatched.length} resource(s) — they will appear as new activity.${more}`
+        );
+      }
+    } catch (e) {
+      console.error('Retry failed:', e);
+      setRetryNotice('Retry failed — see console for detail.');
+    } finally {
+      setRetryingRows(prev => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
   };
 
   const handleCancelJob = async (rowId: string, jobIds?: string[]) => {
@@ -414,16 +577,37 @@ export default function Activity() {
 
   const totalItems = viewType === 'tasks' ? taskTotal : viewType === 'audit' ? auditTotal : riskTotal;
   const currentPage = viewType === 'tasks' ? taskPage : viewType === 'audit' ? auditPage : riskPage;
-  const totalPages = Math.ceil(totalItems / pageSize);
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  // Rows actually on screen. The footer range is derived from THIS, never
+  // from `total` — the old `Math.min(page*size, total)` printed
+  // "Showing 51–93 of 93" over 50 rendered rows (BUG-002).
+  const renderedCount = viewType === 'tasks'
+    ? activities.length
+    : viewType === 'audit' ? audits.length : riskSignals.length;
+  const rangeFrom = (currentPage - 1) * pageSize + 1;
+  const rangeTo = rangeFrom + renderedCount - 1;
+  // A `total` smaller than what we're showing is self-evidently wrong; say
+  // the honest half rather than printing a contradiction.
+  const totalTrustworthy = totalItems >= rangeTo;
+  // Next is driven by the server's has_more where we have it, so an
+  // untrustworthy total degrades into "one more click" instead of silently
+  // amputating history (BUG-001).
+  const canGoNext = viewType === 'tasks'
+    ? (taskHasMore || currentPage < totalPages)
+    : currentPage < totalPages;
 
   // Clamp page back if totals shrunk (e.g. filter change left us past the last page)
   useEffect(() => {
     if (totalItems === 0) return;
+    // Never clamp against a total we've already caught lying, and never
+    // clamp away a page the server says has more after it — that is the
+    // exact path by which a bad total amputated two thirds of the history.
+    if (!totalTrustworthy || canGoNext) return;
     const max = Math.max(1, totalPages);
     if (viewType === 'tasks' && taskPage > max) setTaskPage(max);
     else if (viewType === 'audit' && auditPage > max) setAuditPage(max);
     else if (viewType === 'risk' && riskPage > max) setRiskPage(max);
-  }, [viewType, totalPages, totalItems, taskPage, auditPage, riskPage]);
+  }, [viewType, totalPages, totalItems, taskPage, auditPage, riskPage, totalTrustworthy, canGoNext]);
 
   return (
     <div className="activity-page">
@@ -432,21 +616,32 @@ export default function Activity() {
         <div className="header-controls">
           <div className="date-filters">
             <div className="date-input-group">
-              <label>Start date</label>
+              <label htmlFor="activity-start-date">Start date</label>
               <input
+                id="activity-start-date"
                 type="date"
                 value={startDate}
+                max={endDate || undefined}
+                aria-invalid={dateRangeInvalid || undefined}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
             <div className="date-input-group">
-              <label>End date</label>
+              <label htmlFor="activity-end-date">End date</label>
               <input
+                id="activity-end-date"
                 type="date"
                 value={endDate}
+                min={startDate || undefined}
+                aria-invalid={dateRangeInvalid || undefined}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
+            {dateRangeInvalid && (
+              <p className="date-range-error" role="alert">
+                End date must be on or after the start date.
+              </p>
+            )}
           </div>
 
           {/* Tab-specific filters */}
@@ -454,9 +649,9 @@ export default function Activity() {
             <div className="inline-filters">
               <select value={taskOperation} onChange={(e) => { setTaskOperation(e.target.value); setTaskPage(1); }}>
                 <option value="">All Operations</option>
-                <option value="BACKUP">Backup</option>
-                <option value="RESTORE">Restore</option>
-                <option value="EXPORT">Export</option>
+                {ACTIVITY_OPERATIONS.map(op => (
+                  <option key={op.value} value={op.value}>{op.label}</option>
+                ))}
               </select>
               <select value={taskStatus} onChange={(e) => { setTaskStatus(e.target.value); setTaskPage(1); }}>
                 <option value="">All Statuses</option>
@@ -551,7 +746,11 @@ export default function Activity() {
         {totalItems > 0 && (
           <div className="pagination-bar">
             <span className="pagination-info">
-              Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalItems)} of {totalItems}
+              {loading
+                ? 'Loading…'
+                : totalTrustworthy
+                  ? `Showing ${rangeFrom}–${rangeTo} of ${totalItems}`
+                  : `Showing ${rangeFrom}–${rangeTo}`}
             </span>
             <div className="pagination-buttons">
               <button
@@ -565,11 +764,13 @@ export default function Activity() {
               >
                 &laquo; Prev
               </button>
-              <span className="page-number">{currentPage} / {totalPages || 1}</span>
+              <span className="page-number">
+                {totalTrustworthy ? `${currentPage} / ${totalPages}` : `${currentPage}`}
+              </span>
               <button
-                disabled={currentPage >= totalPages}
+                disabled={!canGoNext}
                 onClick={() => {
-                  const max = Math.max(1, totalPages);
+                  const max = canGoNext ? currentPage + 1 : Math.max(1, totalPages);
                   const next = (p: number) => Math.min(max, p + 1);
                   if (viewType === 'tasks') setTaskPage(next);
                   else if (viewType === 'audit') setAuditPage(next);
@@ -584,6 +785,21 @@ export default function Activity() {
       </div>
 
       <div className="activity-table-container">
+        {/* Result of the last Retry click. Dismissible, and never blocks
+            the table — the re-run itself shows up as new activity rows. */}
+        {retryNotice && viewType === 'tasks' && (
+          <div className="retry-notice" role="status">
+            <span>{retryNotice}</span>
+            <button
+              type="button"
+              className="retry-notice-dismiss"
+              aria-label="Dismiss"
+              onClick={() => setRetryNotice(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {/* ==================== TASKS TAB ==================== */}
         {viewType === 'tasks' && (
           <table className="activity-table">
@@ -616,6 +832,8 @@ export default function Activity() {
                     displayedProgressPct={clampProgress(activity)}
                     renderStatusIcon={getStatusIcon}
                     formatDate={formatDate}
+                    onRetry={handleRetryRow}
+                    retrying={retryingRows.has(activity.id)}
                   />
                 ))
               )}
@@ -675,11 +893,22 @@ export default function Activity() {
           <table className="risk-table">
             <thead>
               <tr>
-                <th className="sortable" onClick={() => { setSortColumn('date'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
-                  Date {sortColumn === 'date' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+                {/* Sortable headers are real buttons driven by the server's
+                    sort state. Previously DATE always painted an indicator
+                    and clicking it only flipped the arrow — the rows never
+                    moved because the server sorted the page by risk score
+                    after cutting it by date (BUG-009). */}
+                <th aria-sort={riskSort === 'date' ? (riskOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" className="th-sort" onClick={() => toggleRiskSort('date')}>
+                    Date {riskSort === 'date' && <span className="sort-indicator" aria-hidden="true">{riskOrder === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
                 </th>
                 <th>Risk Level</th>
-                <th>Risk Score</th>
+                <th aria-sort={riskSort === 'risk_score' ? (riskOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <button type="button" className="th-sort" onClick={() => toggleRiskSort('risk_score')}>
+                    Risk Score {riskSort === 'risk_score' && <span className="sort-indicator" aria-hidden="true">{riskOrder === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
+                </th>
                 <th>Actor</th>
                 <th>Operation</th>
                 <th>Object</th>
