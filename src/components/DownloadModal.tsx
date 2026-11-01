@@ -224,7 +224,9 @@ export function DownloadModal({
   isArchive = false,
   excludedItemIds,
 }: DownloadModalProps) {
-  const [scope, setScope] = useState<Scope>('selected');
+  const [requestedScope, setScope] = useState<Scope>('selected');
+  // Chat export supports a single conversation or explicit message selection.
+  const scope: Scope = contentType === 'chats' ? 'selected' : requestedScope;
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
     new Set(['Mail', 'Contacts', 'Calendar']),
   );
@@ -637,10 +639,10 @@ export function DownloadModal({
               </span>
             </label>
 
-            <label className="radio-row">
+            {contentType !== 'chats' && <label className="radio-row">
               <input type="radio" checked={scope === 'all'} onChange={() => setScope('all')} />
               <span>Download all</span>
-            </label>
+            </label>}
 
             {scope === 'all' && (
               <div className="workload-list">

@@ -25,8 +25,8 @@ async function fixture(page: Page, { many = false, holdChatA }: { many?: boolean
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     let data: any = {};
     let status = 200;
-    if (path.endsWith('/tenants')) data = { items: [{ id: tenant, display_name: 'Synthetic tenant', type: 'M365', status: 'ACTIVE' }] };
-    else if (path.includes('/tenants/')) data = { id: tenant, display_name: 'Synthetic tenant', type: 'M365', status: 'ACTIVE' };
+    if (path.endsWith('/tenants')) data = [{ id: tenant, displayName: 'Synthetic tenant', display_name: 'Synthetic tenant', type: 'M365', status: 'ACTIVE' }];
+    else if (path.includes('/tenants/')) data = { id: tenant, displayName: 'Synthetic tenant', display_name: 'Synthetic tenant', type: 'M365', status: 'ACTIVE' };
     else if (path.endsWith('/auth/me')) data = { id: 'qa-user', email: 'qa@example.invalid', roles: ['SUPER_ADMIN'] };
     else if (path.endsWith('/with-backups')) data = { items: [{ id: resource, tenant_id: tenant,
       kind: 'entra_user', provider: 'm365', name: 'Synthetic person', email: 'person@example.invalid',
@@ -84,6 +84,7 @@ test('equal titles browse and export by the selected conversation identity', asy
   await rows.nth(1).locator('input.folder-check').check();
   await expect(rows.nth(0).locator('input.folder-check')).not.toBeChecked();
   await page.locator('.recovery-toolbar-btn-download').click();
+  await expect(page.getByLabel('Download all', { exact: true })).toHaveCount(0);
   await expect.poll(() => requests.filter(request => request.path.endsWith('/exports/chat/estimate')).at(-1)?.body?.chatId).toBe('chat-b');
   await page.screenshot({ path: test.info().outputPath('same-title-export.png'), fullPage: true });
   await page.locator('.btn-download').click();
