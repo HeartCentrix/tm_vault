@@ -22,6 +22,7 @@ describe('Activity copy progress', () => {
   });
 
   it.each([
+    ['CAPTURING', 'Capturing backup data'],
     ['QUEUED', 'Waiting for backup processing capacity'],
     ['RUNNING', 'Preparing backup records'],
     ['WAITING_RESUME', 'Finalizing backup'],

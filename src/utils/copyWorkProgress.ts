@@ -1,6 +1,7 @@
 import type { ActivityItem } from '../services/activity';
 
 const PHASE_LABELS: Record<string, string> = {
+  CAPTURING: 'Capturing backup data',
   QUEUED: 'Waiting for backup processing capacity',
   RUNNING: 'Preparing backup records',
   WAITING_RESUME: 'Finalizing backup',
