@@ -6,6 +6,7 @@ import { usePersistentTab } from '../hooks/usePersistentTab';
 import { fmtLocal } from '../utils/datetime';
 import { API } from '../config/api';
 import { ActivityRow } from '../components/ActivityRow';
+import { copyWorkProgress } from '../utils/copyWorkProgress';
 import './Activity.css';
 
 type ViewType = 'tasks' | 'audit' | 'risk';
@@ -186,7 +187,7 @@ export default function Activity() {
   // gateway's uvicorn access-log filter suppresses the noise.
   useEffect(() => {
     if (viewType !== 'tasks') return;
-    const anyLive = activities.some(a => a.status === 'In Progress');
+    const anyLive = activities.some(a => copyWorkProgress(a).status === 'In Progress');
     if (!anyLive) return;
     const t = setInterval(async () => {
       // Read filters from the ref, never from this closure — the effect is
@@ -512,6 +513,7 @@ export default function Activity() {
             Failed
           </span>
         );
+      case 'Partial':
       case 'Warning':
         return (
           <span className="status-badge status-warning">
@@ -520,7 +522,7 @@ export default function Activity() {
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
-            Warning
+            {status}
           </span>
         );
       case 'Canceled':

@@ -1,6 +1,15 @@
 import { API } from '../config/api';
 import { collectIncompleteResourceIds, RETRY_DISPATCH_LIMIT } from '../utils/retryEligibility';
 
+export interface CopyWorkSummary {
+  state: string;
+  pending_tasks?: number;
+  committed_rows?: number;
+  committed_bytes?: number;
+  failed_tasks?: number;
+  gap_counts?: Record<string, number>;
+}
+
 export interface ActivityItem {
   id: string;
   jobIds?: string[];
@@ -29,6 +38,7 @@ export interface ActivityItem {
   progressPct?: number;
   bytesDone?: number;
   bytesExpected?: number | null;
+  copy_work?: CopyWorkSummary | null;
 }
 
 export interface BatchChildResource {

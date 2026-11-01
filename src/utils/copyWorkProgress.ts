@@ -1,0 +1,31 @@
+import type { ActivityItem } from '../services/activity';
+
+const PHASE_LABELS: Record<string, string> = {
+  QUEUED: 'Waiting for backup processing capacity',
+  RUNNING: 'Preparing backup records',
+  WAITING_RESUME: 'Finalizing backup',
+};
+
+export function copyWorkProgress(item: ActivityItem) {
+  const copy = item.operation === 'BACKUP' ? item.copy_work : null;
+  let status = item.status;
+  let message: string | undefined;
+  let pending = false;
+  if (copy && !['Canceled', 'Expired', 'Failed'].includes(status)) {
+    message = PHASE_LABELS[copy.state];
+    if (message) {
+      pending = true;
+      status = 'In Progress';
+    } else if (copy.state === 'FAILED') {
+      const captured = status === 'Partial' || (copy.committed_rows || 0) > 0 || (copy.committed_bytes || 0) > 0
+        || (item.bytesDone || item.data_backed_up || 0) > 0
+        || (item.counts?.done || 0) + (item.counts?.partial || 0) > 0;
+      status = captured ? 'Partial' : 'Failed';
+      message = captured ? 'Backup records are incomplete' : 'Backup records could not be prepared';
+    }
+  }
+  const rows = copy?.committed_rows;
+  const records = message && rows != null && Number.isFinite(rows) && rows > 0
+    ? `${rows.toLocaleString()} ${rows === 1 ? 'record' : 'records'} prepared` : undefined;
+  return { status, message, pending, records };
+}

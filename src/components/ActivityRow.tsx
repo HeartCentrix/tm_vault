@@ -4,6 +4,7 @@ import { fetchBatchChildren } from '../services/activity';
 import type { ActivityItem, BatchChildren } from '../services/activity';
 import { shouldShowRetry } from '../utils/retryEligibility';
 import { statusGlyph, rollupParentStatus } from '../utils/activityGlyphs';
+import { copyWorkProgress } from '../utils/copyWorkProgress';
 
 interface Props {
   item: ActivityItem;
@@ -65,6 +66,10 @@ export function ActivityRow({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(LEAF_PAGE_SIZE);
+  const copyProgress = copyWorkProgress(item);
+  const displayStatus = copyProgress.status;
+  const progressPct = copyProgress.pending && displayedProgressPct != null
+    ? Math.min(displayedProgressPct, 99) : displayedProgressPct;
 
   const canOpen = !!item.batchId;
 
@@ -110,7 +115,7 @@ export function ActivityRow({
   //   * tear down on close / status flip to terminal so we don't
   //     poll forever on a Done row that can't change.
   useEffect(() => {
-    if (!open || !item.batchId || item.status !== 'In Progress') return;
+    if (!open || !item.batchId || displayStatus !== 'In Progress') return;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -126,7 +131,7 @@ export function ActivityRow({
       cancelled = true;
       clearInterval(id);
     };
-  }, [open, item.status, item.batchId]);
+  }, [open, displayStatus, item.batchId]);
 
   const warnings = item.warnings;
   const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
@@ -148,14 +153,14 @@ export function ActivityRow({
         <td className="object-cell">{item.object}</td>
         <td>
           <span className="status-cell">
-            {renderStatusIcon(item.status, item.id, item.jobIds)}
+            {renderStatusIcon(displayStatus, item.id, item.jobIds)}
             {/* Retry re-runs ONLY the resources that did not complete.
                 Hidden on a clean run and while the run is still going —
                 see shouldShowRetry. It does not mutate this row: the
                 re-run surfaces as its own Activity entry, because
                 rewriting history here is how rows got stuck reading
                 "In Progress" forever. */}
-            {onRetry && shouldShowRetry(item) && (
+            {onRetry && shouldShowRetry({ ...item, status: displayStatus }) && (
               <button
                 type="button"
                 className="status-badge-retry"
@@ -179,7 +184,7 @@ export function ActivityRow({
         <td>{formatDate(item.finish_time)}</td>
         <td className="details-cell">
           <div className="activity-row-details">
-            <span>{item.details || '—'}</span>
+            <span>{copyProgress.message || item.details || '—'}{copyProgress.records && ` · ${copyProgress.records}`}</span>
             {hasWarnings && (
               <span
                 className="activity-row-warning-chip"
@@ -205,9 +210,9 @@ export function ActivityRow({
               </span>
             )}
           </div>
-          {item.status === 'In Progress' && (
+          {displayStatus === 'In Progress' && (
             <div className="activity-row-progress">
-              {displayedProgressPct == null ? (
+              {progressPct == null ? (
                 <span className="activity-row-progress-unknown">—</span>
               ) : (
                 <>
@@ -219,11 +224,11 @@ export function ActivityRow({
                   <div className="activity-row-progress-track">
                     <div
                       className="activity-row-progress-bar"
-                      style={{ width: `${displayedProgressPct}%` }}
+                      style={{ width: `${progressPct}%` }}
                     />
                   </div>
                   <span className="activity-row-progress-label">
-                    {displayedProgressPct}%
+                    {progressPct}%
                   </span>
                 </>
               )}
@@ -246,14 +251,14 @@ export function ActivityRow({
               <div className="mini-header">
                 <span className="mini-operation">{item.operation}</span>
                 <span className="mini-sep">·</span>
-                <span className={`mini-status ${statusGlyph(item.status === 'In Progress' ? 'IN_PROGRESS' : item.status === 'Done' ? 'COMPLETED' : item.status === 'Failed' ? 'FAILED' : item.status === 'Partial' ? 'PARTIAL' : item.status === 'Expired' ? 'EXPIRED' : 'PENDING').cls}`}>
-                  {item.status}
+                <span className={`mini-status ${statusGlyph(displayStatus === 'In Progress' ? 'IN_PROGRESS' : displayStatus === 'Done' ? 'COMPLETED' : displayStatus === 'Failed' ? 'FAILED' : displayStatus === 'Partial' ? 'PARTIAL' : displayStatus === 'Expired' ? 'EXPIRED' : 'PENDING').cls}`}>
+                  {displayStatus}
                 </span>
-                {item.status === 'In Progress' && (
+                {displayStatus === 'In Progress' && (
                   <>
                     <span className="mini-sep">·</span>
                     <span className="mini-pct">
-                      {displayedProgressPct == null ? '—' : `${displayedProgressPct}%`}
+                      {progressPct == null ? '—' : `${progressPct}%`}
                     </span>
                   </>
                 )}
