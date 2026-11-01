@@ -6,6 +6,7 @@ import { API } from '../config/api';
 import { exportJobs } from '../services/exportJobs';
 import type { ContentTab } from '../services/snapshot';
 import { SnapshotService } from '../services/snapshot';
+import { chatExportSelection } from '../utils/chatSelection';
 import {
   EXPORT_FORMATS,
   DEFAULT_FORMAT,
@@ -28,6 +29,7 @@ interface DownloadModalProps {
   preserveTree?: boolean;
   resourceId?: string;
   threadPath?: string | null;
+  chatId?: string | null;
   resourceKind?: string;
   // Mail / Contacts / generic folder checkbox selection. The user ticks
   // a folder (e.g. `/Inbox`, `Contacts`) in the left rail and we send
@@ -216,6 +218,7 @@ export function DownloadModal({
   preserveTree = false,
   resourceId,
   threadPath,
+  chatId,
   resourceKind,
   folderPaths,
   isArchive = false,
@@ -259,8 +262,7 @@ export function DownloadModal({
         const est = await RecoveryService.estimateChatExport({
           resourceId,
           snapshotIds,
-          threadPath: threadPath ?? undefined,
-          itemIds: threadPath ? [] : itemIds,
+          ...chatExportSelection(chatId, threadPath, itemIds),
           exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
           includeAttachments,
         });
@@ -270,7 +272,7 @@ export function DownloadModal({
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [isOpen, contentType, resourceId, threadPath, itemIds, exportFormat, includeAttachments, snapshotIds]);
+  }, [isOpen, contentType, resourceId, threadPath, chatId, itemIds, exportFormat, includeAttachments, snapshotIds]);
 
   // Fetch the per-snapshot contact folder list when Contacts is selected
   // for a Download-all export. Re-fetch on workload toggle / scope change.
@@ -331,7 +333,7 @@ export function DownloadModal({
       case 'onedrive': return selectedCount === 1 ? '1 file' : `${selectedCount} files`;
       case 'contacts': return selectedCount === 1 ? '1 contact' : `${selectedCount} contacts`;
       case 'calendar': return selectedCount === 1 ? '1 event' : `${selectedCount} events`;
-      case 'chats': return selectedCount === 1 ? '1 chat' : `${selectedCount} chats`;
+      case 'chats': return chatId || threadPath ? '1 conversation' : selectedCount === 1 ? '1 message' : `${selectedCount} messages`;
       default: return `${selectedCount} items`;
     }
   })();
@@ -348,7 +350,7 @@ export function DownloadModal({
     const gen = pollGenRef.current;
     const isStale = () => pollGenRef.current !== gen;
     if (contentType === 'chats' && resourceId) {
-      if (!threadPath && itemIds.length === 0) {
+      if (!chatId && !threadPath && itemIds.length === 0) {
         setError('Select messages from one thread, or tick one thread.');
         return;
       }
@@ -357,8 +359,7 @@ export function DownloadModal({
         const { jobId } = await RecoveryService.triggerChatExport({
           resourceId,
           snapshotIds,
-          threadPath: threadPath ?? undefined,
-          itemIds: threadPath ? [] : itemIds,
+          ...chatExportSelection(chatId, threadPath, itemIds),
           exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
           includeAttachments,
         });

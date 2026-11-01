@@ -2,6 +2,7 @@
  * Snapshot Service - List and browse backup snapshots
  */
 import { API } from '../config/api';
+import { chatScopeError } from './chatErrors';
 
 // Five fixed content tabs rendered on Recovery. Hardcoded — no longer derived
 // from snapshot contents at runtime.
@@ -62,6 +63,7 @@ export interface SnapshotItemDetail {
   itemType: string;
   name: string;
   folderPath?: string;
+  chatId?: string;
   contentSize: number;
   metadata: Record<string, any>;
   isDeleted: boolean;
@@ -152,6 +154,9 @@ export interface ResourceWithBackupsListResponse {
 export interface SnapshotFolder {
   path: string;
   count: number;
+  chatId?: string;
+  displayName?: string;
+  folderAliases?: string[];
 }
 
 /** Per-content latest-snapshot resolver. Backend computes the latest
@@ -421,7 +426,7 @@ export const SnapshotService = {
     return res.json();
   },
 
-  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string, search?: string, sort?: string): Promise<SnapshotItemListResponse> {
+  async listItems(snapshotId: string, page = 1, size = 50, contentType?: ContentTab, group?: string, search?: string, sort?: string, chatId?: string): Promise<SnapshotItemListResponse> {
     // Recovery passes one of the 5 fixed tabs (mail/onedrive/contacts/
     // calendar/chats). Each maps to its own backend endpoint — no more
     // /items?itemType=X fallback, no /content-types lookup.
@@ -439,6 +444,10 @@ export const SnapshotService = {
     };
     const base = contentType ? endpoint[contentType] : API.SNAPSHOTS.MAIL(snapshotId);
     let url = `${base}?page=${page}&size=${size}`;
+    if (contentType === 'chats') {
+      url += '&presentation=true';
+      if (chatId) url += `&chatId=${encodeURIComponent(chatId)}`;
+    }
     if (!contentType || contentType === 'mail') {
       // List rows render only subject/from/date/bodyPreview — full HTML
       // bodies made a 50-row page ~471KB (vs ~45KB slim) and dominated
@@ -446,7 +455,7 @@ export const SnapshotService = {
       // body via getItemDetail (see its needsBody effect).
       url += '&bodies=none';
     }
-    if (group !== undefined && group !== '' && group !== 'all') {
+    if (!(contentType === 'chats' && chatId) && group !== undefined && group !== '' && group !== 'all') {
       // Uniform `folder` filter across all tabs — chats now also have
       // folder_path set ("chats/<friendly name>") by the backup handler.
       url += `&folder=${encodeURIComponent(group)}`;
@@ -458,7 +467,9 @@ export const SnapshotService = {
       url += `&sort=${encodeURIComponent(sort)}`;
     }
     const res = await fetch(url, { headers: getAuthHeaders() });
-    if (!res.ok) throw new Error('Failed to fetch snapshot items');
+    if (!res.ok) throw contentType === 'chats'
+      ? await chatScopeError(res, 'Failed to fetch messages')
+      : new Error('Failed to fetch snapshot items');
     const data = await res.json();
 
     // Preview components (EmailPreview, ChatPreview, CalendarPreview, etc.)
@@ -549,6 +560,21 @@ export const SnapshotService = {
     page: number = 1,
     size: number = 50,
   ): Promise<{ content: SnapshotFolder[]; total: number; page: number; size: number; hasMore: boolean }> {
+    if (itemType === 'TEAMS_CHAT_MESSAGE') {
+      const res = await fetch(`${API.SNAPSHOTS.CHAT_GROUPS(snapshotId)}?page=${page}&size=${size}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('Failed to fetch conversations');
+      const data = await res.json();
+      const groups = Array.isArray(data) ? data.slice((page - 1) * size, page * size) : data.content;
+      return {
+        content: groups.map((group: { chatId: string; displayName: string; folderPath?: string; count: number; folderAliases?: string[] }) => ({
+          ...group, path: group.folderPath || `chats/${group.displayName}`,
+        })),
+        total: Array.isArray(data) ? data.length : data.total,
+        page, size, hasMore: Array.isArray(data) ? page * size < data.length : !!data.hasMore,
+      };
+    }
     let url = `${API.SNAPSHOTS.FOLDERS}?snapshot_id=${snapshotId}&page=${page}&size=${size}`;
     if (itemType) url += `&item_type=${itemType}`;
     const res = await fetch(url, { headers: getAuthHeaders() });

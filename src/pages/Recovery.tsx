@@ -6,6 +6,7 @@ import {
   type ContentSnapshotsResponse, type CalendarSelectionScope,
 } from '../services/snapshot';
 import { type RecoveryItem } from '../services/recovery';
+import { initialChatSelection } from '../utils/chatSelection';
 import { getResourcesByType } from '../services/resource';
 import { RestoreModal } from '../components/RestoreModal';
 import AzureDbRecoverModal from '../components/AzureDbRecoverModal';
@@ -6777,6 +6778,7 @@ export default function Recovery() {
     const isOneDriveMyDrive = t === 'onedrive' && (v ?? 'my-drive') === 'my-drive';
     return isOneDriveMyDrive ? '/' : 'all';
   });
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(() => searchParams.get('chatId'));
   // The "Online Archive" folder (inside Mail/Contacts) is selected. Not
   // URL-synced — a transient sub-selection that reroutes the item fetch to the
   // archive child's snapshot. Reset whenever a tab or normal folder is picked.
@@ -6901,6 +6903,8 @@ export default function Recovery() {
     const isOneDriveMyDrive = currentTab === 'onedrive' && nextView === 'my-drive';
     const nextFolder = f !== null ? f : (isOneDriveMyDrive ? '/' : 'all');
     if (nextFolder !== selectedFolder) setSelectedFolder(nextFolder);
+    const nextChatId = currentTab === 'chats' ? searchParams.get('chatId') : null;
+    if (nextChatId !== selectedChatId) setSelectedChatId(nextChatId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -6963,27 +6967,17 @@ export default function Recovery() {
   const [, setItemTotalPages] = useState(1);
   const [selectedItem, setSelectedItem] = useState<RecoveryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  // T20: single-select thread checkbox on the chats tab's folder list.
-  // `threadPath` is the folder_path of the one ticked thread (null when
-  // none). Paired with selectedItems: when a thread is picked the
-  // per-message selection is narrowed to that thread so the two stay
-  // coherent as download scope.
-  const [threadPath, setThreadPath] = useState<string | null>(null);
+  // Whole-conversation selection is independent of its captured display name.
+  const [threadChatId, setThreadChatId] = useState<string | null>(null);
+  const threadPath = folders.find(folder => folder.chatId === threadChatId)?.path ?? null;
 
-  // When a thread is picked, clear any per-message selection belonging
-  // to other threads. Re-runs when recoveryItems changes too so a fresh
-  // page load doesn't leak cross-thread selections.
   useEffect(() => {
-    if (!threadPath) return;
-    setSelectedItems(prev => {
-      const next = new Set<string>();
-      for (const id of prev) {
-        const it = recoveryItems.find(r => r.id === id);
-        if (it && it.folderPath === threadPath) next.add(id);
-      }
-      return next;
-    });
-  }, [threadPath, recoveryItems]);
+    if (!threadChatId) return;
+    setSelectedItems(prev => new Set([...prev].filter(id => {
+      const item = recoveryItems.find(row => row.id === id);
+      return (item?.chatId ?? item?.metadata?.chatId) === threadChatId;
+    })));
+  }, [threadChatId, recoveryItems]);
 
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
 
@@ -7385,7 +7379,7 @@ export default function Recovery() {
     const isOneDrive = activeContentType === 'onedrive';
     const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
     const pageSize = oneDriveRecent ? OD_RECENT_LIMIT : 50;
-    const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
+    const effectiveFolder = oneDriveRecent || (isChats && selectedChatId) ? 'all' : selectedFolder;
     const sortParam = oneDriveRecent
       ? 'modified_desc'
       : (isOneDrive ? oneDriveSort : undefined);
@@ -7399,7 +7393,7 @@ export default function Recovery() {
     // selection.
     const archiveSnapshotId = archiveSelected ? contentSnapshots?.byContent?.archive?.snapshotId : undefined;
     const archiveKey = archiveSelected ? `archive:${archiveSnapshotId ?? ''}:${archiveFolder ?? ''}` : 'primary';
-    const viewKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${effectiveFolder}|${sortParam ?? ''}|${itemSearch}`;
+    const viewKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${activeContentType === 'chats' ? selectedChatId ?? '' : ''}|${effectiveFolder}|${sortParam ?? ''}|${itemSearch}`;
     if (lastItemsViewKeyRef.current === viewKey) return;
     lastItemsViewKeyRef.current = viewKey;
 
@@ -7409,7 +7403,7 @@ export default function Recovery() {
     // SWR: serve a revisit instantly from the per-session cache, then let
     // the fetch below revalidate in the background. Search results are
     // intentionally not cached (unbounded key space, rarely revisited).
-    const cacheKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${effectiveFolder}|${sortParam ?? ''}`;
+    const cacheKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${activeContentType === 'chats' ? selectedChatId ?? '' : ''}|${effectiveFolder}|${sortParam ?? ''}`;
     const cached = itemSearch ? undefined : itemsCacheRef.current.get(cacheKey);
     if (cached) {
       setRecoveryItems(cached.items);
@@ -7442,6 +7436,7 @@ export default function Recovery() {
       : SnapshotService.listItems(
           selectedSnapshotId, 1, pageSize,
           activeContentType as ContentTab, effectiveFolder, itemSearch, sortParam,
+          isChats ? selectedChatId ?? undefined : undefined,
         );
     firstPage
       .then((data) => {
@@ -7450,6 +7445,7 @@ export default function Recovery() {
         // Teams/WhatsApp. Initial page is visually "the most recent
         // window of the conversation".
         const content = isChats ? [...data.content].reverse() : data.content;
+        if (isChats && myKey === requestKeyRef.current) setInlineDownloadError(null);
         // Cache write happens BEFORE the staleness guard on purpose: the
         // payload is keyed by its own request identity, so even a slow
         // response for a since-abandoned view correctly warms the cache
@@ -7511,6 +7507,7 @@ export default function Recovery() {
       .catch((error) => {
         if (myKey !== requestKeyRef.current) return;
         console.error('Failed to load items:', error);
+        if (isChats) setInlineDownloadError(error instanceof Error ? error.message : 'Could not load this conversation.');
         // A failed background revalidate keeps the cached view — the
         // user already has meaningful content on screen.
         if (!cached) {
@@ -7532,7 +7529,7 @@ export default function Recovery() {
     // foldersLoading is deliberately NOT a dep: it caused a second
     // identical items fetch when it flipped false. foldersReadyKey (set
     // once per folder identity) replaced it for the chats gate.
-  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, itemSearch, oneDriveView, oneDriveSort, foldersReadyKey, contentSnapshots, archiveSelected, archiveFolder]);
+  }, [selectedSnapshotId, selectedResource, activeContentType, selectedFolder, selectedChatId, itemSearch, oneDriveView, oneDriveSort, foldersReadyKey, contentSnapshots, archiveSelected, archiveFolder]);
 
   // Load the archive's real folder list (full nested paths) so the Online
   // Archive section renders its retained folder hierarchy instead of one flat
@@ -7597,7 +7594,7 @@ export default function Recovery() {
     // path is My Drive / mail / contacts / chats only — but keep the
     // parameters identical to the fresh load so an appended page can
     // never come back in a different order than the page above it.
-    const effectiveFolder = oneDriveRecent ? 'all' : selectedFolder;
+    const effectiveFolder = oneDriveRecent || (isChats && selectedChatId) ? 'all' : selectedFolder;
     const sortParam = oneDriveRecent ? 'modified_desc' : (isOneDrive ? oneDriveSort : undefined);
     const _archiveEntry = contentSnapshots?.byContent?.archive;
     const _nextPage = (archiveSelected && _archiveEntry?.snapshotId)
@@ -7605,6 +7602,7 @@ export default function Recovery() {
       : SnapshotService.listItems(
           selectedSnapshotId, itemPage, pageSize,
           activeContentType as ContentTab, effectiveFolder, itemSearch, sortParam,
+          isChats ? selectedChatId ?? undefined : undefined,
         );
     _nextPage
       .then((data) => {
@@ -7675,12 +7673,13 @@ export default function Recovery() {
   useEffect(() => {
     setSelectedItem(null);
     setSelectedItems(new Set());
+    setThreadChatId(null);
     setOneDriveFolderSelected(new Set());
     setOneDriveFolderBusy(new Set());
     setGenericFolderSelected(new Set());
     setGenericFolderBusy(new Set());
     setFolderExcludedIds(new Set());
-  }, [selectedSnapshotId, activeContentType, searchParams.get('tab'), selectedFolder]);
+  }, [selectedSnapshotId, activeContentType, searchParams.get('tab'), selectedFolder, selectedChatId]);
 
   // Left-panel grouping is uniform across mail / onedrive / contacts /
   // chats — all driven by the active tab's snapshot's distinct folder_paths.
@@ -7757,8 +7756,9 @@ export default function Recovery() {
       setFoldersHasMore(cached.hasMore);
       setFoldersPage(1);
       if (activeContentType === 'chats') {
-        const firstChat = cached.folders.find(f => f.path);
-        if (firstChat) setSelectedFolder(firstChat.path);
+        const selection = initialChatSelection(cached.folders, searchParams.get('chatId'), searchParams.get('folder'));
+        setSelectedChatId(selection.chatId);
+        setSelectedFolder(selection.folder);
       }
       setFoldersReadyKey(readyKey);
     }
@@ -7822,8 +7822,9 @@ export default function Recovery() {
           // Chats tab: no "All" — auto-pick the top chat so the message list
           // opens on real content instead of an aggregate view.
           if (activeContentType === 'chats') {
-            const firstChat = data.find(f => f.path);
-            if (firstChat) setSelectedFolder(firstChat.path);
+            const selection = initialChatSelection(data, searchParams.get('chatId'), searchParams.get('folder'));
+            setSelectedChatId(selection.chatId);
+            setSelectedFolder(selection.folder);
           }
         }
         // else: background revalidate after a cache hit. Folder listings
@@ -7887,8 +7888,8 @@ export default function Recovery() {
     SnapshotService.getFolders(snapId, itemTypeForMore, foldersPage, nextPageSize)
       .then((resp) => {
         setFolders((prev) => {
-          const seen = new Set(prev.map(f => f.path));
-          const appended = resp.content.filter(f => !seen.has(f.path));
+          const seen = new Set(prev.map(f => f.chatId ?? f.path));
+          const appended = resp.content.filter(f => !seen.has(f.chatId ?? f.path));
           return [...prev, ...appended];
         });
         setFoldersHasMore(!!resp.hasMore);
@@ -7928,6 +7929,7 @@ export default function Recovery() {
   };
 
   const toggleSelectItem = (itemId: string) => {
+    if (activeContentType === 'chats') setThreadChatId(null);
     const deselecting = selectedItems.has(itemId);
     setSelectedItems(prev => {
       const next = new Set(prev);
@@ -8843,7 +8845,7 @@ export default function Recovery() {
                 // WOULD work if we let it through. Treat a ticked
                 // thread as implicit selection so Download lights up.
                 const chatThreadScoped =
-                  activeContentType === 'chats' && !!threadPath;
+                  activeContentType === 'chats' && !!threadChatId;
                 // Generic-folder scope: mail / contacts / site tabs let
                 // the user tick an entire folder (e.g. `/Inbox`, or
                 // `Contacts`) in the left rail. That selection lives in
@@ -9055,7 +9057,7 @@ export default function Recovery() {
                         // a new history entry; the sync effect above
                         // then updates local state.
                         setArchiveSelected(false);
-                        patchSearchParams({ tab: type, folder: null, view: null });
+                        patchSearchParams({ tab: type, folder: null, view: null, chatId: null });
                       }}
                       title={hasBackup ? `${count.toLocaleString()} item${count === 1 ? '' : 's'} backed up` : 'No backup yet'}
                     >
@@ -9328,8 +9330,8 @@ export default function Recovery() {
                             const collapsed = collapsedFolders.has(folder.path);
                             return (
                             <div
-                              key={folder.path}
-                              className={`folder-item has-check ${selectedFolder === folder.path && !archiveSelected ? 'active' : ''}`}
+                              key={isChats ? folder.chatId ?? folder.path : folder.path}
+                              className={`folder-item has-check ${(isChats ? selectedChatId === folder.chatId : selectedFolder === folder.path) && !archiveSelected ? 'active' : ''}`}
                               style={!isChats ? { paddingLeft: `${16 + depth * 15}px` } : undefined}
                             >
                               {!isChats && (hasChildren ? (
@@ -9349,9 +9351,10 @@ export default function Recovery() {
                                 <input
                                   type="checkbox"
                                   className="folder-check"
-                                  checked={threadPath === folder.path}
+                                  checked={!!folder.chatId && threadChatId === folder.chatId}
+                                  disabled={!folder.chatId}
                                   onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => setThreadPath(e.target.checked ? folder.path : null)}
+                                  onChange={(e) => setThreadChatId(e.target.checked ? folder.chatId ?? null : null)}
                                   title="Select this thread for export"
                                 />
                               ) : (
@@ -9406,14 +9409,16 @@ export default function Recovery() {
                                     setSearchNarrowsItems(false);
                                   }
                                   setArchiveSelected(false);
-                                  patchSearchParams({ folder: folder.path });
+                                  patchSearchParams(isChats && folder.chatId
+                                    ? { chatId: folder.chatId, folder: null }
+                                    : { folder: folder.path, chatId: null });
                                 }}
                                 title={folder.path}
                               >
                                 {!isChats && (
                                   <span className="folder-glyph"><FolderGlyph path={folder.path} tab={activeContentType} /></span>
                                 )}
-                                <span className="folder-name">{isChats ? folder.path : (folderLeaf(folder.path) || folder.path)}</span>
+                                <span className="folder-name">{isChats ? folder.displayName || folder.path : (folderLeaf(folder.path) || folder.path)}</span>
                                 {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
                               </button>
                             </div>
@@ -9555,6 +9560,7 @@ export default function Recovery() {
                               // return zero rows due to backend folderPath
                               // indexing nuances and would otherwise leave
                               // the count stuck at 0.
+                              if (activeContentType === 'chats') setThreadChatId(null);
                               if (want) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
                               else setSelectedItems(new Set());
 
@@ -9851,7 +9857,7 @@ export default function Recovery() {
               // Folder-scoped calendar selections put nothing in
               // selectedItems, so fall back to the scope's real size —
               // otherwise the modal would claim "0 events".
-              selectedCount={selectedItems.size || (
+              selectedCount={(threadChatId ? folders.find(folder => folder.chatId === threadChatId)?.count : 0) || selectedItems.size || (
                 activeContentType === 'calendar' && calendarFilterActive
                   ? calendarScope.count
                   : 0
@@ -9887,6 +9893,7 @@ export default function Recovery() {
               resourceId={selectedResource?.id}
               resourceKind={effectiveResourceKind}
               threadPath={threadPath}
+              chatId={threadChatId}
             />
           </>
         );
