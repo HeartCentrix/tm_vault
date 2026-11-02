@@ -270,7 +270,7 @@ export default function Overview() {
 
     let cancelled = false;
     const controller = new AbortController();
-    let loadInFlight = false;
+    const pendingCards = new Set<CardKey>();
     let pollInFlight = false;
 
     // Initial fetch + every-N-seconds refresh. We always refresh the
@@ -295,13 +295,14 @@ export default function Overview() {
     // when the tick itself already fetched it (the old shape fetched
     // activity twice per aggregate refresh).
     const loadAll = async (withAggregates: boolean, withActivity = true, sizeOnly = false) => {
-      if (cancelled || loadInFlight) return;
-      loadInFlight = true;
+      if (cancelled) return;
       // `key` is what tells the card apart from "still loading": on
       // success we clear the error, on failure we record it. Without
       // that the card can only ever say "Loading…" (TMV-005).
-      const settle = <T,>(key: CardKey, p: Promise<T>, set: (v: T) => void) =>
-        p.then((v) => {
+      const settle = <T,>(key: CardKey, request: () => Promise<T>, set: (v: T) => void) => {
+        if (pendingCards.has(key)) return Promise.resolve();
+        pendingCards.add(key);
+        return request().then((v) => {
           if (cancelled) return;
           set(v);
           setCardErrors((prev) => {
@@ -314,7 +315,8 @@ export default function Overview() {
           if (cancelled) return;
           console.error(`dashboard ${key} failed:`, err);
           setCardErrors((prev) => ({ ...prev, [key]: String(err?.message ?? err) }));
-        });
+        }).finally(() => pendingCards.delete(key));
+      };
       const work: Promise<void>[] = [];
       if (withActivity) {
         work.push(
@@ -331,23 +333,19 @@ export default function Overview() {
         );
       }
       if (withAggregates || sizeOnly) {
-        work.push(settle('backupSize', fetchAggregate<BackupSizeResponse>(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), headers, controller.signal), (data) => {
+        work.push(settle('backupSize', () => fetchAggregate<BackupSizeResponse>(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), headers, controller.signal), (data) => {
           sizePending = sizeNeedsRefresh(data);
           setBackupSize(data);
         }));
       }
       if (withAggregates) {
         work.push(
-          settle('protection', fetchAggregate<ProtectionStatus>(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), headers, controller.signal), setProtection),
-          settle('status24h', fetchAggregate<Status24hResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), headers, controller.signal), setStatus24h),
-          settle('status7d', fetchAggregate<Status7dResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), headers, controller.signal), setStatus7d),
+          settle('protection', () => fetchAggregate<ProtectionStatus>(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), headers, controller.signal), setProtection),
+          settle('status24h', () => fetchAggregate<Status24hResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), headers, controller.signal), setStatus24h),
+          settle('status7d', () => fetchAggregate<Status7dResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), headers, controller.signal), setStatus7d),
         );
       }
-      try {
-        await Promise.allSettled(work);
-      } finally {
-        loadInFlight = false;
-      }
+      await Promise.allSettled(work);
     };
 
     loadAll(true);
@@ -381,10 +379,10 @@ export default function Overview() {
         const shouldRefreshAggregates = anyLive || idleTicks >= 3;
         if (shouldRefreshAggregates) {
           idleTicks = 0;
-          await loadAll(true, false);
+          void loadAll(true, false);
         } else {
           idleTicks += 1;
-          if (sizePending) await loadAll(false, false, true);
+          if (sizePending) void loadAll(false, false, true);
         }
       } catch (err) {
         if (!cancelled) console.error(err);

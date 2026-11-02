@@ -138,3 +138,24 @@ test('slow size reads do not overlap and are aborted when leaving overview', asy
     release();
   }
 });
+
+test('a stalled protection card does not block pending size refresh', async ({ page }) => {
+  await page.clock.install();
+  const state = { size: { ...fresh, stale: true, freshness: 'stale' } };
+  await fixture(page, state);
+  let release!: () => void;
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/dashboard/protection**', async route => {
+    await hold;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }).catch(() => {});
+  });
+  try {
+    await page.goto(overview);
+    await expect(page.getByText('Updating backup size')).toBeVisible();
+    state.size = { ...fresh };
+    await page.clock.fastForward(16_000);
+    await expect(page.getByText('Up to date', { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+});
