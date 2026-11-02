@@ -189,7 +189,12 @@ export default function Activity() {
     if (viewType !== 'tasks') return;
     const anyLive = activities.some(a => copyWorkProgress(a).status === 'In Progress');
     if (!anyLive) return;
+    let pollController: AbortController | null = null;
     const t = setInterval(async () => {
+      if (inFlightRef.current) return;
+      const ctl = new AbortController();
+      pollController = ctl;
+      inFlightRef.current = ctl;
       // Read filters from the ref, never from this closure — the effect is
       // keyed on `activities`, so its closure is stale the instant a filter
       // changes (BUG-004: start_date was dropped from the very next tick).
@@ -203,7 +208,7 @@ export default function Activity() {
         if (f.endDate) params.set('end_date', f.endDate);
         if (f.taskOperation) params.set('operation', f.taskOperation);
         if (f.taskStatus) params.set('status', f.taskStatus);
-        const res = await fetch(`${API.ACTIVITY.LIST}?${params}`);
+        const res = await fetch(`${API.ACTIVITY.LIST}?${params}`, { signal: ctl.signal });
         if (!res.ok) return;
         const data = await res.json();
         // Someone (a filter change, a page change, another poll) issued a
@@ -215,8 +220,16 @@ export default function Activity() {
         if (typeof data.total === 'number') setTaskTotal(data.total);
         setTaskHasMore(Boolean(data.has_more));
       } catch { /* ignore transient errors */ }
+      finally {
+        if (inFlightRef.current === ctl) inFlightRef.current = null;
+        if (pollController === ctl) pollController = null;
+      }
     }, 8000);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      pollController?.abort();
+      if (inFlightRef.current === pollController) inFlightRef.current = null;
+    };
     // No exhaustive-deps suppression needed any more: the filters this
     // callback used to close over now come from filtersRef, so [activities,
     // viewType] really is the complete dependency list. The suppression was
@@ -228,6 +241,9 @@ export default function Activity() {
     // found" reads as "there was no backup activity" — a dangerous
     // misreading in an audit tool. Don't issue the request at all (BUG-006).
     if (dateRangeInvalid) {
+      inFlightRef.current?.abort();
+      inFlightRef.current = null;
+      reqGenRef.current++;
       setActivities([]); setAudits([]); setRiskSignals([]);
       setTaskTotal(0); setAuditTotal(0); setRiskTotal(0);
       setTaskHasMore(false);
@@ -289,6 +305,7 @@ export default function Activity() {
       if ((error as { name?: string })?.name === 'AbortError') return;
       console.error('Failed to fetch data:', error);
     } finally {
+      if (inFlightRef.current === ctl) inFlightRef.current = null;
       if (gen === reqGenRef.current) setLoading(false);
     }
   }, [viewType, startDate, endDate, taskOperation, taskStatus, auditActorType, auditAction, riskLevel, taskPage, auditPage, riskPage, minRiskScore, effectiveTenantId, effectiveServiceType, dateRangeInvalid, riskSort, riskOrder]);

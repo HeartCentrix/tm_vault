@@ -272,6 +272,7 @@ export default function Overview() {
     const controller = new AbortController();
     const pendingCards = new Set<CardKey>();
     let pollInFlight = false;
+    let activityInFlight = false;
 
     // Initial fetch + every-N-seconds refresh. We always refresh the
     // activity feed; dashboard aggregates (backup size, protection %,
@@ -318,7 +319,8 @@ export default function Overview() {
         }).finally(() => pendingCards.delete(key));
       };
       const work: Promise<void>[] = [];
-      if (withActivity) {
+      if (withActivity && !activityInFlight) {
+        activityInFlight = true;
         work.push(
           getActivities({
             tenantId,
@@ -329,7 +331,8 @@ export default function Overview() {
             if (cancelled) return;
             setActivities(d.items || []);
             setActivitiesLoaded(true);
-          }).catch((err) => console.error(err)),
+          }).catch((err) => { if (!cancelled) console.error(err); })
+            .finally(() => { activityInFlight = false; }),
         );
       }
       if (withAggregates || sizeOnly) {
@@ -350,8 +353,9 @@ export default function Overview() {
 
     loadAll(true);
     const poll = setInterval(async () => {
-      if (cancelled || pollInFlight) return;
+      if (cancelled || pollInFlight || activityInFlight) return;
       pollInFlight = true;
+      activityInFlight = true;
       // Always fetch activity first so we can decide whether
       // aggregates need a refresh based on the latest status.
       try {
@@ -388,6 +392,7 @@ export default function Overview() {
         if (!cancelled) console.error(err);
       } finally {
         pollInFlight = false;
+        activityInFlight = false;
       }
     }, 15_000);
 
