@@ -49,4 +49,11 @@ describe('backup size freshness', () => {
     expect(renderToStaticMarkup(<BackupSizeFreshness stats={{ asOf: 'invalid', freshness: 'missing' }} />)).not.toContain('<time');
     expect(sizeHeadline({})).toBe('Calculating…');
   });
+
+  it('does not date a calculation when there is no published value', () => {
+    const html = renderToStaticMarkup(<BackupSizeFreshness stats={{
+      totalBytes: null, freshness: 'missing', asOf: '2026-11-02T03:00:00Z',
+    }} />);
+    expect(html).not.toContain('<time');
+  });
 });

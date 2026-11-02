@@ -51,7 +51,7 @@ export function BackupSizeFreshness({ stats }: { stats: ProtectedSizeStats }) {
     <span>{label}</span>
     {stats.eligibleCount != null && stats.freshCount != null && pending &&
       <span>{stats.freshCount} of {stats.eligibleCount} resources up to date</span>}
-    {validStamp && <span>Includes results calculated <time dateTime={stats.asOf!}>{stamp.toLocaleString()}</time></span>}
+    {hasValue && validStamp && <span>Includes results calculated <time dateTime={stats.asOf!}>{stamp.toLocaleString()}</time></span>}
     {stats.historyPartial && <span>Recent captured volume is temporarily unavailable.</span>}
   </div>;
 }

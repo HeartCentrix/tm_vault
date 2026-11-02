@@ -63,6 +63,10 @@ test('first missing baseline says calculating instead of zero', async ({ page })
   const size = page.locator('.status-card').filter({ has: page.getByText('Backup size', { exact: true }) });
   await expect(size.getByText('Calculating…', { exact: true })).toBeVisible();
   await expect(size.getByText('0 GB', { exact: true })).toHaveCount(0);
+  expect(await size.locator('.backup-size-total').evaluate(node => {
+    const card = node.closest('.status-card')!.getBoundingClientRect();
+    return node.getBoundingClientRect().right <= card.right;
+  })).toBe(true);
   await page.screenshot({ path: test.info().outputPath('overview-calculating-mobile.png'), fullPage: true });
 });
 

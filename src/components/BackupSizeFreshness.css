@@ -15,3 +15,23 @@
 [data-theme="dark"] .backup-size-freshness.updating > span:first-child {
   color: #edc77b;
 }
+.backup-size-summary {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.backup-size-summary .backup-size-headline {
+  min-width: 0;
+  max-width: 100%;
+}
+.backup-size-summary .backup-size-total {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .backup-size-summary .backup-size-total {
+    font-size: clamp(18px, 5vw, 26px);
+  }
+  .backup-size-summary .backup-size-freshness {
+    flex-basis: 100%;
+    max-width: 100%;
+  }
+}
