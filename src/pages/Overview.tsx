@@ -11,18 +11,13 @@ import {
   YAxis,
 } from 'recharts';
 import './Overview.css';
+import { BackupSizeFreshness, sizeHeadline, sizeNeedsRefresh, type ProtectedSizeStats } from '../components/BackupSizeFreshness';
 import { API } from '../config/api';
 import { formatNumber } from '../utils/display';
 import { getActivities, type ActivityItem as ActivityRow } from '../services/activity';
 import { triggerDatasourceBackup } from '../services/resource';
 
-interface BackupSizeResponse {
-  total: string;
-  oneDayChange: string;
-  oneMonthChange: string;
-  allTimeTotal: string;
-  dailyData: { date: string; bytes: number }[];
-}
+type BackupSizeResponse = ProtectedSizeStats;
 
 interface ProtectionStatus {
   percentage: number;
@@ -282,6 +277,8 @@ export default function Overview() {
     // to every 4th tick (~1 minute) so a quiet tenant isn't hammering
     // four endpoints just to re-confirm unchanged totals.
     let idleTicks = 0;
+    let sizePending = false;
+    setBackupSize(null);
     // All five requests fire in parallel and each card paints as its
     // own response lands — the page must never block on the slowest
     // aggregate (2026-07-29: a cold backup/size recompute held the
@@ -289,7 +286,7 @@ export default function Overview() {
     // withActivity=false lets the poll tick skip re-fetching activity
     // when the tick itself already fetched it (the old shape fetched
     // activity twice per aggregate refresh).
-    const loadAll = async (withAggregates: boolean, withActivity = true) => {
+    const loadAll = async (withAggregates: boolean, withActivity = true, sizeOnly = false) => {
       // `key` is what tells the card apart from "still loading": on
       // success we clear the error, on failure we record it. Without
       // that the card can only ever say "Loading…" (TMV-005).
@@ -323,9 +320,14 @@ export default function Overview() {
           }).catch((err) => console.error(err)),
         );
       }
+      if (withAggregates || sizeOnly) {
+        work.push(settle('backupSize', fetchAggregate<BackupSizeResponse>(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), headers), (data) => {
+          sizePending = sizeNeedsRefresh(data);
+          setBackupSize(data);
+        }));
+      }
       if (withAggregates) {
         work.push(
-          settle('backupSize', fetchAggregate<BackupSizeResponse>(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), headers), setBackupSize),
           settle('protection', fetchAggregate<ProtectionStatus>(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), headers), setProtection),
           settle('status24h', fetchAggregate<Status24hResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), headers), setStatus24h),
           settle('status7d', fetchAggregate<Status7dResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), headers), setStatus7d),
@@ -366,6 +368,7 @@ export default function Overview() {
           await loadAll(true, false);
         } else {
           idleTicks += 1;
+          if (sizePending) await loadAll(false, false, true);
         }
       } catch (err) {
         console.error(err);
@@ -375,7 +378,7 @@ export default function Overview() {
     // Refresh immediately when the tab becomes visible again so the
     // user isn't looking at stale rows after alt-tabbing.
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') loadAll(false);
+      if (document.visibilityState === 'visible') loadAll(false, true, sizePending);
     };
     document.addEventListener('visibilitychange', onVisibility);
 
@@ -777,33 +780,35 @@ export default function Overview() {
             <span className="status-label">Backup size</span>
           </div>
           <div className="status-card-value">
-            {cardErrors.backupSize ? (
+            {cardErrors.backupSize && !backupSize ? (
               <CardError message={cardErrors.backupSize} onRetry={retryAggregates} />
             ) : (
             <div className="chart-card-content">
+              {cardErrors.backupSize && <CardError message={cardErrors.backupSize} onRetry={retryAggregates} />}
               <div className="backup-size-summary">
                 <div className="backup-size-headline">
                   <div className="backup-size-total">
-                    {!backupSize ? 'Loading...' : (backupSize.total || '0 GB')}
+                    {!backupSize ? 'Loading...' : sizeHeadline(backupSize)}
                   </div>
                 </div>
+                {backupSize && <BackupSizeFreshness stats={cardErrors.backupSize ? { ...backupSize, stale: true, freshness: 'stale' } : backupSize} />}
                 <div className="backup-size-metrics">
                   {backupSize?.oneMonthChange && (
                     <div className="backup-size-pill positive">
-                      <span>7 days</span>
-                      <strong>{backupSize.oneMonthChange}</strong>
+                      <span>7 days captured</span>
+                      <strong>{backupSize.sevenDayChange ?? backupSize.oneMonthChange}</strong>
                     </div>
                   )}
                   {backupSize?.allTimeTotal && (
                     <div className="backup-size-pill neutral">
-                      <span>All time</span>
+                      <span>Protected data</span>
                       <strong>{backupSize.allTimeTotal}</strong>
                     </div>
                   )}
                 </div>
               </div>
 
-              {backupSizeChartData.length > 0 && (
+              {backupSizeChartData.length > 0 && !backupSize?.historyPartial && (
                 <div className="chart-shell">
                   {/* See the 7-day card for why initialDimension is set. */}
                   <ResponsiveContainer
