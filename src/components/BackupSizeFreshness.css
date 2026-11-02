@@ -1,0 +1,17 @@
+.backup-size-freshness {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0 12px;
+  color: var(--text-secondary, #606873);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.backup-size-freshness.updating > span:first-child {
+  color: #93620e;
+  font-weight: 600;
+}
+[data-theme="dark"] .backup-size-freshness.updating > span:first-child {
+  color: #edc77b;
+}
