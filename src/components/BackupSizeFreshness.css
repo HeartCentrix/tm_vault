@@ -30,8 +30,11 @@
   .backup-size-summary .backup-size-total {
     font-size: clamp(18px, 5vw, 26px);
   }
+  .backup-size-summary {
+    flex-wrap: nowrap;
+  }
   .backup-size-summary .backup-size-freshness {
-    flex-basis: 100%;
+    flex-basis: auto;
     max-width: 100%;
   }
 }

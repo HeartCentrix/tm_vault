@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fmtLocal, parseAsUtc } from '../utils/datetime';
 import {
@@ -242,8 +242,8 @@ type CardKey = 'backupSize' | 'protection' | 'status24h' | 'status7d';
  * "541.9 GB", which is why this finding did not reproduce on re-test —
  * the defect is the unrecoverable failure mode, not the happy path.
  */
-async function fetchAggregate<T>(url: string, headers: Record<string, string>): Promise<T> {
-  const res = await fetch(url, { headers });
+async function fetchAggregate<T>(url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { headers, signal });
   if (!res.ok) {
     // Body may be an nginx HTML error page — never feed it to json().
     throw new Error(`${res.status} ${res.statusText || 'request failed'}`);
@@ -263,11 +263,15 @@ export default function Overview() {
   const [triggeringBackupAll, setTriggeringBackupAll] = useState(false);
   // Bumped by the Retry buttons to re-run the loader effect.
   const [reloadNonce, setReloadNonce] = useState(0);
+  const sizeScope = useRef<string | null>(null);
 
   useEffect(() => {
     const headers: Record<string, string> = {};
 
     let cancelled = false;
+    const controller = new AbortController();
+    let loadInFlight = false;
+    let pollInFlight = false;
 
     // Initial fetch + every-N-seconds refresh. We always refresh the
     // activity feed; dashboard aggregates (backup size, protection %,
@@ -277,8 +281,12 @@ export default function Overview() {
     // to every 4th tick (~1 minute) so a quiet tenant isn't hammering
     // four endpoints just to re-confirm unchanged totals.
     let idleTicks = 0;
-    let sizePending = false;
-    setBackupSize(null);
+    let sizePending = true;
+    const scope = `${tenantId || ''}:${serviceType || ''}`;
+    if (sizeScope.current !== scope) {
+      sizeScope.current = scope;
+      setBackupSize(null);
+    }
     // All five requests fire in parallel and each card paints as its
     // own response lands — the page must never block on the slowest
     // aggregate (2026-07-29: a cold backup/size recompute held the
@@ -287,6 +295,8 @@ export default function Overview() {
     // when the tick itself already fetched it (the old shape fetched
     // activity twice per aggregate refresh).
     const loadAll = async (withAggregates: boolean, withActivity = true, sizeOnly = false) => {
+      if (cancelled || loadInFlight) return;
+      loadInFlight = true;
       // `key` is what tells the card apart from "still loading": on
       // success we clear the error, on failure we record it. Without
       // that the card can only ever say "Loading…" (TMV-005).
@@ -301,8 +311,8 @@ export default function Overview() {
             return next;
           });
         }).catch((err) => {
-          console.error(`dashboard ${key} failed:`, err);
           if (cancelled) return;
+          console.error(`dashboard ${key} failed:`, err);
           setCardErrors((prev) => ({ ...prev, [key]: String(err?.message ?? err) }));
         });
       const work: Promise<void>[] = [];
@@ -313,7 +323,7 @@ export default function Overview() {
             serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
             page: 1,
             size: 10,
-          }).then((d) => {
+          }, controller.signal).then((d) => {
             if (cancelled) return;
             setActivities(d.items || []);
             setActivitiesLoaded(true);
@@ -321,23 +331,29 @@ export default function Overview() {
         );
       }
       if (withAggregates || sizeOnly) {
-        work.push(settle('backupSize', fetchAggregate<BackupSizeResponse>(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), headers), (data) => {
+        work.push(settle('backupSize', fetchAggregate<BackupSizeResponse>(appendDashboardFilters(API.DASHBOARD.BACKUP_SIZE, tenantId, serviceType), headers, controller.signal), (data) => {
           sizePending = sizeNeedsRefresh(data);
           setBackupSize(data);
         }));
       }
       if (withAggregates) {
         work.push(
-          settle('protection', fetchAggregate<ProtectionStatus>(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), headers), setProtection),
-          settle('status24h', fetchAggregate<Status24hResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), headers), setStatus24h),
-          settle('status7d', fetchAggregate<Status7dResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), headers), setStatus7d),
+          settle('protection', fetchAggregate<ProtectionStatus>(appendDashboardFilters(API.DASHBOARD.PROTECTION, tenantId, serviceType), headers, controller.signal), setProtection),
+          settle('status24h', fetchAggregate<Status24hResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_24H, tenantId, serviceType), headers, controller.signal), setStatus24h),
+          settle('status7d', fetchAggregate<Status7dResponse>(appendDashboardFilters(API.DASHBOARD.STATUS_7D, tenantId, serviceType), headers, controller.signal), setStatus7d),
         );
       }
-      await Promise.allSettled(work);
+      try {
+        await Promise.allSettled(work);
+      } finally {
+        loadInFlight = false;
+      }
     };
 
     loadAll(true);
     const poll = setInterval(async () => {
+      if (cancelled || pollInFlight) return;
+      pollInFlight = true;
       // Always fetch activity first so we can decide whether
       // aggregates need a refresh based on the latest status.
       try {
@@ -345,7 +361,7 @@ export default function Overview() {
           tenantId,
           serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
           page: 1, size: 10,
-        });
+        }, controller.signal);
         if (cancelled) return;
         setActivities(activityData.items || []);
         setActivitiesLoaded(true);
@@ -371,7 +387,9 @@ export default function Overview() {
           if (sizePending) await loadAll(false, false, true);
         }
       } catch (err) {
-        console.error(err);
+        if (!cancelled) console.error(err);
+      } finally {
+        pollInFlight = false;
       }
     }, 15_000);
 
@@ -384,6 +402,7 @@ export default function Overview() {
 
     return () => {
       cancelled = true;
+      controller.abort();
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisibility);
     };

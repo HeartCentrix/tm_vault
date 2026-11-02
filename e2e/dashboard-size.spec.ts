@@ -8,7 +8,7 @@ const fresh = { total: '2.40 GB', totalBytes: 2400, eligibleCount: 2, freshCount
   dailyData: [], asOf: '2026-11-02T03:00:00Z', projectedBytes1y: 5000000,
   projectedBytes3y: 9000000, dailyGrowthBytes: 100 };
 
-async function fixture(page: Page, state: { size: Record<string, unknown>; error?: boolean }) {
+async function fixture(page: Page, state: { size: Record<string, unknown>; error?: boolean; live?: boolean }) {
   let sizeCalls = 0;
   await page.addInitScript(() => localStorage.setItem('user', JSON.stringify({
     id: 'synthetic-qa', email: 'qa@example.invalid', roles: ['SUPER_ADMIN'],
@@ -30,7 +30,10 @@ async function fixture(page: Page, state: { size: Record<string, unknown>; error
     else if (path.endsWith('/auth/me')) data = { id: 'synthetic-qa', email: 'qa@example.invalid', roles: ['SUPER_ADMIN'] };
     else if (path.endsWith('/status/24hour')) data = { success: 3, warnings: 0, failures: 0, inProgress: 1, stalled: 0 };
     else if (path.endsWith('/status/7day')) data = { dailyStatus: [], summary: { totalBackups: 3, successRate: 100, avgDuration: '1m' } };
-    else if (path.includes('/activity')) data = { items: [], total: 0 };
+    else if (path.includes('/activity')) data = { items: state.live ? [{
+      id: 'job-live', operation: 'BACKUP', object: 'Mailbox', status: 'In Progress',
+      start_time: new Date().toISOString(), progressPct: 10,
+    }] : [], total: state.live ? 1 : 0 };
     else if (path.endsWith('/storage/status')) data = { active_backend: { id: 'backend-a', kind: 'azure_blob', name: 'Azure', endpoint: 'https://storage.invalid', is_enabled: true }, transition_state: 'stable', last_toggle_at: null, cooldown_until: null, inflight_jobs_count: 0 };
     else if (path.endsWith('/storage/backends') || path.endsWith('/storage/events')) data = [];
     return route.fulfill({ status, headers, contentType: 'application/json', body: JSON.stringify(data) });
@@ -67,6 +70,8 @@ test('first missing baseline says calculating instead of zero', async ({ page })
     const card = node.closest('.status-card')!.getBoundingClientRect();
     return node.getBoundingClientRect().right <= card.right;
   })).toBe(true);
+  expect(await size.locator('.backup-size-freshness').evaluate(node =>
+    node.getBoundingClientRect().right <= node.closest('.status-card')!.getBoundingClientRect().right)).toBe(true);
   await page.screenshot({ path: test.info().outputPath('overview-calculating-mobile.png'), fullPage: true });
 });
 
@@ -88,7 +93,7 @@ test('storage keeps last-known value and blocks estimates until summaries catch 
 test('overview refresh error preserves last-known total with warning', async ({ page }) => {
   await page.clock.install();
   const state = { size: { ...fresh, stale: true, freshness: 'stale' }, error: false };
-  await fixture(page, state);
+  const calls = await fixture(page, state);
   await page.goto(overview);
   const size = page.locator('.status-card').filter({ has: page.getByText('Backup size', { exact: true }) });
   await expect(size.getByText('2.40 GB', { exact: true })).toBeVisible();
@@ -97,4 +102,39 @@ test('overview refresh error preserves last-known total with warning', async ({ 
   await expect(size.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(size.getByText('2.40 GB', { exact: true })).toBeVisible();
   await expect(size.getByText('Updating backup size')).toBeVisible();
+  const beforeRetry = calls();
+  await size.getByRole('button', { name: 'Retry' }).click();
+  await page.clock.runFor(100);
+  await expect.poll(calls).toBeGreaterThan(beforeRetry);
+  await expect(size.getByRole('button', { name: 'Retry' })).toBeVisible();
+  await expect(size.getByText('2.40 GB', { exact: true })).toBeVisible();
+});
+
+test('slow size reads do not overlap and are aborted when leaving overview', async ({ page }) => {
+  await page.clock.install();
+  await fixture(page, { size: fresh, live: true });
+  let release!: () => void;
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  let calls = 0;
+  let failed = 0;
+  page.on('requestfailed', request => { if (request.url().includes('/backup/size')) failed++; });
+  await page.route('**/dashboard/backup/size**', async route => {
+    calls++;
+    await hold;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fresh) }).catch(() => {});
+  });
+  try {
+    await page.goto(overview);
+    await expect.poll(() => calls).toBeGreaterThan(0);
+    const initialCalls = calls;
+    await page.clock.fastForward(31_000);
+    await page.clock.runFor(100);
+    expect(calls).toBe(initialCalls);
+    const beforeLeaving = failed;
+    await page.getByText('Configuration', { exact: true }).click();
+    await expect(page).toHaveURL(/configuration/);
+    await expect.poll(() => failed).toBeGreaterThan(beforeLeaving);
+  } finally {
+    release();
+  }
 });
