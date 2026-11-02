@@ -10,6 +10,15 @@ export interface CopyWorkSummary {
   gap_counts?: Record<string, number>;
 }
 
+export interface ProviderWorkSummary {
+  state: string;
+  pending_leaves?: number;
+  pending_units?: number;
+  completed_units?: number;
+  failed_units?: number;
+  next_eligible_at?: string | null;
+}
+
 export interface ActivityItem {
   id: string;
   jobIds?: string[];
@@ -39,6 +48,7 @@ export interface ActivityItem {
   bytesDone?: number;
   bytesExpected?: number | null;
   copy_work?: CopyWorkSummary | null;
+  provider_work?: ProviderWorkSummary | null;
 }
 
 export interface BatchChildResource {

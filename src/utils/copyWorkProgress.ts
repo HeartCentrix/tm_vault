@@ -25,6 +25,25 @@ export function copyWorkProgress(item: ActivityItem) {
       message = captured ? 'Backup records are incomplete' : 'Backup records could not be prepared';
     }
   }
+  const provider = item.operation === 'BACKUP' ? item.provider_work : null;
+  if (provider && !['Canceled', 'Expired', 'Failed'].includes(item.status)) {
+    const providerLabels: Record<string, string> = {
+      WAITING: 'Waiting for Microsoft; backup will resume automatically',
+      RUNNING: 'Capturing backup data',
+      SETTLING: 'Finalizing backup',
+    };
+    const providerLabel = providerLabels[provider.state];
+    if (providerLabel) {
+      pending = true;
+      status = 'In Progress';
+      message = providerLabel;
+    } else if (provider.state === 'INCOMPLETE' && !pending) {
+      const captured = status === 'Partial' || (item.bytesDone || item.data_backed_up || 0) > 0
+        || (item.counts?.done || 0) + (item.counts?.partial || 0) > 0;
+      status = captured ? 'Partial' : 'Failed';
+      message = 'Some backup content could not be captured';
+    }
+  }
   const rows = copy?.committed_rows;
   const records = message && rows != null && Number.isFinite(rows) && rows > 0
     ? `${rows.toLocaleString()} ${rows === 1 ? 'record' : 'records'} prepared` : undefined;

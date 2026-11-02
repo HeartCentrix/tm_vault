@@ -68,3 +68,27 @@ describe('Activity copy progress', () => {
     expect(html).not.toContain('private_query_or_identifier');
   });
 });
+
+describe('Activity provider progress', () => {
+  it.each([
+    ['WAITING', 'Waiting for Microsoft; backup will resume automatically'],
+    ['RUNNING', 'Capturing backup data'],
+    ['SETTLING', 'Finalizing backup'],
+  ])('keeps %s provider work active without changing captured bytes', (state, label) => {
+    const row = { ...item, bytesDone: 4096, provider_work: { state, pending_leaves: 1 } };
+    const html = render(row);
+    expect(html).toContain(label);
+    expect(html).toContain('data-status="In Progress"');
+    expect(html).not.toContain('100%');
+    expect(row.bytesDone).toBe(4096);
+    expect(row.status).toBe('Done');
+  });
+
+  it('preserves cancellation while showing truthful failed coverage', () => {
+    expect(render({ ...item, status: 'Canceled', provider_work: { state: 'WAITING' } }))
+      .toContain('data-status="Canceled"');
+    expect(render({ ...item, bytesDone: 1024, provider_work: { state: 'INCOMPLETE' } }))
+      .toContain('data-status="Partial"');
+    expect(render({ ...item, provider_work: { state: 'COMPLETE' } })).toBe(render(item));
+  });
+});

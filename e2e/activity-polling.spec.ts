@@ -21,7 +21,7 @@ async function fixture(page: Page) {
       return original(input, init).finally(() => { call.done = true; });
     };
   });
-  const state = { calls: 0, hold: false, held: [] as Route[] };
+  const state = { calls: 0, hold: false, held: [] as Route[], payload: undefined as unknown };
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     const headers = { 'Access-Control-Allow-Origin': new URL(process.env.E2E_URL || 'http://127.0.0.1:5189').origin,
@@ -31,7 +31,7 @@ async function fixture(page: Page) {
     if (path.endsWith('/activity')) {
       state.calls++;
       if (state.hold) { state.held.push(route); return; }
-      data = activity();
+      data = state.payload || activity();
     } else if (path.endsWith('/auth/me')) data = { id: 'qa', roles: ['SUPER_ADMIN'] };
     else if (path.endsWith('/tenants')) data = [{ id: tenant, displayName: 'Synthetic tenant', type: 'M365', status: 'ACTIVE' }];
     else if (path.includes('/tenants/')) data = { id: tenant, displayName: 'Synthetic tenant', type: 'M365', status: 'ACTIVE' };
@@ -104,4 +104,21 @@ test('changing Activity filters aborts the obsolete poll and applies the new res
   await expect(page.getByText('Mailbox', { exact: true })).toBeVisible();
   await state.held[0].fulfill({ contentType: 'application/json', body: JSON.stringify(activity('Obsolete mailbox')) }).catch(() => {});
   await expect(page.getByText('Obsolete mailbox', { exact: true })).toHaveCount(0);
+});
+
+
+test('provider waiting remains active until its durable receipt settles', async ({ page }) => {
+  const state = await fixture(page);
+  const pending = { ...activity(), items: [{ ...activity().items[0], status: 'Done', progressPct: 100,
+    provider_work: { state: 'WAITING', pending_leaves: 1 } }] };
+  state.payload = pending;
+  await page.goto('/activity');
+  await expect(page.getByText('Waiting for Microsoft; backup will resume automatically')).toBeVisible();
+  const row = page.getByRole('row').filter({ hasText: 'Mailbox' });
+  await expect(row).not.toContainText('100%');
+  state.payload = { ...pending, items: [{ ...pending.items[0], provider_work: { state: 'COMPLETE', pending_leaves: 0 } }] };
+  await page.clock.fastForward(9000);
+  await expect(page.getByText('Waiting for Microsoft; backup will resume automatically')).toHaveCount(0);
+  await expect(row).toContainText('Done');
+  await expect(row).not.toContainText('In Progress');
 });
