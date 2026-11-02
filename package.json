@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "e2e": "playwright test",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:auth": "node scripts/test-oauth-callback.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.14",

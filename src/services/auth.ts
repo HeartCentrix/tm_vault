@@ -109,7 +109,11 @@ class AuthService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),
     });
-    if (!res.ok) throw new Error(`OAuth callback failed: ${res.statusText}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const detail = typeof body?.detail === 'string' ? body.detail : '';
+      throw new Error(detail || `OAuth callback failed: ${res.status} ${res.statusText}`);
+    }
     const data = await res.json();
     this.storeTokens(data);
     return data;
