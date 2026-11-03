@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import './RestoreModal.css';
-import { RestoreService, type RestoreType } from '../services/restore';
+import { RestoreService } from '../services/restore';
+import { buildRestoreRequest, getRestoreValidationError, type RestoreOptions } from '../utils/restoreRequest';
 import { getResourcesByType, type ResourceItem } from '../services/resource';
 import { fmtLocalDate } from '../utils/datetime';
 import { EntraRestoreForm, type EntraRestoreSelection } from './EntraRestoreForm';
@@ -42,7 +43,7 @@ type Scope = 'selected' | 'full';
 type Destination = 'original' | 'another';
 type OriginalSubOption = 'separate_folder' | 'overwrite';
 
-export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths, excludedItemIds, isArchive = false }: RestoreModalProps) {
+export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, itemType, snapshotDate, resourceKind, chatRestoreUnsupported, folderPaths, excludedItemIds, isArchive = false }: Readonly<RestoreModalProps>) {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [scope, setScope] = useState<Scope>('selected');
   // Shared + room mailboxes have no OneDrive in M365 — hide it so users
@@ -277,133 +278,23 @@ export function RestoreModal({ isOpen, onClose, itemIds, snapshotIds, itemName, 
   };
 
   const handleRecover = async () => {
-    const isSharepointSource = resourceKind === 'sharepoint_site';
-    // Full-account restore requires at least one workload selected —
-    // otherwise the backend receives an empty filter list and silently
-    // skips every item. The error surfaces the misconfiguration before
-    // the restore job gets created. File-family resources (SharePoint)
-    // don't have a workload axis, so skip the check for them.
-    if (
-      scope === 'full'
-      && !isPowerBiItem
-      && !isPowerAppItem
-      && !isPowerFlowItem
-      && !isPowerDlpItem
-      && !isSharepointSource
-      && workloads.size === 0
-    ) {
-      setError(`Select at least one workload to restore (${availableWorkloads.join(', ')}).`);
-      return;
-    }
-    if (isPowerBiItem) {
-      if (destination === 'another' && !targetResourceId.trim()) {
-        setError('Please select a target Power BI workspace');
-        return;
-      }
-    } else if (isPowerAppItem || isPowerFlowItem) {
-      if (destination === 'another' && !targetEnvironmentId.trim()) {
-        setError('Please select a target environment');
-        return;
-      }
-    } else if (isPowerDlpItem) {
-      // DLP is tenant-scoped — only in-place restore is meaningful
-    } else if (isSharepointSource) {
-      if (destination === 'another' && !targetUserId.trim()) {
-        setError('Please select a target SharePoint site');
-        return;
-      }
-    } else if (destination === 'another' && !targetUserId.trim()) {
-      setError('Please enter a target resource ID');
+    const options: RestoreOptions = {
+      scope, destination, originalSub, resourceKind, isPowerBiItem,
+      isPowerAppItem, isPowerFlowItem, isPowerDlpItem, isArchive,
+      workloads, availableWorkloads, targetResourceId, targetEnvironmentId,
+      targetUserId, folderName, snapshotIds, itemIds, folderPaths,
+      excludedItemIds, entraSelection,
+    };
+    const validationError = getRestoreValidationError(options);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      // Entra directory restore — delegated entirely to EntraRestoreForm selection
-      if (resourceKind === 'entra_directory' && entraSelection) {
-        const response = await RestoreService.triggerRestore({
-          restoreType: 'IN_PLACE',
-          snapshotIds,
-          itemIds: entraSelection.recoverMode === 'selected' ? itemIds : [],
-          recoverMode: entraSelection.recoverMode,
-          entraSections: entraSelection.recoverMode === 'directory' ? entraSelection.sections : undefined,
-          includeGroupMembership: entraSelection.includeGroupMembership,
-          includeAuMembership: entraSelection.includeAuMembership,
-        });
-        setSuccess(response.jobId);
-        return;
-      }
-
-      let restoreType: RestoreType;
-      if (isPowerBiItem || isPowerAppItem || isPowerFlowItem) {
-        restoreType = 'IN_PLACE';  // Power Platform uses IN_PLACE + targetEnvironmentId for cross-env
-      } else if (isPowerDlpItem) {
-        restoreType = 'IN_PLACE';
-      } else if (isSharepointSource) {
-        // SharePoint's "another site" is a workload-family restore, not a
-        // user-mailbox re-target — backend expects CROSS_RESOURCE with
-        // targetResourceId, NOT CROSS_USER with targetUserId.
-        restoreType = destination === 'another' ? 'CROSS_RESOURCE' : 'IN_PLACE';
-      } else {
-        restoreType = destination === 'another' ? 'CROSS_USER' : 'IN_PLACE';
-      }
-
-      const response = await RestoreService.triggerRestore({
-        restoreType,
-        snapshotIds,
-        // Declare WHICH scope this is. Without it the server cannot tell a
-        // deliberate whole-snapshot restore from an empty selection: both
-        // post {restoreType, snapshotIds, itemIds: []} byte-for-byte, so the
-        // SELECTION_EMPTY guard in job-service stays inert and a Recover
-        // clicked with nothing ticked replays the entire snapshot into the
-        // live mailbox (QA TMV-001). Set here per-call-site rather than
-        // blanket across every request, because the Entra branch above
-        // returns before this point and must stay exempt.
-        selectionScope: scope === 'selected' ? 'SELECTED' : 'ALL',
-        itemIds: scope === 'selected' ? itemIds : [],
-        folderPaths:
-          scope === 'selected' && folderPaths && folderPaths.length > 0
-            ? folderPaths
-            : undefined,
-        // Only meaningful alongside folderPaths: the resolver subtracts
-        // these from the folder expansion so un-ticked items stay out.
-        excludedItemIds:
-          scope === 'selected' && folderPaths && folderPaths.length > 0
-            && excludedItemIds && excludedItemIds.length > 0
-              ? excludedItemIds
-              : undefined,
-        // For SharePoint the dropdown's value IS the target resource id
-        // (we store it in targetUserId state for UI parity, but forward
-        // it as targetResourceId to the backend).
-        targetUserId:
-          !isPowerBiItem && !isPowerPlatformItem && !isSharepointSource
-            && destination === 'another'
-              ? targetUserId : undefined,
-        targetResourceId:
-          isPowerBiItem && destination === 'another' ? targetResourceId
-          : isSharepointSource && destination === 'another' ? targetUserId
-          : undefined,
-        targetEnvironmentId: (isPowerAppItem || isPowerFlowItem) && destination === 'another' ? targetEnvironmentId : undefined,
-        targetFolder: !isPowerBiItem && !isPowerPlatformItem
-          && ((destination === 'original')
-            || (destination === 'another'
-                && (resourceKind === 'onedrive' || isSharepointSource)))
-          && originalSub === 'separate_folder' ? folderName : undefined,
-        overwrite: !isPowerBiItem && !isPowerPlatformItem
-          && ((destination === 'original')
-            || (destination === 'another'
-                && (resourceKind === 'onedrive' || isSharepointSource)))
-          && originalSub === 'overwrite',
-        workloads:
-          // Archive restore must scope to the Archive workload or the backend's
-          // WORKLOAD_ITEM_TYPES filter drops every ARCHIVE_ITEM on a full-scope
-          // (whole-folder) restore.
-          isArchive
-            ? ['Archive']
-            : !isPowerBiItem && !isPowerPlatformItem && !isSharepointSource
-              && scope === 'full' ? Array.from(workloads) : undefined,
-      });
+      const response = await RestoreService.triggerRestore(buildRestoreRequest(options));
       setSuccess(response.jobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Restore failed');
