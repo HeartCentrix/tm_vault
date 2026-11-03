@@ -30,7 +30,7 @@ export function backendLabel(b: StorageBackend): string {
 /** Short sub-label (region/host) shown beside the friendly name. */
 export function backendDetail(b: StorageBackend): string {
   const ep = (b.endpoint || '').toLowerCase();
-  const wasabi = ep.match(/s3\.([a-z0-9-]+)\.wasabisys\.com/);
+  const wasabi = /s3\.([a-z0-9-]+)\.wasabisys\.com/.exec(ep);
   if (wasabi) return `wasabi · ${wasabi[1]}`;
   return b.kind;
 }

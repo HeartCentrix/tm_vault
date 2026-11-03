@@ -79,7 +79,6 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
   }, []);
 
   return (
-    <>
       <header className="header">
         <div className="header-left">
           <div className="data-source-selector" ref={dropdownRef}>
@@ -231,6 +230,5 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
           </div>
         </div>
       </header>
-    </>
   );
 }

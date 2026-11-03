@@ -45,7 +45,8 @@ export function copyWorkProgress(item: ActivityItem) {
     }
   }
   const rows = copy?.committed_rows;
+  const recordLabel = rows === 1 ? 'record' : 'records';
   const records = message && rows != null && Number.isFinite(rows) && rows > 0
-    ? `${rows.toLocaleString()} ${rows === 1 ? 'record' : 'records'} prepared` : undefined;
+    ? `${rows.toLocaleString()} ${recordLabel} prepared` : undefined;
   return { status, message, pending, records };
 }

@@ -42,9 +42,10 @@ export function BackupSizeFreshness({ stats }: { stats: ProtectedSizeStats }) {
   const incomplete = Boolean(stats.partial || stats.initializingScope || stats.missingCount);
   const stamp = stats.asOf ? new Date(stats.asOf) : null;
   const validStamp = stamp && Number.isFinite(stamp.getTime());
-  const label = !hasValue ? 'Calculating backup size'
-    : incomplete ? 'Partial last-known total'
-    : pending ? 'Updating backup size' : 'Up to date';
+  let label = 'Up to date';
+  if (!hasValue) label = 'Calculating backup size';
+  else if (incomplete) label = 'Partial last-known total';
+  else if (pending) label = 'Updating backup size';
   // Older deployments do not supply freshness fields; keep their complete display compatible.
   if (!stats.freshness && !stats.partial && !stats.stale && !stats.historyPartial) return null;
   return <div className={`backup-size-freshness${pending ? ' updating' : ''}`} role="status" aria-live="polite">

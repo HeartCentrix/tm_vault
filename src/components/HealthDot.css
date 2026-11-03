@@ -36,5 +36,5 @@
 
 [data-theme="dark"] .health-dot-healthy { background: rgba(34,197,94,0.15); color: #86efac; }
 [data-theme="dark"] .health-dot-degraded { background: rgba(245,158,11,0.15); color: #fcd34d; }
-[data-theme="dark"] .health-dot-unhealthy { background: rgba(239,68,68,0.15); color: #fca5a5; }
-[data-theme="dark"] .health-dot-unknown { background: rgba(148,163,184,0.15); color: #cbd5e1; }
+[data-theme="dark"] .health-dot-unhealthy { background: #3c2830; color: #fca5a5; }
+[data-theme="dark"] .health-dot-unknown { background: #303640; color: #cbd5e1; }

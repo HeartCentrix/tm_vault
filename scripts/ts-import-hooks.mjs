@@ -39,7 +39,7 @@ export async function load(url, context, nextLoad) {
     const src = await readFile(new URL(url), 'utf8');
     return {
       format: 'module-typescript',
-      source: src.replace(/import\.meta\.env/g, '({})'),
+      source: src.replaceAll('import.meta.env', '({})'),
       shortCircuit: true,
     };
   }

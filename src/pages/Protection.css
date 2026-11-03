@@ -1085,6 +1085,9 @@
 }
 
 .bulk-confirm-modal {
+  position: relative;
+  margin: 0;
+  color: inherit;
   background: var(--tm-bg, #F9F6F2);
   border: 1px solid var(--tm-border, #E0D9D0);
   border-radius: 8px;

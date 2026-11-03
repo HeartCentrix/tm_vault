@@ -272,7 +272,7 @@ export default function Protection() {
   // protection at scale.
   const [confirmBulk, setConfirmBulk] = useState<{ policyId: string; policyName: string; matched: number } | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
-  const bulkModalRef = useRef<HTMLDivElement>(null);
+  const bulkModalRef = useRef<HTMLDialogElement>(null);
   // Read inside the modal's keydown listener without re-binding it on
   // every busy toggle.
   const bulkBusyRef = useRef(bulkBusy);
@@ -1173,7 +1173,7 @@ export default function Protection() {
         {/* Bulk SLA result / status. Dismissible; errors used to die in
             console.error and the page gave no sign anything happened. */}
         {bulkNotice && (
-          <div className={`bulk-notice ${bulkNotice.kind}`} role={bulkNotice.kind === 'error' ? 'alert' : 'status'}>
+          <output className={`bulk-notice ${bulkNotice.kind}`} role={bulkNotice.kind === 'error' ? 'alert' : undefined}>
             <span>{bulkNotice.text}</span>
             <button
               type="button"
@@ -1183,7 +1183,7 @@ export default function Protection() {
             >
               ×
             </button>
-          </div>
+          </output>
         )}
         {(() => {
           const banner = selectAllBannerState({
@@ -1439,14 +1439,13 @@ export default function Protection() {
           count comes from the server's dry run — nothing has been written
           when this renders, and nothing is until Confirm. */}
       {confirmBulk && (
-        <div className="bulk-confirm-overlay" onClick={() => { if (!bulkBusy) setConfirmBulk(null); }}>
-          <div
+        <div className="bulk-confirm-overlay" onClick={e => { if (e.target === e.currentTarget && !bulkBusy) setConfirmBulk(null); }}>
+          <dialog
+            open
             ref={bulkModalRef}
             className="bulk-confirm-modal"
-            role="dialog"
             aria-modal="true"
             aria-labelledby="bulk-confirm-title"
-            onClick={e => e.stopPropagation()}
           >
             <h3 id="bulk-confirm-title">{confirmBulk.policyId ? 'Assign SLA policy' : 'Remove protection'}</h3>
             <p className="bulk-confirm-text">
@@ -1471,7 +1470,7 @@ export default function Protection() {
                 {bulkBusy ? 'Applying…' : confirmBulk.policyId ? `Assign to ${confirmBulk.matched} resources` : `Remove from ${confirmBulk.matched} resources`}
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
 

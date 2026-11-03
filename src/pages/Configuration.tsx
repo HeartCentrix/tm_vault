@@ -407,8 +407,9 @@ export default function Configuration() {
               </p>
             </div>
             <div className="config-row">
-              <label className="config-label">Retry delay (minutes)</label>
+              <label className="config-label" htmlFor="job-retry-delay">Retry delay (minutes)</label>
               <input
+                id="job-retry-delay"
                 type="number"
                 className="config-input"
                 min={1}

@@ -111,7 +111,7 @@ const withProgress = await SnapshotService.listAllCalendarEvents(SNAP, {
 assert.equal(withProgress.events.length, TOTAL);
 assert.ok(seen.length >= 2, 'onProgress must fire per page');
 assert.deepEqual(seen[0], [1000, TOTAL], 'first progress tick = page 1 landed');
-assert.deepEqual(seen[seen.length - 1], [TOTAL, TOTAL], 'last tick = fully loaded');
+assert.deepEqual(seen.at(-1), [TOTAL, TOTAL], 'last tick = fully loaded');
 
 // ── 4. Bounded: a cap must be honest, never a silent partial ─────────────
 installFetch();

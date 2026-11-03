@@ -78,8 +78,8 @@
 .version-commit-sha {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
-  color: #d31245;
-  background: rgba(211, 18, 69, 0.08);
+  color: #a20e35;
+  background: #fcecf0;
   padding: 1px 6px;
   border-radius: 5px;
   flex: none;

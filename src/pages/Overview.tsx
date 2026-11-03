@@ -499,15 +499,11 @@ export default function Overview() {
   const inProgress24h = status24h?.inProgress ?? derived24h.inProgress;
   const stalled24h = status24h?.stalled ?? derived24h.stalled;
 
-  const status24hState = hasFailures24h
-    ? { label: 'Failures', className: 'failure' }
-    : stalled24h > 0
-      ? { label: 'Stalled', className: 'failure' }
-      : (status24h?.warnings || 0) > 0
-        ? { label: 'Warnings', className: 'warning' }
-        : inProgress24h > 0
-          ? { label: 'In progress', className: 'running' }
-          : { label: 'Success', className: 'success' };
+  let status24hState = { label: 'Success', className: 'success' };
+  if (hasFailures24h) status24hState = { label: 'Failures', className: 'failure' };
+  else if (stalled24h > 0) status24hState = { label: 'Stalled', className: 'failure' };
+  else if ((status24h?.warnings || 0) > 0) status24hState = { label: 'Warnings', className: 'warning' };
+  else if (inProgress24h > 0) status24hState = { label: 'In progress', className: 'running' };
 
   const protectionRows = protection
     ? (serviceType === 'azure'
@@ -583,6 +579,65 @@ export default function Overview() {
     });
   };
 
+  const renderStatusSummary = () => {
+    if (cardErrors.status24h) {
+      return (
+        <CardError message={cardErrors.status24h} onRetry={retryAggregates} />
+      );
+    }
+    if (!status24h) {
+      return (
+        <span style={{ color: '#94a3b8' }}>Loading...</span>
+      );
+    }
+    return <div className="status-summary-content">
+      <div className={`status-summary-title ${status24hState.className}`}>
+        {status24hState.label}
+      </div>
+      <div className="status-summary-list">
+        <div className="status-summary-row success">
+          <span>Success</span>
+          <strong>{formatNumber(status24h?.success || 0)}</strong>
+        </div>
+        <div className="status-summary-row warning">
+          <span>Warnings</span>
+          <strong>{formatNumber(status24h?.warnings || 0)}</strong>
+        </div>
+        <div className="status-summary-row failure">
+          <span>Failures</span>
+          <strong>{formatNumber(status24h?.failures || 0)}</strong>
+        </div>
+        {inProgress24h > 0 && (
+          <div className="status-summary-row running">
+            <span>In progress</span>
+            <strong>{formatNumber(inProgress24h)}</strong>
+          </div>
+        )}
+        {stalled24h > 0 && (
+          <div
+            className="status-summary-row stalled"
+            title={`Running for more than ${Math.round(JOB_STALE_MS / 60000)} minutes with no result — check the Activity page.`}
+          >
+            <span>Stalled</span>
+            <strong>{formatNumber(stalled24h)}</strong>
+          </div>
+        )}
+      </div>
+      <button
+        className="backup-all-btn status-summary-btn"
+        onClick={handleBackupAll}
+        disabled={!tenantId || !serviceType || triggeringBackupAll || hasLiveBackup}
+        title={hasLiveBackup ? 'A backup is currently running for this tenant.' : undefined}
+      >
+        {triggeringBackupAll
+          ? 'Starting backup...'
+          : hasLiveBackup
+            ? 'Backup in progress...'
+            : `Backup all ${serviceType === 'azure' ? 'Azure' : 'M365'} now`}
+      </button>
+    </div>;
+  };
+
   return (
     <div className="overview-page">
       <div className="status-cards">
@@ -592,58 +647,7 @@ export default function Overview() {
             <span className="status-label">24-hour status</span>
           </div>
           <div className="status-card-value">
-            {cardErrors.status24h ? (
-              <CardError message={cardErrors.status24h} onRetry={retryAggregates} />
-            ) : !status24h ? (
-              <span style={{ color: '#94a3b8' }}>Loading...</span>
-            ) : (
-              <div className="status-summary-content">
-                <div className={`status-summary-title ${status24hState.className}`}>
-                  {status24hState.label}
-                </div>
-                <div className="status-summary-list">
-                  <div className="status-summary-row success">
-                    <span>Success</span>
-                    <strong>{formatNumber(status24h?.success || 0)}</strong>
-                  </div>
-                  <div className="status-summary-row warning">
-                    <span>Warnings</span>
-                    <strong>{formatNumber(status24h?.warnings || 0)}</strong>
-                  </div>
-                  <div className="status-summary-row failure">
-                    <span>Failures</span>
-                    <strong>{formatNumber(status24h?.failures || 0)}</strong>
-                  </div>
-                  {inProgress24h > 0 && (
-                    <div className="status-summary-row running">
-                      <span>In progress</span>
-                      <strong>{formatNumber(inProgress24h)}</strong>
-                    </div>
-                  )}
-                  {stalled24h > 0 && (
-                    <div
-                      className="status-summary-row stalled"
-                      title={`Running for more than ${Math.round(JOB_STALE_MS / 60000)} minutes with no result — check the Activity page.`}
-                    >
-                      <span>Stalled</span>
-                      <strong>{formatNumber(stalled24h)}</strong>
-                    </div>
-                  )}
-                </div>
-                <button
-                  className="backup-all-btn status-summary-btn"
-                  onClick={handleBackupAll}
-                  disabled={!tenantId || !serviceType || triggeringBackupAll || hasLiveBackup}
-                  title={hasLiveBackup ? 'A backup is currently running for this tenant.' : undefined}
-                >
-                  {triggeringBackupAll
-                    ? 'Starting backup...'
-                    : hasLiveBackup
-                      ? 'Backup in progress...'
-                      : `Backup all ${serviceType === 'azure' ? 'Azure' : 'M365'} now`}
-                </button>
-              </div>
-            )}
+            {renderStatusSummary()}
           </div>
         </div>
 
@@ -736,13 +740,10 @@ export default function Overview() {
               // sweep so the arc is visible, and label a genuinely empty
               // tenant explicitly.
               const rounded = Math.round(totals.percentage);
-              const pctLabel = totals.totalCount === 0
-                ? 'No resources'
-                : totals.protectedCount === 0
-                  ? '0%'
-                  : rounded === 0
-                    ? '<1%'
-                    : `${rounded}%`;
+              let pctLabel = `${rounded}%`;
+              if (totals.totalCount === 0) pctLabel = 'No resources';
+              else if (totals.protectedCount === 0) pctLabel = '0%';
+              else if (rounded === 0) pctLabel = '<1%';
               const sweep = totals.protectedCount > 0
                 ? Math.max(2, Math.min(100, totals.percentage))
                 : 0;

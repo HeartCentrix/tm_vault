@@ -60,7 +60,7 @@ export function shouldShowRetry(item: RetryEligibleItem): boolean {
   // A single-resource row (no batch) is retryable through its job id —
   // hiding the button here was why auto-retry/manual failure rows had a
   // Retry that "did not work" (2026-08-18).
-  if (!item.batchId && !(item.jobIds && item.jobIds.length)) return false;
+  if (!item.batchId && !item.jobIds?.length) return false;
   if (item.status === 'In Progress') return false;
 
   const c = item.counts;

@@ -46,26 +46,19 @@ export default function Health() {
     return () => clearInterval(iv);
   }, [refresh]);
 
-  return (
-    <div className="health-page">
-      <div className="health-header">
-        <div className="health-header-left">
-          <h1>Application Health</h1>
-          {data && <HealthDot status={data.status} size="lg" />}
-        </div>
-        <div className="health-header-right">
-          {lastUpdated && (
-            <span className="health-updated">Updated {lastUpdated.toLocaleTimeString()}</span>
-          )}
-          <button className="health-refresh" onClick={refresh}>Refresh</button>
-        </div>
-      </div>
-
-      {loading ? (
+  const renderHealthContent = () => {
+    if (loading) {
+      return (
         <div className="health-empty">Loading health status…</div>
-      ) : error && !data ? (
+      );
+    }
+    if (error && !data) {
+      return (
         <div className="health-empty health-error">Failed to load health: {error}</div>
-      ) : data ? (
+      );
+    }
+    if (data) {
+      return (
         <>
           {data.services && (
             <div className="health-services">
@@ -99,9 +92,27 @@ export default function Health() {
             ))}
           </div>
         </>
-      ) : (
-        <div className="health-empty">No health data.</div>
-      )}
+      );
+    }
+    return <div className="health-empty">No health data.</div>;
+  };
+
+  return (
+    <div className="health-page">
+      <div className="health-header">
+        <div className="health-header-left">
+          <h1>Application Health</h1>
+          {data && <HealthDot status={data.status} size="lg" />}
+        </div>
+        <div className="health-header-right">
+          {lastUpdated && (
+            <span className="health-updated">Updated {lastUpdated.toLocaleTimeString()}</span>
+          )}
+          <button className="health-refresh" onClick={refresh}>Refresh</button>
+        </div>
+      </div>
+
+      {renderHealthContent()}
     </div>
   );
 }

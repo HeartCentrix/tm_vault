@@ -340,11 +340,11 @@ function StorageUsageCards() {
   const pending = stats === null && statsError === null;
 
   const projectionReady = stats !== null && statsError === null && sizeProjectionAllowed(stats);
-  const growthCaption = pending
-    ? 'calculating protected data'
-    : projectionReady && stats?.dailyGrowthBytes != null
-      ? `captured volume +${formatBytes(stats.dailyGrowthBytes)}/day (30-day avg)`
-      : 'estimates resume after totals are up to date';
+  let growthCaption = 'estimates resume after totals are up to date';
+  if (pending) growthCaption = 'calculating protected data';
+  else if (projectionReady && stats?.dailyGrowthBytes != null) {
+    growthCaption = `captured volume +${formatBytes(stats.dailyGrowthBytes)}/day (30-day avg)`;
+  }
 
   const value = (formatted: string) => (pending ? 'Calculating…' : formatted);
   const valueClass = `storage-usage-value${pending ? ' pending' : ''}`;
