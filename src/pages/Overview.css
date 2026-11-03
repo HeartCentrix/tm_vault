@@ -75,6 +75,77 @@
   color: #b42318;
 }
 
+/* 24-hour headline while jobs are still running (TMV-022). Amber-blue
+   split: "In progress" is neutral-informational, "Stalled" reuses the
+   failure red because a hung backup is an outage, not a warning. */
+.status-summary-title.running {
+  color: #1d4ed8;
+}
+
+.status-summary-row.running span::before {
+  background: #1d4ed8;
+}
+
+.status-summary-row.stalled span::before {
+  background: #b42318;
+}
+
+.status-summary-row.stalled strong,
+.status-summary-row.stalled span {
+  color: #b42318;
+  font-weight: 700;
+}
+
+/* Card-level failure state (TMV-005). A failed card must not be
+   indistinguishable from a loading one. */
+.card-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.card-error-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b42318;
+}
+
+.card-error-detail {
+  font-size: 11px;
+  color: #94a3b8;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-error-retry {
+  margin-top: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #D31245;
+  background: transparent;
+  border: 1px solid #D31245;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.card-error-retry:hover {
+  background: rgba(211, 18, 69, 0.08);
+}
+
+/* Empty protection tenant — grey the headline so "No resources" doesn't
+   masquerade as a brand-red KPI. */
+.protection-summary-value.empty {
+  font-size: 18px;
+  color: #94a3b8;
+}
+
 .status-summary-list {
   display: flex;
   flex-direction: column;

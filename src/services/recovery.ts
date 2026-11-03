@@ -2,6 +2,7 @@
  * Recovery Service - Browse and recover items from backups
  */
 import { API } from '../config/api';
+import { chatScopeError } from './chatErrors';
 
 export interface RecoveryItem {
   id: string;
@@ -32,6 +33,7 @@ export interface RecoveryItem {
   sender?: string;
   senderEmail?: string;
   chatTopic?: string;
+  chatId?: string;
   channelName?: string;
   mentions?: any[];
   isReply?: boolean;
@@ -217,6 +219,7 @@ export const RecoveryService = {
     resourceId: string;
     snapshotIds: string[];
     threadPath?: string;
+    chatId?: string;
     itemIds: string[];
     exportFormat: 'HTML' | 'JSON' | 'PDF';
     includeAttachments: boolean;
@@ -235,7 +238,7 @@ export const RecoveryService = {
     });
     if (res.status === 409) throw { status: 409, body: await res.json() };
     if (res.status === 429) throw { status: 429, body: await res.json() };
-    if (!res.ok) throw new Error(`Trigger failed: ${res.status}`);
+    if (!res.ok) throw await chatScopeError(res, 'Could not start chat export');
     return (await res.json()) as {
       jobId: string;
       estimatedMessages: number;
@@ -248,6 +251,7 @@ export const RecoveryService = {
     resourceId: string;
     snapshotIds: string[];
     threadPath?: string;
+    chatId?: string;
     itemIds: string[];
     exportFormat: 'HTML' | 'JSON' | 'PDF';
     includeAttachments: boolean;
@@ -257,7 +261,7 @@ export const RecoveryService = {
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
     });
-    if (!res.ok) throw new Error(`Estimate failed: ${res.status}`);
+    if (!res.ok) throw await chatScopeError(res, 'Could not estimate chat export');
     return (await res.json()) as {
       messages: number;
       attachmentBytes: number;

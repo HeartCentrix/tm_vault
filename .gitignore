@@ -31,4 +31,6 @@ dist-ssr
 *.sw?
 .env
 
- 
+
+# Generated at image build (scripts/build-image.sh)
+public/version-history.json

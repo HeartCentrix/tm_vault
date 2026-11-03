@@ -9,6 +9,7 @@ import {
   deleteExclusion,
 } from '../services/sla';
 import { useActiveBackend } from '../hooks/useActiveBackend';
+import { formatNumber } from '../utils/display';
 import './SlaWizard.css';
 
 // Day-count options shared by Retention and Archiving dropdowns.
@@ -44,6 +45,8 @@ interface Props {
 // SlaPolicy boolean flags in services/sla.ts.
 const M365_WORKLOADS: Array<[keyof SlaPolicy, string]> = [
   ['backupExchange', 'Emails'],
+  ['backupExchangeArchive', 'Online Archive'],
+  ['backupExchangeRecoverable', 'Recoverable Items'],
   ['backupTeamsChats', 'Chats'],
   ['contacts', 'Contacts'],
   ['calendars', 'Calendars'],
@@ -588,7 +591,10 @@ export default function SlaWizard({ tenantId, serviceType, initialPolicy, onClos
                   ))}
                   {exclusions.length > exclusionsLimit && (
                     <li className="wiz-excl-empty" style={{ fontStyle: 'normal' }}>
-                      Showing {exclusionsLimit} of {exclusions.length}.{' '}
+                      {/* TMV-028: raw interpolation here vs .toLocaleString()
+                          elsewhere is exactly how "Showing 50 of 46008" ended
+                          up next to a "46,008" badge. One formatter. */}
+                      Showing {formatNumber(exclusionsLimit)} of {formatNumber(exclusions.length)}.{' '}
                       <button
                         type="button"
                         className="wiz-link"

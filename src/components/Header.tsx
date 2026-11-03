@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getDataSources } from '../services/datasource';
 import type { DataSourceType } from '../services/datasource';
 import { MicrosoftLogo, AzureLogo } from './BrandLogos';
+import VersionBadge from './VersionBadge';
 import './Header.css';
 
 interface HeaderProps {
@@ -78,7 +79,6 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
   }, []);
 
   return (
-    <>
       <header className="header">
         <div className="header-left">
           <div className="data-source-selector" ref={dropdownRef}>
@@ -176,6 +176,7 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
         </div>
 
         <div className="header-right">
+          <VersionBadge />
           <button
             className="icon-btn theme-toggle-btn"
             onClick={toggleTheme}
@@ -229,6 +230,5 @@ export default function Header({ selectedSource, onSelectSource, onOpenAddSource
           </div>
         </div>
       </header>
-    </>
   );
 }

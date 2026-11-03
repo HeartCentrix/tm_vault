@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './RestoreModal.css';
 import './DownloadModal.css';
 import { RecoveryService } from '../services/recovery';
@@ -6,6 +6,7 @@ import { API } from '../config/api';
 import { exportJobs } from '../services/exportJobs';
 import type { ContentTab } from '../services/snapshot';
 import { SnapshotService } from '../services/snapshot';
+import { chatExportSelection } from '../utils/chatSelection';
 import {
   EXPORT_FORMATS,
   DEFAULT_FORMAT,
@@ -28,6 +29,7 @@ interface DownloadModalProps {
   preserveTree?: boolean;
   resourceId?: string;
   threadPath?: string | null;
+  chatId?: string | null;
   resourceKind?: string;
   // Mail / Contacts / generic folder checkbox selection. The user ticks
   // a folder (e.g. `/Inbox`, `Contacts`) in the left rail and we send
@@ -39,6 +41,10 @@ interface DownloadModalProps {
   // view). Redirects PST type resolution to ARCHIVE_ITEM; the caller also
   // passes the archive child snapshot id as snapshotIds.
   isArchive?: boolean;
+  // Items the user explicitly UN-ticked inside a ticked folder. The
+  // resolver subtracts these from the folder expansion — without them a
+  // visibly-deselected item would still land in the export.
+  excludedItemIds?: string[];
 }
 
 type Scope = 'selected' | 'all';
@@ -55,10 +61,9 @@ const WORKLOAD_TO_PST_TYPE: Partial<Record<DownloadWorkload, string>> = {
 //
 //   * "all" scope — at least one checked workload must be PST-compatible
 //     (OneDrive alone can't produce a PST).
-//   * "selected" scope — generally requires folder paths so the PST has
-//     a hierarchy to materialise. Contacts are exempt: each contact is
-//     a self-contained item, so individual contact picks export as
-//     one-PST-per-contact (ITEM granularity).
+//   * "selected" scope — explicit items or folder paths can produce a PST.
+//     Mail, contacts, calendar and Online Archive support item-level PST;
+//     folders preserve their source hierarchy.
 function hasPstCompatibleWorkload(
   scope: Scope,
   workloads: Set<DownloadWorkload>,
@@ -194,6 +199,11 @@ function getPstAutoLabel(
   if (contentType === 'contacts') {
     return `${selectedCount} contact${selectedCount !== 1 ? 's' : ''} exported as ${selectedCount} separate PST file${selectedCount !== 1 ? 's' : ''} (${what}) — one per contact, all bundled in the download`;
   }
+  // Per-event calendar ticks land here (no folder paths are forwarded for
+  // an explicit event selection), so name the real output.
+  if (contentType === 'calendar') {
+    return `${selectedCount} event${selectedCount !== 1 ? 's' : ''} exported as ${selectedCount} separate PST file${selectedCount !== 1 ? 's' : ''} (${what}) — one per event, all bundled in the download`;
+  }
   return `${selectedCount} item${selectedCount !== 1 ? 's' : ''} exported as PST (${what}) — opens in Outlook`;
 }
 
@@ -208,11 +218,15 @@ export function DownloadModal({
   preserveTree = false,
   resourceId,
   threadPath,
+  chatId,
   resourceKind,
   folderPaths,
   isArchive = false,
+  excludedItemIds,
 }: DownloadModalProps) {
-  const [scope, setScope] = useState<Scope>('selected');
+  const [requestedScope, setScope] = useState<Scope>('selected');
+  // Chat export supports a single conversation or explicit message selection.
+  const scope: Scope = contentType === 'chats' ? 'selected' : requestedScope;
   const [workloads, setWorkloads] = useState<Set<DownloadWorkload>>(
     new Set(['Mail', 'Contacts', 'Calendar']),
   );
@@ -235,7 +249,7 @@ export function DownloadModal({
     if (exportFormat === 'PST' && !hasPstCompatibleWorkload(scope, workloads, folderPaths, itemIds.length, isArchive)) {
       setExportFormat(DEFAULT_FORMAT[contentType]);
     }
-  }, [scope, workloads, contentType, exportFormat, folderPaths, itemIds.length]);
+  }, [scope, workloads, contentType, exportFormat, folderPaths, itemIds.length, isArchive]);
 
   // Contact folder subgroup state. Populated only when Contacts is checked
   // and scope === 'all' for a single-snapshot export. Default = all checked
@@ -250,8 +264,7 @@ export function DownloadModal({
         const est = await RecoveryService.estimateChatExport({
           resourceId,
           snapshotIds,
-          threadPath: threadPath ?? undefined,
-          itemIds: threadPath ? [] : itemIds,
+          ...chatExportSelection(chatId, threadPath, itemIds),
           exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
           includeAttachments,
         });
@@ -261,7 +274,7 @@ export function DownloadModal({
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [isOpen, contentType, resourceId, threadPath, itemIds, exportFormat, includeAttachments, snapshotIds]);
+  }, [isOpen, contentType, resourceId, threadPath, chatId, itemIds, exportFormat, includeAttachments, snapshotIds]);
 
   // Fetch the per-snapshot contact folder list when Contacts is selected
   // for a Download-all export. Re-fetch on workload toggle / scope change.
@@ -298,6 +311,12 @@ export function DownloadModal({
     }
   }, [isOpen]);
 
+  // A request can finish after close/reopen. Always hand its job to the
+  // background store, but only let the owning session change modal state.
+  const pollGenRef = useRef(0);
+  useEffect(() => { pollGenRef.current += 1; }, [isOpen]);
+  useEffect(() => () => { pollGenRef.current += 1; }, []);
+
   if (!isOpen) return null;
 
   const formats = EXPORT_FORMATS[contentType] || [];
@@ -316,7 +335,7 @@ export function DownloadModal({
       case 'onedrive': return selectedCount === 1 ? '1 file' : `${selectedCount} files`;
       case 'contacts': return selectedCount === 1 ? '1 contact' : `${selectedCount} contacts`;
       case 'calendar': return selectedCount === 1 ? '1 event' : `${selectedCount} events`;
-      case 'chats': return selectedCount === 1 ? '1 chat' : `${selectedCount} chats`;
+      case 'chats': return chatId || threadPath ? '1 conversation' : selectedCount === 1 ? '1 message' : `${selectedCount} messages`;
       default: return `${selectedCount} items`;
     }
   })();
@@ -329,8 +348,11 @@ export function DownloadModal({
     : '';
 
   const handleDownload = async () => {
+    // Background delivery survives closing the modal; modal state does not.
+    const gen = pollGenRef.current;
+    const isStale = () => pollGenRef.current !== gen;
     if (contentType === 'chats' && resourceId) {
-      if (!threadPath && itemIds.length === 0) {
+      if (!chatId && !threadPath && itemIds.length === 0) {
         setError('Select messages from one thread, or tick one thread.');
         return;
       }
@@ -339,8 +361,7 @@ export function DownloadModal({
         const { jobId } = await RecoveryService.triggerChatExport({
           resourceId,
           snapshotIds,
-          threadPath: threadPath ?? undefined,
-          itemIds: threadPath ? [] : itemIds,
+          ...chatExportSelection(chatId, threadPath, itemIds),
           exportFormat: exportFormat as 'HTML' | 'JSON' | 'PDF',
           includeAttachments,
         });
@@ -372,9 +393,12 @@ export function DownloadModal({
           cancelUrl: API.EXPORT.CHAT.CANCEL(jobId),
           stop: unsub, // × closes the SSE stream + hits the chat cancel endpoint
         });
-        setDownloading(false);
-        onClose();
+        if (!isStale()) {
+          setDownloading(false);
+          onClose();
+        }
       } catch (e: any) {
+        if (isStale()) { console.error('Chat export request failed after modal close:', e); return; }
         if (e?.status === 409) {
           setError(e.body?.detail?.error === 'SIZE_SOFT_CAP_EXCEEDED' || e.body?.error === 'SIZE_SOFT_CAP_EXCEEDED'
             ? 'Export is larger than 20 GB. Narrow scope or contact admin.'
@@ -405,9 +429,12 @@ export function DownloadModal({
         // bottom-right toast tracks progress across navigation and downloads
         // the artifact when it's ready.
         exportJobs.start(response.jobId, 'Directory export', `entra-export-${response.jobId.slice(0, 8)}.zip`, 2000);
-        setDownloading(false);
-        onClose();
+        if (!isStale()) {
+          setDownloading(false);
+          onClose();
+        }
       } catch (err) {
+        if (isStale()) { console.error('Entra export failed after modal close:', err); return; }
         setError(err instanceof Error ? err.message : 'Download failed');
         setDownloading(false);
       }
@@ -433,6 +460,12 @@ export function DownloadModal({
           snapshotIds,
           itemIds: scope === 'selected' && !useFolders ? itemIds : [],
           folderPaths: useFolders ? folderPaths : undefined,
+          // Un-ticked items inside the ticked folders — the resolver
+          // subtracts them from the folder expansion.
+          excludedItemIds:
+            useFolders && excludedItemIds && excludedItemIds.length > 0
+              ? excludedItemIds
+              : undefined,
           exportFormat: 'PST',
           pstGranularity,
           pstIncludeTypes: resolvePstIncludeTypes(contentType, resourceKind, scope, workloads, isArchive),
@@ -443,9 +476,12 @@ export function DownloadModal({
           includeAttachments,
         });
         exportJobs.start(response.jobId, `PST export — ${contentType}`, `pst-export-${response.jobId.slice(0, 8)}.zip`);
-        setDownloading(false);
-        onClose();
+        if (!isStale()) {
+          setDownloading(false);
+          onClose();
+        }
       } catch (err) {
+        if (isStale()) { console.error('PST export failed after modal close:', err); return; }
         setError(err instanceof Error ? err.message : 'PST export failed');
         setDownloading(false);
       }
@@ -491,6 +527,13 @@ export function DownloadModal({
           scope === 'selected' && folderPaths && folderPaths.length > 0
             ? folderPaths
             : undefined,
+        // Un-ticked items inside the ticked folders — the resolver
+        // subtracts them from the folder expansion.
+        excludedItemIds:
+          scope === 'selected' && folderPaths && folderPaths.length > 0
+            && excludedItemIds && excludedItemIds.length > 0
+              ? excludedItemIds
+              : undefined,
         // File-family resources always export as ZIP with full tree;
         // no format or workload axis applies.
         exportFormat: isFilesFamily ? undefined : exportFormat,
@@ -516,9 +559,12 @@ export function DownloadModal({
         `export-${response.jobId.slice(0, 8)}.${(exportFormat || 'zip').toLowerCase()}.zip`,
         2000,
       );
-      setDownloading(false);
-      onClose();
+      if (!isStale()) {
+        setDownloading(false);
+        onClose();
+      }
     } catch (err) {
+      if (isStale()) { console.error('Export failed after modal close:', err); return; }
       setError(err instanceof Error ? err.message : 'Download failed');
       setDownloading(false);
     }
@@ -593,10 +639,10 @@ export function DownloadModal({
               </span>
             </label>
 
-            <label className="radio-row">
+            {contentType !== 'chats' && <label className="radio-row">
               <input type="radio" checked={scope === 'all'} onChange={() => setScope('all')} />
               <span>Download all</span>
-            </label>
+            </label>}
 
             {scope === 'all' && (
               <div className="workload-list">
@@ -653,7 +699,7 @@ export function DownloadModal({
               if (contentType === 'contacts' || isArchive) return null;
               const msg =
                 contentType === 'calendar'
-                  ? 'To enable PST export, tick one or more calendars in the "Calendar" section of the sidebar. Multiple calendars → one PST per calendar.'
+                  ? 'To enable PST export, tick one or more calendars in the "Calendar" section of the sidebar (one PST per calendar), or tick individual events (one PST per event).'
                   : 'To enable PST export, select one or more messages, or tick folders in the left sidebar.';
               return (
                 <div
@@ -686,7 +732,7 @@ export function DownloadModal({
                   if (isArchive)
                     return 'Select one or more archived items — or tick archive folders in the left sidebar — to enable PST export.';
                   if (contentType === 'calendar')
-                    return 'Tick one or more calendars in the "Calendar" filter sidebar to enable PST export. Multiple calendars produce one PST per calendar.';
+                    return 'Tick one or more calendars in the "Calendar" filter sidebar (one PST per calendar), or tick individual events (one PST per event), to enable PST export.';
                   if (contentType === 'contacts')
                     return 'Select one or more contacts to enable PST export.';
                   return 'Select one or more items, or tick folders in the left sidebar, to enable PST export. Multiple folders produce one PST containing the source folder tree.';

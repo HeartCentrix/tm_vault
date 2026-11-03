@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import NotFound from './pages/NotFound';
 import Layout from './components/Layout';
 import Signin from './pages/Signin';
 import Signup from './pages/Signup';
@@ -17,6 +18,7 @@ import SettingsStoragePage from './pages/SettingsStorage';
 import ErrorBoundary from './components/ErrorBoundary';
 import GlobalSearch from './pages/GlobalSearch';
 import Configuration from './pages/Configuration';
+import Health from './pages/Health';
 import Docs from './pages/Docs';
 import GlobalTooltip from './components/GlobalTooltip';
 import { ExportToasts } from './components/ExportToasts';
@@ -165,6 +167,21 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/health"
+            element={
+              <ProtectedRoute>
+                <ErrorBoundary label="Health">
+                  <Health />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          {/* Catch-all. Without this, an unknown path rendered a blank white
+              document with only a console warning — no shell, no way back
+              (BUG-007). Must stay LAST: react-router picks the best match,
+              but keeping it last makes the intent obvious. */}
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </BrowserRouter>
