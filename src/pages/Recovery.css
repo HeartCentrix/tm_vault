@@ -2609,6 +2609,8 @@ a.email-ol-attach-chip.email-ol-attach-link:hover {
   padding: 24px;
 }
 .cal-detail-modal {
+  margin: 0;
+  padding: 0;
   position: relative;
   background: var(--tm-surface, #fff);
   color: var(--tm-text, #0f172a);

@@ -594,15 +594,13 @@ export default function Activity() {
     setRiskPage(1);
   };
 
-  const totalItems = viewType === 'tasks' ? taskTotal : viewType === 'audit' ? auditTotal : riskTotal;
-  const currentPage = viewType === 'tasks' ? taskPage : viewType === 'audit' ? auditPage : riskPage;
+  const totalItems = { tasks: taskTotal, audit: auditTotal, risk: riskTotal }[viewType];
+  const currentPage = { tasks: taskPage, audit: auditPage, risk: riskPage }[viewType];
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   // Rows actually on screen. The footer range is derived from THIS, never
   // from `total` — the old `Math.min(page*size, total)` printed
   // "Showing 51–93 of 93" over 50 rendered rows (BUG-002).
-  const renderedCount = viewType === 'tasks'
-    ? activities.length
-    : viewType === 'audit' ? audits.length : riskSignals.length;
+  const renderedCount = { tasks: activities.length, audit: audits.length, risk: riskSignals.length }[viewType];
   const rangeFrom = (currentPage - 1) * pageSize + 1;
   const rangeTo = rangeFrom + renderedCount - 1;
   // A `total` smaller than what we're showing is self-evidently wrong; say
@@ -628,346 +626,376 @@ export default function Activity() {
     else if (viewType === 'risk' && riskPage > max) setRiskPage(max);
   }, [viewType, totalPages, totalItems, taskPage, auditPage, riskPage, totalTrustworthy, canGoNext]);
 
-  return (
-    <div className="activity-page">
-      <div className="activity-header">
-        <h2 className="page-title">Activity & Audit</h2>
-        <div className="header-controls">
-          <div className="date-filters">
-            <div className="date-input-group">
-              <label htmlFor="activity-start-date">Start date</label>
-              <input
-                id="activity-start-date"
-                type="date"
-                value={startDate}
-                max={endDate || undefined}
-                aria-invalid={dateRangeInvalid || undefined}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="date-input-group">
-              <label htmlFor="activity-end-date">End date</label>
-              <input
-                id="activity-end-date"
-                type="date"
-                value={endDate}
-                min={startDate || undefined}
-                aria-invalid={dateRangeInvalid || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-            {dateRangeInvalid && (
-              <p className="date-range-error" role="alert">
-                End date must be on or after the start date.
-              </p>
-            )}
+  function renderTaskRows() {
+    if (activities.length === 0) {
+      return (
+        <tr><td colSpan={6} className="empty-cell">No activities found</td></tr>
+      );
+    }
+    return activities.map((activity) => (
+      <ActivityRow
+        key={activity.id}
+        item={activity}
+        displayedProgressPct={clampProgress(activity)}
+        renderStatusIcon={getStatusIcon}
+        formatDate={formatDate}
+        onRetry={handleRetryRow}
+        retrying={retryingRows.has(activity.id)}
+      />
+    ));
+  }
+
+  function renderAuditRows() {
+    if (audits.length === 0) {
+      return (
+        <tr><td colSpan={5} className="empty-cell">No audit logs found</td></tr>
+      );
+    }
+    return audits.map((audit) => (
+      <tr key={audit.id} onClick={() => handleAuditClick(audit)} className="clickable-row">
+        <td>{formatDate(audit.date)}</td>
+        <td className="actor-cell">
+          <span className="actor-type">{audit.actor}</span>
+          {audit.actor_email && <span className="actor-email">{audit.actor_email}</span>}
+        </td>
+        <td><span className="operation-badge">{audit.operation}</span></td>
+        <td className="object-cell">{audit.object}</td>
+        <td className="risk-cell">
+          {audit.risk_signals ? (
+            <span onClick={(e) => { e.stopPropagation(); handleViewRawDetails(audit); }}>
+              {getRiskBadge(audit.risk_level || 'MEDIUM', audit.risk_score || 0)}
+            </span>
+          ) : (
+            <span className="risk-none">—</span>
+          )}
+        </td>
+      </tr>
+    ));
+  }
+
+  function renderRiskRows() {
+    if (riskSignals.length === 0) {
+      return (
+        <tr><td colSpan={7} className="empty-cell">No risk signals detected</td></tr>
+      );
+    }
+    return riskSignals.map((signal) => (
+      <tr key={signal.id} onClick={() => handleAuditClick(signal)} className="clickable-row">
+        <td>{formatDate(signal.date)}</td>
+        <td>{getRiskBadge(signal.risk_level, signal.risk_score)}</td>
+        <td>
+          <div className="risk-score-bar">
+            <div className="risk-score-fill" style={{ width: `${signal.risk_score}%` }} />
           </div>
+          <span className="risk-score-text">{signal.risk_score}/100</span>
+        </td>
+        <td className="actor-cell">
+          <span className="actor-type">{signal.actor}</span>
+          {signal.actor_email && <span className="actor-email">{signal.actor_email}</span>}
+        </td>
+        <td><span className="operation-badge">{signal.operation}</span></td>
+        <td className="object-cell">{signal.object}</td>
+        <td className="signals-cell">
+          {Object.keys(signal.risk_signals).filter(k => !['risk_level', 'risk_score', 'investigation_urgency'].includes(k)).map(key => (
+            <span key={key} className="signal-tag">{key.replace(/_/g, ' ')}</span>
+          ))}
+        </td>
+      </tr>
+    ));
+  }
 
-          {/* Tab-specific filters */}
-          {viewType === 'tasks' && (
-            <div className="inline-filters">
-              <select value={taskOperation} onChange={(e) => { setTaskOperation(e.target.value); setTaskPage(1); }}>
-                <option value="">All Operations</option>
-                {ACTIVITY_OPERATIONS.map(op => (
-                  <option key={op.value} value={op.value}>{op.label}</option>
-                ))}
-              </select>
-              <select value={taskStatus} onChange={(e) => { setTaskStatus(e.target.value); setTaskPage(1); }}>
-                <option value="">All Statuses</option>
-                <option value="Done">Done</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Warning">Warning</option>
-                <option value="Failed">Failed</option>
-                <option value="Canceled">Canceled</option>
-              </select>
-            </div>
-          )}
-
-          {viewType === 'audit' && (
-            <div className="inline-filters">
-              <select value={auditActorType} onChange={(e) => { setAuditActorType(e.target.value); setAuditPage(1); }}>
-                <option value="">All Actors</option>
-                <option value="USER">User</option>
-                <option value="SYSTEM">System</option>
-                <option value="WORKER">Worker</option>
-              </select>
-              <select value={auditAction} onChange={(e) => { setAuditAction(e.target.value); setAuditPage(1); }}>
-                <option value="">All Actions</option>
-                <option value="BACKUP_COMPLETED">Backup Completed</option>
-                <option value="BACKUP_FAILED">Backup Failed</option>
-                <option value="RESTORE_COMPLETED">Restore Completed</option>
-                <option value="SLA_UPDATED">SLA Updated</option>
-                <option value="LOGIN_SUCCESS">Login Success</option>
-                <option value="LOGIN_FAILED">Login Failed</option>
-                <option value="GRAPH_DIRECTORY">Graph Directory</option>
-                <option value="GRAPH_SIGNIN">Graph Sign-In</option>
-                <option value="RANSOMWARE_SIGNAL">Ransomware Signal</option>
-              </select>
-            </div>
-          )}
-
-          {viewType === 'risk' && (
-            <div className="inline-filters">
-              <select value={riskLevel} onChange={(e) => { setRiskLevel(e.target.value); setRiskPage(1); }}>
-                <option value="">All Risk Levels</option>
-                <option value="CRITICAL">Critical</option>
-                <option value="HIGH">High</option>
-                <option value="MEDIUM">Medium</option>
-              </select>
-            </div>
-          )}
-
-          <button className="reset-btn" onClick={resetFilters} title="Reset all filters">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
-              <polyline points="1 4 1 10 7 10" />
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-            </svg>
-            Reset
+  function renderActivityHeader() {
+    function renderPagination() {
+      return (<div className="pagination-bar">
+        <span className="pagination-info">
+          {loading
+            ? 'Loading…'
+            : totalTrustworthy
+              ? `Showing ${rangeFrom}–${rangeTo} of ${totalItems}`
+              : `Showing ${rangeFrom}–${rangeTo}`}
+        </span>
+        <div className="pagination-buttons">
+          <button
+            disabled={currentPage <= 1}
+            onClick={() => {
+              const prev = (p: number) => Math.max(1, p - 1);
+              if (viewType === 'tasks') setTaskPage(prev);
+              else if (viewType === 'audit') setAuditPage(prev);
+              else setRiskPage(prev);
+            }}
+          >
+            &laquo; Prev
           </button>
-
-          <button className="download-btn" onClick={handleDownload} disabled={downloading || totalItems === 0}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            {downloading ? 'Downloading...' : 'Download'}
+          <span className="page-number">
+            {totalTrustworthy ? `${currentPage} / ${totalPages}` : `${currentPage}`}
+          </span>
+          <button
+            disabled={!canGoNext}
+            onClick={() => {
+              const max = canGoNext ? currentPage + 1 : Math.max(1, totalPages);
+              const next = (p: number) => Math.min(max, p + 1);
+              if (viewType === 'tasks') setTaskPage(next);
+              else if (viewType === 'audit') setAuditPage(next);
+              else setRiskPage(next);
+            }}
+          >
+            Next &raquo;
           </button>
+        </div>
+      </div>);
+    }
 
-          <div className="view-toggle">
-            <button
-              className={`toggle-btn ${viewType === 'tasks' ? 'active' : ''}`}
-              onClick={() => setViewType('tasks')}
-            >
-              Tasks
-            </button>
-            <button
-              className={`toggle-btn ${viewType === 'audit' ? 'active' : ''}`}
-              onClick={() => setViewType('audit')}
-            >
-              Audit
-            </button>
-            <button
-              className={`toggle-btn ${viewType === 'risk' ? 'active' : ''}`}
-              onClick={() => setViewType('risk')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4 }}>
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              Risk
-            </button>
+    return (<div className="activity-header">
+      <h2 className="page-title">Activity & Audit</h2>
+      <div className="header-controls">
+        <div className="date-filters">
+          <div className="date-input-group">
+            <label htmlFor="activity-start-date">Start date</label>
+            <input
+              id="activity-start-date"
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              aria-invalid={dateRangeInvalid || undefined}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
           </div>
+          <div className="date-input-group">
+            <label htmlFor="activity-end-date">End date</label>
+            <input
+              id="activity-end-date"
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              aria-invalid={dateRangeInvalid || undefined}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+          {dateRangeInvalid && (
+            <p className="date-range-error" role="alert">
+              End date must be on or after the start date.
+            </p>
+          )}
         </div>
 
-        {/* Pagination controls */}
-        {totalItems > 0 && (
-          <div className="pagination-bar">
-            <span className="pagination-info">
-              {loading
-                ? 'Loading…'
-                : totalTrustworthy
-                  ? `Showing ${rangeFrom}–${rangeTo} of ${totalItems}`
-                  : `Showing ${rangeFrom}–${rangeTo}`}
-            </span>
-            <div className="pagination-buttons">
-              <button
-                disabled={currentPage <= 1}
-                onClick={() => {
-                  const prev = (p: number) => Math.max(1, p - 1);
-                  if (viewType === 'tasks') setTaskPage(prev);
-                  else if (viewType === 'audit') setAuditPage(prev);
-                  else setRiskPage(prev);
-                }}
-              >
-                &laquo; Prev
-              </button>
-              <span className="page-number">
-                {totalTrustworthy ? `${currentPage} / ${totalPages}` : `${currentPage}`}
-              </span>
-              <button
-                disabled={!canGoNext}
-                onClick={() => {
-                  const max = canGoNext ? currentPage + 1 : Math.max(1, totalPages);
-                  const next = (p: number) => Math.min(max, p + 1);
-                  if (viewType === 'tasks') setTaskPage(next);
-                  else if (viewType === 'audit') setAuditPage(next);
-                  else setRiskPage(next);
-                }}
-              >
-                Next &raquo;
-              </button>
-            </div>
+        {/* Tab-specific filters */}
+        {viewType === 'tasks' && (
+          <div className="inline-filters">
+            <select value={taskOperation} onChange={(e) => { setTaskOperation(e.target.value); setTaskPage(1); }}>
+              <option value="">All Operations</option>
+              {ACTIVITY_OPERATIONS.map(op => (
+                <option key={op.value} value={op.value}>{op.label}</option>
+              ))}
+            </select>
+            <select value={taskStatus} onChange={(e) => { setTaskStatus(e.target.value); setTaskPage(1); }}>
+              <option value="">All Statuses</option>
+              <option value="Done">Done</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Warning">Warning</option>
+              <option value="Failed">Failed</option>
+              <option value="Canceled">Canceled</option>
+            </select>
           </div>
         )}
+
+        {viewType === 'audit' && (
+          <div className="inline-filters">
+            <select value={auditActorType} onChange={(e) => { setAuditActorType(e.target.value); setAuditPage(1); }}>
+              <option value="">All Actors</option>
+              <option value="USER">User</option>
+              <option value="SYSTEM">System</option>
+              <option value="WORKER">Worker</option>
+            </select>
+            <select value={auditAction} onChange={(e) => { setAuditAction(e.target.value); setAuditPage(1); }}>
+              <option value="">All Actions</option>
+              <option value="BACKUP_COMPLETED">Backup Completed</option>
+              <option value="BACKUP_FAILED">Backup Failed</option>
+              <option value="RESTORE_COMPLETED">Restore Completed</option>
+              <option value="SLA_UPDATED">SLA Updated</option>
+              <option value="LOGIN_SUCCESS">Login Success</option>
+              <option value="LOGIN_FAILED">Login Failed</option>
+              <option value="GRAPH_DIRECTORY">Graph Directory</option>
+              <option value="GRAPH_SIGNIN">Graph Sign-In</option>
+              <option value="RANSOMWARE_SIGNAL">Ransomware Signal</option>
+            </select>
+          </div>
+        )}
+
+        {viewType === 'risk' && (
+          <div className="inline-filters">
+            <select value={riskLevel} onChange={(e) => { setRiskLevel(e.target.value); setRiskPage(1); }}>
+              <option value="">All Risk Levels</option>
+              <option value="CRITICAL">Critical</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+            </select>
+          </div>
+        )}
+
+        <button className="reset-btn" onClick={resetFilters} title="Reset all filters">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+          Reset
+        </button>
+
+        <button className="download-btn" onClick={handleDownload} disabled={downloading || totalItems === 0}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 16, height: 16 }}>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {downloading ? 'Downloading...' : 'Download'}
+        </button>
+
+        <div className="view-toggle">
+          <button
+            className={`toggle-btn ${viewType === 'tasks' ? 'active' : ''}`}
+            onClick={() => setViewType('tasks')}
+          >
+            Tasks
+          </button>
+          <button
+            className={`toggle-btn ${viewType === 'audit' ? 'active' : ''}`}
+            onClick={() => setViewType('audit')}
+          >
+            Audit
+          </button>
+          <button
+            className={`toggle-btn ${viewType === 'risk' ? 'active' : ''}`}
+            onClick={() => setViewType('risk')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, marginRight: 4 }}>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            Risk
+          </button>
+        </div>
       </div>
 
-      <div className="activity-table-container">
-        {/* Result of the last Retry click. Dismissible, and never blocks
+      {/* Pagination controls */}
+      {totalItems > 0 && renderPagination()}
+    </div>);
+  }
+
+  function renderActivityTables() {
+    function riskSortAria(column: typeof riskSort): 'ascending' | 'descending' | 'none' {
+      if (riskSort !== column) return 'none';
+      return riskOrder === 'asc' ? 'ascending' : 'descending';
+    }
+
+    return (<div className="activity-table-container">
+      {/* Result of the last Retry click. Dismissible, and never blocks
             the table — the re-run itself shows up as new activity rows. */}
-        {retryNotice && viewType === 'tasks' && (
-          <div className="retry-notice" role="status">
-            <span>{retryNotice}</span>
-            <button
-              type="button"
-              className="retry-notice-dismiss"
-              aria-label="Dismiss"
-              onClick={() => setRetryNotice(null)}
-            >
-              ×
-            </button>
-          </div>
-        )}
-        {/* ==================== TASKS TAB ==================== */}
-        {viewType === 'tasks' && (
-          <table className="activity-table">
-            <thead>
-              <tr>
-                <th className="sortable" onClick={() => { setSortColumn('start'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
-                  Start {sortColumn === 'start' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                </th>
-                <th className="sortable" onClick={() => { setSortColumn('operation'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
-                  Operation {sortColumn === 'operation' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                </th>
-                <th>Object</th>
-                <th className="sortable" onClick={() => { setSortColumn('status'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
-                  Status {sortColumn === 'status' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                </th>
-                <th>Finish</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} className="loading-cell"><div className="loading-spinner" /></td></tr>
-              ) : activities.length === 0 ? (
-                <tr><td colSpan={6} className="empty-cell">No activities found</td></tr>
-              ) : (
-                activities.map((activity) => (
-                  <ActivityRow
-                    key={activity.id}
-                    item={activity}
-                    displayedProgressPct={clampProgress(activity)}
-                    renderStatusIcon={getStatusIcon}
-                    formatDate={formatDate}
-                    onRetry={handleRetryRow}
-                    retrying={retryingRows.has(activity.id)}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
+      {retryNotice && viewType === 'tasks' && (
+        <output className="retry-notice">
+          <span>{retryNotice}</span>
+          <button
+            type="button"
+            className="retry-notice-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setRetryNotice(null)}
+          >
+            ×
+          </button>
+        </output>
+      )}
+      {/* ==================== TASKS TAB ==================== */}
+      {viewType === 'tasks' && (
+        <table className="activity-table">
+          <thead>
+            <tr>
+              <th className="sortable" onClick={() => { setSortColumn('start'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
+                Start {sortColumn === 'start' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+              </th>
+              <th className="sortable" onClick={() => { setSortColumn('operation'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
+                Operation {sortColumn === 'operation' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+              </th>
+              <th>Object</th>
+              <th className="sortable" onClick={() => { setSortColumn('status'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
+                Status {sortColumn === 'status' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+              </th>
+              <th>Finish</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} className="loading-cell"><div className="loading-spinner" /></td></tr>
+            ) : renderTaskRows()}
+          </tbody>
+        </table>
+      )}
 
-        {/* ==================== AUDIT TAB ==================== */}
-        {viewType === 'audit' && (
-          <table className="audit-table">
-            <thead>
-              <tr>
-                <th className="sortable" onClick={() => { setSortColumn('date'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
-                  Date {sortColumn === 'date' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                </th>
-                <th>Actor</th>
-                <th className="sortable" onClick={() => { setSortColumn('operation'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
-                  Operation {sortColumn === 'operation' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
-                </th>
-                <th>Object</th>
-                <th>Risk</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="loading-cell"><div className="loading-spinner" /></td></tr>
-              ) : audits.length === 0 ? (
-                <tr><td colSpan={5} className="empty-cell">No audit logs found</td></tr>
-              ) : (
-                audits.map((audit) => (
-                  <tr key={audit.id} onClick={() => handleAuditClick(audit)} className="clickable-row">
-                    <td>{formatDate(audit.date)}</td>
-                    <td className="actor-cell">
-                      <span className="actor-type">{audit.actor}</span>
-                      {audit.actor_email && <span className="actor-email">{audit.actor_email}</span>}
-                    </td>
-                    <td><span className="operation-badge">{audit.operation}</span></td>
-                    <td className="object-cell">{audit.object}</td>
-                    <td className="risk-cell">
-                      {audit.risk_signals ? (
-                        <span onClick={(e) => { e.stopPropagation(); handleViewRawDetails(audit); }}>
-                          {getRiskBadge(audit.risk_level || 'MEDIUM', audit.risk_score || 0)}
-                        </span>
-                      ) : (
-                        <span className="risk-none">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
+      {/* ==================== AUDIT TAB ==================== */}
+      {viewType === 'audit' && (
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th className="sortable" onClick={() => { setSortColumn('date'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
+                Date {sortColumn === 'date' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+              </th>
+              <th>Actor</th>
+              <th className="sortable" onClick={() => { setSortColumn('operation'); setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc'); }}>
+                Operation {sortColumn === 'operation' && <span className="sort-indicator">{sortDirection === 'asc' ? '↑' : '↓'}</span>}
+              </th>
+              <th>Object</th>
+              <th>Risk</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="loading-cell"><div className="loading-spinner" /></td></tr>
+            ) : renderAuditRows()}
+          </tbody>
+        </table>
+      )}
 
-        {/* ==================== RISK SIGNALS TAB ==================== */}
-        {viewType === 'risk' && (
-          <table className="risk-table">
-            <thead>
-              <tr>
-                {/* Sortable headers are real buttons driven by the server's
+      {/* ==================== RISK SIGNALS TAB ==================== */}
+      {viewType === 'risk' && (
+        <table className="risk-table">
+          <thead>
+            <tr>
+              {/* Sortable headers are real buttons driven by the server's
                     sort state. Previously DATE always painted an indicator
                     and clicking it only flipped the arrow — the rows never
                     moved because the server sorted the page by risk score
                     after cutting it by date (BUG-009). */}
-                <th aria-sort={riskSort === 'date' ? (riskOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                  <button type="button" className="th-sort" onClick={() => toggleRiskSort('date')}>
-                    Date {riskSort === 'date' && <span className="sort-indicator" aria-hidden="true">{riskOrder === 'asc' ? '↑' : '↓'}</span>}
-                  </button>
-                </th>
-                <th>Risk Level</th>
-                <th aria-sort={riskSort === 'risk_score' ? (riskOrder === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                  <button type="button" className="th-sort" onClick={() => toggleRiskSort('risk_score')}>
-                    Risk Score {riskSort === 'risk_score' && <span className="sort-indicator" aria-hidden="true">{riskOrder === 'asc' ? '↑' : '↓'}</span>}
-                  </button>
-                </th>
-                <th>Actor</th>
-                <th>Operation</th>
-                <th>Object</th>
-                <th>Signals</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} className="loading-cell"><div className="loading-spinner" /></td></tr>
-              ) : riskSignals.length === 0 ? (
-                <tr><td colSpan={7} className="empty-cell">No risk signals detected</td></tr>
-              ) : (
-                riskSignals.map((signal) => (
-                  <tr key={signal.id} onClick={() => handleAuditClick(signal)} className="clickable-row">
-                    <td>{formatDate(signal.date)}</td>
-                    <td>{getRiskBadge(signal.risk_level, signal.risk_score)}</td>
-                    <td>
-                      <div className="risk-score-bar">
-                        <div className="risk-score-fill" style={{ width: `${signal.risk_score}%` }} />
-                      </div>
-                      <span className="risk-score-text">{signal.risk_score}/100</span>
-                    </td>
-                    <td className="actor-cell">
-                      <span className="actor-type">{signal.actor}</span>
-                      {signal.actor_email && <span className="actor-email">{signal.actor_email}</span>}
-                    </td>
-                    <td><span className="operation-badge">{signal.operation}</span></td>
-                    <td className="object-cell">{signal.object}</td>
-                    <td className="signals-cell">
-                      {Object.keys(signal.risk_signals).filter(k => !['risk_level', 'risk_score', 'investigation_urgency'].includes(k)).map(key => (
-                        <span key={key} className="signal-tag">{key.replace(/_/g, ' ')}</span>
-                      ))}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
+              <th aria-sort={riskSortAria('date')}>
+                <button type="button" className="th-sort" onClick={() => toggleRiskSort('date')}>
+                  Date {riskSort === 'date' && <span className="sort-indicator" aria-hidden="true">{riskOrder === 'asc' ? '↑' : '↓'}</span>}
+                </button>
+              </th>
+              <th>Risk Level</th>
+              <th aria-sort={riskSortAria('risk_score')}>
+                <button type="button" className="th-sort" onClick={() => toggleRiskSort('risk_score')}>
+                  Risk Score {riskSort === 'risk_score' && <span className="sort-indicator" aria-hidden="true">{riskOrder === 'asc' ? '↑' : '↓'}</span>}
+                </button>
+              </th>
+              <th>Actor</th>
+              <th>Operation</th>
+              <th>Object</th>
+              <th>Signals</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} className="loading-cell"><div className="loading-spinner" /></td></tr>
+            ) : renderRiskRows()}
+          </tbody>
+        </table>
+      )}
+    </div>);
+  }
+
+  return (
+    <div className="activity-page">
+      {renderActivityHeader()}
+
+      {renderActivityTables()}
 
       {/* ==================== AUDIT DETAIL MODAL ==================== */}
       {showModal && selectedAudit && (

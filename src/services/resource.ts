@@ -206,6 +206,36 @@ export function getTypesForTab(tab: string, serviceType?: string): string[] {
   return getTabTypeMap(serviceType)[tab] || [];
 }
 
+function resourcePageSlices(
+  counts: { type: string; total: number }[], start: number, end: number, size: number,
+) {
+  const slices: { type: string; pages: number[]; skip: number; count: number }[] = [];
+  let cursor = 0;
+  for (const { type, total } of counts) {
+    const typeStart = cursor;
+    cursor += total;
+    const from = Math.max(start, typeStart);
+    const to = Math.min(end, typeStart + total);
+    if (to <= from) continue;
+    // An offset inside a type is not a multiple of `size`, and /by-type
+    // only accepts page+size — so read `size`-aligned pages covering the
+    // offset (at most two, since the window is at most `size` wide) and
+    // trim the surplus head.
+    const offset = from - typeStart;
+    const firstPage = Math.floor(offset / size) + 1;
+    const skip = offset - (firstPage - 1) * size;
+    const pageCount = Math.ceil((skip + (to - from)) / size);
+    slices.push({
+      type,
+      pages: Array.from({ length: pageCount }, (_, i) => firstPage + i),
+      skip,
+      count: to - from,
+    });
+  }
+
+  return slices;
+}
+
 export async function getResources(
   tenantId: string,
   tab: string,
@@ -271,29 +301,7 @@ export async function getResources(
     // maps to a contiguous offset range within each type it overlaps.
     const start = (page - 1) * size;
     const end = start + size;
-    const slices: { type: string; pages: number[]; skip: number; count: number }[] = [];
-    let cursor = 0;
-    for (const { type, total } of counts) {
-      const typeStart = cursor;
-      cursor += total;
-      const from = Math.max(start, typeStart);
-      const to = Math.min(end, typeStart + total);
-      if (to <= from) continue;
-      // An offset inside a type is not a multiple of `size`, and /by-type
-      // only accepts page+size — so read `size`-aligned pages covering the
-      // offset (at most two, since the window is at most `size` wide) and
-      // trim the surplus head.
-      const offset = from - typeStart;
-      const firstPage = Math.floor(offset / size) + 1;
-      const skip = offset - (firstPage - 1) * size;
-      const pageCount = Math.ceil((skip + (to - from)) / size);
-      slices.push({
-        type,
-        pages: Array.from({ length: pageCount }, (_, i) => firstPage + i),
-        skip,
-        count: to - from,
-      });
-    }
+    const slices = resourcePageSlices(counts, start, end, size);
 
     const windows = await Promise.all(slices.map(async (slice) => {
       const pages = await Promise.all(

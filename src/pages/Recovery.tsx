@@ -92,7 +92,7 @@ function getKindLabel(kind: string): string {
   if (labels[kind]) return labels[kind];
   if (!kind) return 'Unknown';
   return kind
-    .replace(/_/g, ' ')
+    .replaceAll('_', ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -1726,11 +1726,10 @@ function ChatItemRow({ item, selected, checked, onSelect, onCheck }: {
             Their `name` is the SENDER's display name (not body text),
             so there is nothing to recover — say so explicitly. */}
         <div className="chat-item-text">
-          {displayBody
-            ? displayBody
-            : (quotedRefs.length > 0 || renderableAttachments.length > 0)
-              ? ''
-              : <span className="chat-item-empty">(no message content)</span>}
+          {displayBody}
+          {!displayBody && quotedRefs.length === 0 && renderableAttachments.length === 0 && (
+            <span className="chat-item-empty">(no message content)</span>
+          )}
         </div>
         {renderableAttachments.length > 0 && (
           <div className="chat-item-attachments" onClick={(e) => e.stopPropagation()}>
@@ -2204,7 +2203,10 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredS
     return counts;
   }, [allEvents]);
   const calendarPaths = useMemo(
-    () => Array.from(calendarPathCounts.keys()).sort(), [calendarPathCounts],
+    () => Array.from(calendarPathCounts.keys()).sort((a, b) => {
+      if (a < b) return -1;
+      return a > b ? 1 : 0;
+    }), [calendarPathCounts],
   );
 
   // Apply both filters. Type filter and calendar filter are AND'ed; an
@@ -2597,10 +2599,10 @@ function CalendarMonthView({ snapshotId, selectedItems, onItemCheck, onFilteredS
 /** Modal wrapper around CalendarPreview. Closes on Escape, on the
  *  backdrop, and on the × — matching the pinned-popover dismissal the
  *  grid already teaches. */
-function CalendarEventModal({ event, onClose }: {
+function CalendarEventModal({ event, onClose }: Readonly<{
   event: CalendarEvent;
   onClose: () => void;
-}) {
+}>) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -2609,16 +2611,15 @@ function CalendarEventModal({ event, onClose }: {
   return (
     <div
       className="cal-detail-overlay"
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onMouseDown={(e) => e.stopPropagation()}
       role="presentation"
     >
-      <div
+      <dialog
+        open
         className="cal-detail-modal"
-        role="dialog"
         aria-modal="true"
         aria-label="Event details"
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
@@ -2627,7 +2628,7 @@ function CalendarEventModal({ event, onClose }: {
           aria-label="Close event details"
         >×</button>
         <CalendarPreview item={event} />
-      </div>
+      </dialog>
     </div>
   );
 }
@@ -2737,7 +2738,7 @@ function CalendarHoverTooltip({
                 checked={isChecked}
                 onChange={() => onItemCheck(ev.id)}
                 onClick={e => e.stopPropagation()}
-                aria-label={`Select ${title}${when ? ` at ${when}` : ''}`}
+                aria-label={when ? `Select ${title} at ${when}` : `Select ${title}`}
               />
               <span className="cal-hover-dot" style={{ background: color }} />
               {/* The subject is the affordance that opens the detail —
@@ -5505,25 +5506,133 @@ function GroupTeamsView({
       });
   }, [channelReplies, selectedMessage]);
 
-  return (
-    <>
-      <div className="content-type-tabs">
-        {visibleTabs.map(tab => {
-          const count = tabCounts[tab];
-          return (
-            <button
-              key={tab}
-              className={`content-tab ${activeTab === tab ? 'active' : ''}${count ? '' : ' content-tab-empty'}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {GROUP_TAB_LABELS[tab]}
-              {count > 0 && <span className="content-tab-count">{count.toLocaleString()}</span>}
-            </button>
-          );
-        })}
-      </div>
+  function renderGroupTab() {
+    function renderGroupChannels() {
+      return <div className="three-panel-layout">
+        <div className="panel-left">
+          <div className="folder-tree-header">Channels</div>
+          {channels.length === 0 ? (
+            <div className="folder-tree-empty">No channels captured.</div>
+          ) : (
+            <div className="folder-tree">
+              {channels.map(name => (
+                <button
+                  key={name}
+                  className={`folder-tree-item${selectedChannel === name ? ' selected' : ''}`}
+                  onClick={() => { setSelectedChannel(name); setSelectedMessageId(null); }}
+                >
+                  <span className="folder-tree-name">{name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="panel-middle">
+          {loading ? (
+            <div className="loading-container"><div className="spinner" /><p>Loading messages...</p></div>
+          ) : messagesInChannel.length === 0 ? (
+            <div className="pbi-empty"><p>No messages in this channel.</p></div>
+          ) : (
+            <div className="items-list">
+              {messagesInChannel.map((m: any) => {
+                const raw = m.metadata?.raw || {};
+                const when = raw.createdDateTime || m.createdAt;
+                // Teams system events (member added, role updated, meeting
+                // started, channel renamed, …) arrive with from: null and
+                // body "<systemEventMessage/>". Render them as labeled
+                // system rows instead of "Unknown".
+                const isSystem =
+                  !raw.from ||
+                  String(raw.body?.content || '').includes('<systemEventMessage/>') ||
+                  !!raw.eventDetail;
+                const sysLabel = String(raw.eventDetail?.['@odata.type'] || '')
+                  .replace('#microsoft.graph.', '')
+                  .replace(/EventMessageDetail$/, '')
+                  .replace(/([a-z])([A-Z])/g, '$1 $2')
+                  .replace(/^./, (c) => c.toUpperCase());
+                const author =
+                  raw.from?.user?.displayName ||
+                  raw.from?.application?.displayName ||
+                  (isSystem ? 'System event' : 'Unknown');
+                const preview = isSystem
+                  ? (sysLabel || 'System event')
+                  : String(raw.body?.content || '').replace(/<[^>]+>/g, '').slice(0, 140);
+                return (
+                  <div
+                    key={m.id}
+                    className={`item-row${selectedMessageId === m.id ? ' selected' : ''}`}
+                    onClick={() => setSelectedMessageId(m.id)}
+                  >
+                    <div className="item-row-check" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.has(m.id)}
+                        onChange={() => onToggleItem(m.id)}
+                      />
+                    </div>
+                    <div className="item-row-body">
+                      <div className="item-row-title">{author}</div>
+                      <div className="item-row-meta">
+                        {when ? fmtLocal(when, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+                      </div>
+                      <div className="item-row-preview">{preview}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="panel-right">
+          {selectedMessage ? (
+            <div className="chat-preview">
+              {/* Parent chat on top */}
+              <div className="chat-preview-parent">
+                <div className="chat-preview-header">
+                  <strong>{selectedMessage.metadata?.raw?.from?.user?.displayName || selectedMessage.metadata?.raw?.from?.application?.displayName || 'Unknown'}</strong>
+                  <span className="chat-preview-date">
+                    {fmtLocal(selectedMessage.metadata?.raw?.createdDateTime || selectedMessage.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div
+                  className="chat-preview-body"
+                  dangerouslySetInnerHTML={{ __html: sanitizeMessageHtml(selectedMessage.metadata?.raw) }}
+                />
+              </div>
+              {/* Replies below */}
+              {repliesForSelected.length > 0 ? (
+                <div className="chat-preview-replies">
+                  <div className="chat-preview-replies-header">
+                    {repliesForSelected.length} {repliesForSelected.length === 1 ? 'reply' : 'replies'}
+                  </div>
+                  {repliesForSelected.map((r: any) => (
+                    <div key={r.id} className="chat-preview-reply">
+                      <div className="chat-preview-header">
+                        <strong>{r.metadata?.raw?.from?.user?.displayName || r.metadata?.raw?.from?.application?.displayName || 'Unknown'}</strong>
+                        <span className="chat-preview-date">
+                          {fmtLocal(r.metadata?.raw?.createdDateTime || r.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div
+                        className="chat-preview-body"
+                        dangerouslySetInnerHTML={{ __html: sanitizeMessageHtml(r.metadata?.raw) }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="chat-preview-noreplies">No replies on this chat.</div>
+              )}
+            </div>
+          ) : (
+            <div className="pbi-empty"><p>Select a message to see replies.</p></div>
+          )}
+        </div>
+      </div>;
+    }
 
-      {activeTab === 'members' ? (
+    if (activeTab === 'members') {
+      return (
         /* Group membership — profile + members captured as
            GROUP_PROFILE / GROUP_MEMBER snapshot items. View-only:
            members restore as part of the group object, not as
@@ -5566,7 +5675,10 @@ function GroupTeamsView({
             </div>
           </div>
         </div>
-      ) : activeTab === 'site' ? (
+      );
+    }
+    if (activeTab === 'site') {
+      return (
         <div className="three-panel-layout od-layout-mode">
           <SharePointView
             resourceId={resourceId}
@@ -5576,7 +5688,13 @@ function GroupTeamsView({
             onSelectAll={onSelectAll}
           />
         </div>
-      ) : activeTab === 'mail' ? (
+      );
+    }
+    if (activeTab === 'mail') {
+      return renderGroupMail();
+    }
+    function renderGroupMail() {
+      return (
         /* Three-panel layout — structurally identical to the users' mail
            view. Left: folder list (thread topics). Middle: header +
            EmailItemRow list. Right: EmailPreview (or empty state).
@@ -5657,130 +5775,31 @@ function GroupTeamsView({
             }
           </div>
         </div>
-      ) : (
-        /* Team Channels: 3-panel layout. */
-        <div className="three-panel-layout">
-          <div className="panel-left">
-            <div className="folder-tree-header">Channels</div>
-            {channels.length === 0 ? (
-              <div className="folder-tree-empty">No channels captured.</div>
-            ) : (
-              <div className="folder-tree">
-                {channels.map(name => (
-                  <button
-                    key={name}
-                    className={`folder-tree-item${selectedChannel === name ? ' selected' : ''}`}
-                    onClick={() => { setSelectedChannel(name); setSelectedMessageId(null); }}
-                  >
-                    <span className="folder-tree-name">{name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="panel-middle">
-            {loading ? (
-              <div className="loading-container"><div className="spinner" /><p>Loading messages...</p></div>
-            ) : messagesInChannel.length === 0 ? (
-              <div className="pbi-empty"><p>No messages in this channel.</p></div>
-            ) : (
-              <div className="items-list">
-                {messagesInChannel.map((m: any) => {
-                  const raw = m.metadata?.raw || {};
-                  const when = raw.createdDateTime || m.createdAt;
-                  // Teams system events (member added, role updated, meeting
-                  // started, channel renamed, …) arrive with from: null and
-                  // body "<systemEventMessage/>". Render them as labeled
-                  // system rows instead of "Unknown".
-                  const isSystem =
-                    !raw.from ||
-                    String(raw.body?.content || '').includes('<systemEventMessage/>') ||
-                    !!raw.eventDetail;
-                  const sysLabel = String(raw.eventDetail?.['@odata.type'] || '')
-                    .replace('#microsoft.graph.', '')
-                    .replace(/EventMessageDetail$/, '')
-                    .replace(/([a-z])([A-Z])/g, '$1 $2')
-                    .replace(/^./, (c) => c.toUpperCase());
-                  const author =
-                    raw.from?.user?.displayName ||
-                    raw.from?.application?.displayName ||
-                    (isSystem ? 'System event' : 'Unknown');
-                  const preview = isSystem
-                    ? (sysLabel || 'System event')
-                    : String(raw.body?.content || '').replace(/<[^>]+>/g, '').slice(0, 140);
-                  return (
-                    <div
-                      key={m.id}
-                      className={`item-row${selectedMessageId === m.id ? ' selected' : ''}`}
-                      onClick={() => setSelectedMessageId(m.id)}
-                    >
-                      <div className="item-row-check" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedItems.has(m.id)}
-                          onChange={() => onToggleItem(m.id)}
-                        />
-                      </div>
-                      <div className="item-row-body">
-                        <div className="item-row-title">{author}</div>
-                        <div className="item-row-meta">
-                          {when ? fmtLocal(when, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
-                        </div>
-                        <div className="item-row-preview">{preview}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <div className="panel-right">
-            {selectedMessage ? (
-              <div className="chat-preview">
-                {/* Parent chat on top */}
-                <div className="chat-preview-parent">
-                  <div className="chat-preview-header">
-                    <strong>{selectedMessage.metadata?.raw?.from?.user?.displayName || selectedMessage.metadata?.raw?.from?.application?.displayName || 'Unknown'}</strong>
-                    <span className="chat-preview-date">
-                      {fmtLocal(selectedMessage.metadata?.raw?.createdDateTime || selectedMessage.createdAt, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div
-                    className="chat-preview-body"
-                    dangerouslySetInnerHTML={{ __html: sanitizeMessageHtml(selectedMessage.metadata?.raw) }}
-                  />
-                </div>
-                {/* Replies below */}
-                {repliesForSelected.length > 0 ? (
-                  <div className="chat-preview-replies">
-                    <div className="chat-preview-replies-header">
-                      {repliesForSelected.length} {repliesForSelected.length === 1 ? 'reply' : 'replies'}
-                    </div>
-                    {repliesForSelected.map((r: any) => (
-                      <div key={r.id} className="chat-preview-reply">
-                        <div className="chat-preview-header">
-                          <strong>{r.metadata?.raw?.from?.user?.displayName || r.metadata?.raw?.from?.application?.displayName || 'Unknown'}</strong>
-                          <span className="chat-preview-date">
-                            {fmtLocal(r.metadata?.raw?.createdDateTime || r.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <div
-                          className="chat-preview-body"
-                          dangerouslySetInnerHTML={{ __html: sanitizeMessageHtml(r.metadata?.raw) }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="chat-preview-noreplies">No replies on this chat.</div>
-                )}
-              </div>
-            ) : (
-              <div className="pbi-empty"><p>Select a message to see replies.</p></div>
-            )}
-          </div>
-        </div>
-      )}
+      );
+    }
+
+    return renderGroupChannels();
+  }
+
+  return (
+    <>
+      <div className="content-type-tabs">
+        {visibleTabs.map(tab => {
+          const count = tabCounts[tab];
+          return (
+            <button
+              key={tab}
+              className={`content-tab ${activeTab === tab ? 'active' : ''}${count ? '' : ' content-tab-empty'}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {GROUP_TAB_LABELS[tab]}
+              {count > 0 && <span className="content-tab-count">{count.toLocaleString()}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {renderGroupTab()}
     </>
   );
   // allChecked is no longer used directly at component root — kept for
@@ -7183,7 +7202,7 @@ export default function Recovery() {
     const completed = candidates
       .filter(s => (s.status || '').toUpperCase() === 'COMPLETED' && s.createdAt)
       .map(s => ({ id: s.id, t: new Date(/Z|[+-]\d{2}:?\d{2}$/.test(s.createdAt) ? s.createdAt : s.createdAt + 'Z').getTime() }))
-      .filter(s => !isNaN(s.t))
+      .filter(s => !Number.isNaN(s.t))
       .sort((a, b) => b.t - a.t);
     if (completed.length === 0) return null;
     // The snapshot the user actually clicked always wins on the tab
@@ -7241,11 +7260,10 @@ export default function Recovery() {
   const handleSelectVersion = useCallback((id: string) => {
     const snap = tabSnapshots.find(s => s.id === id) || snapshots.find(s => s.id === id);
     const raw = snap?.createdAt;
-    const t = raw
-      ? new Date(/Z|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : raw + 'Z').getTime()
-      : NaN;
-    setPinnedVersionAt(isNaN(t) ? null : t);
-    setPinnedVersionFor(isNaN(t) ? null : activeContentType);
+    let t = Number.NaN;
+    if (raw) t = new Date(/Z|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : raw + 'Z').getTime();
+    setPinnedVersionAt(Number.isNaN(t) ? null : t);
+    setPinnedVersionFor(Number.isNaN(t) ? null : activeContentType);
     setSelectedSnapshotId(id);
   }, [tabSnapshots, snapshots, activeContentType]);
 
@@ -7333,9 +7351,9 @@ export default function Recovery() {
     // the selected chat. Non-chats tabs fire immediately and let the
     // left-rail folder list populate in parallel — folders (~1s) must not
     // gate the dominant items fetch (~3.6s).
-    if (isChats) {
+    function waitForChatFolders(kind: string): boolean {
+      if (!isChats) return false;
       const entry = contentSnapshots?.byContent[activeContentType as ContentTab];
-      const kind = selectedResource.kind;
       const isDirectMailbox = kind === 'mailbox' || kind === 'shared_mailbox' || kind === 'room_mailbox';
       const foldersSnapId = entry?.snapshotId || (isDirectMailbox ? selectedSnapshotId : null);
       if (!foldersSnapId) {
@@ -7350,7 +7368,7 @@ export default function Recovery() {
         setHasMore(false);
         setItemPage(1);
         setItemsLoading(false);
-        return;
+        return true;
       }
       if (foldersReadyKey !== `${foldersSnapId}|${activeContentType}`) {
         // Folders (and the first-chat auto-select) aren't ready for THIS
@@ -7367,22 +7385,28 @@ export default function Recovery() {
         setHasMore(false);
         setItemPage(1);
         setItemsLoading(true);
-        return;
+        return true;
       }
+      return false;
     }
+    if (waitForChatFolders(selectedResource.kind)) return;
 
     // OneDrive "Recent": drop the folder filter, order by
     // lastModifiedDateTime DESC, and take ONE bounded page — Recent is a
     // window onto the newest files, not a second copy of the whole
     // drive (QA TMV-016). "My Drive" honours the column sort, defaulting
     // to name_asc so folder listings read like a file explorer.
-    const isOneDrive = activeContentType === 'onedrive';
-    const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
-    const pageSize = oneDriveRecent ? OD_RECENT_LIMIT : 50;
-    const effectiveFolder = oneDriveRecent || (isChats && selectedChatId) ? 'all' : selectedFolder;
-    const sortParam = oneDriveRecent
-      ? 'modified_desc'
-      : (isOneDrive ? oneDriveSort : undefined);
+    function firstPageOptions() {
+      const isOneDrive = activeContentType === 'onedrive';
+      const oneDriveRecent = isOneDrive && oneDriveView === 'recent';
+      const pageSize = oneDriveRecent ? OD_RECENT_LIMIT : 50;
+      const effectiveFolder = oneDriveRecent || (isChats && selectedChatId) ? 'all' : selectedFolder;
+      let sortParam = isOneDrive ? oneDriveSort : undefined;
+      if (oneDriveRecent) sortParam = 'modified_desc';
+
+      return { oneDriveRecent, pageSize, effectiveFolder, sortParam };
+    }
+    const { oneDriveRecent, pageSize, effectiveFolder, sortParam } = firstPageOptions();
 
     // Deps like foldersReadyKey (left rail resolving ~1s after this
     // effect already fired) and contentSnapshots re-run this effect
@@ -7393,7 +7417,8 @@ export default function Recovery() {
     // selection.
     const archiveSnapshotId = archiveSelected ? contentSnapshots?.byContent?.archive?.snapshotId : undefined;
     const archiveKey = archiveSelected ? `archive:${archiveSnapshotId ?? ''}:${archiveFolder ?? ''}` : 'primary';
-    const viewKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${activeContentType === 'chats' ? selectedChatId ?? '' : ''}|${effectiveFolder}|${sortParam ?? ''}|${itemSearch}`;
+    const chatKey = isChats ? selectedChatId ?? '' : '';
+    const viewKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${chatKey}|${effectiveFolder}|${sortParam ?? ''}|${itemSearch}`;
     if (lastItemsViewKeyRef.current === viewKey) return;
     lastItemsViewKeyRef.current = viewKey;
 
@@ -7403,34 +7428,37 @@ export default function Recovery() {
     // SWR: serve a revisit instantly from the per-session cache, then let
     // the fetch below revalidate in the background. Search results are
     // intentionally not cached (unbounded key space, rarely revisited).
-    const cacheKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${activeContentType === 'chats' ? selectedChatId ?? '' : ''}|${effectiveFolder}|${sortParam ?? ''}`;
+    const cacheKey = `${selectedSnapshotId}|${archiveKey}|${activeContentType}|${chatKey}|${effectiveFolder}|${sortParam ?? ''}`;
     const cached = itemSearch ? undefined : itemsCacheRef.current.get(cacheKey);
-    if (cached) {
-      setRecoveryItems(cached.items);
-      setItemCount(cached.total);
-      setItemTotalPages(cached.totalPages);
-      setHasMore(!oneDriveRecent && 1 < cached.totalPages);
-      setItemsLoading(false);
-      if (isChats) {
-        // Mirror the fetch path's landing behavior: bottom-anchor the
-        // conversation and re-arm the top-edge paginator.
-        chatsAutoScrolledRef.current = '';
-        requestAnimationFrame(() => {
-          const el = itemListRef.current;
-          if (el) el.scrollTop = el.scrollHeight;
-          chatsAutoScrolledRef.current = `${selectedSnapshotId}|${activeContentType}`;
-          if (el && cached.totalPages > 1 &&
+    function showCachedItems() {
+      if (cached) {
+        setRecoveryItems(cached.items);
+        setItemCount(cached.total);
+        setItemTotalPages(cached.totalPages);
+        setHasMore(!oneDriveRecent && 1 < cached.totalPages);
+        setItemsLoading(false);
+        if (isChats) {
+          // Mirror the fetch path's landing behavior: bottom-anchor the
+          // conversation and re-arm the top-edge paginator.
+          chatsAutoScrolledRef.current = '';
+          requestAnimationFrame(() => {
+            const el = itemListRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+            chatsAutoScrolledRef.current = `${selectedSnapshotId}|${activeContentType}`;
+            if (el && cached.totalPages > 1 &&
               el.scrollHeight <= el.clientHeight + 200) {
-            setItemPage(p => Math.max(p, 2));
-          }
-        });
-      } else if (itemListRef.current) {
-        itemListRef.current.scrollTop = 0;
+              setItemPage(p => Math.max(p, 2));
+            }
+          });
+        } else if (itemListRef.current) {
+          itemListRef.current.scrollTop = 0;
+        }
+      } else {
+        setItemsLoading(true);
+        if (itemListRef.current) itemListRef.current.scrollTop = 0;
       }
-    } else {
-      setItemsLoading(true);
-      if (itemListRef.current) itemListRef.current.scrollTop = 0;
     }
+    showCachedItems();
     const firstPage = archiveSnapshotId
       ? SnapshotService.listArchive(archiveSnapshotId, activeContentType as ContentTab, 1, pageSize, itemSearch, archiveFolder ?? undefined)
       : SnapshotService.listItems(
@@ -8451,6 +8479,1097 @@ export default function Recovery() {
     );
   }
 
+  function renderResourceRecovery(selectedResource: ResourceWithBackups) {
+    function renderResourceContent() {
+      if (selectedResource.kind === 'sharepoint_site') {
+        return (
+          /* SharePoint sites: a single "Site" content-type tab at the
+             top (parity with the Mail/OneDrive/... tab bar on other
+             kinds) plus a two-option left rail (Site content / Subsites)
+             in a full-width middle panel. Reuses OneDrive's
+             od-layout-mode so the middle panel absorbs the right-
+             preview space. */
+          <>
+            <div className="content-type-tabs">
+              <button className="content-tab active" type="button">Site</button>
+            </div>
+            <div className="three-panel-layout od-layout-mode">
+              <SharePointView
+                resourceId={selectedResource.id}
+                snapshots={snapshots}
+                selectedItems={selectedItems}
+                onToggleItem={toggleSelectItem}
+                onSelectAll={(ids, checked) => {
+                  if (checked) setSelectedItems(new Set(ids));
+                  else setSelectedItems(new Set());
+                }}
+              />
+            </div>
+          </>
+        );
+      }
+      if (selectedResource.kind === 'power_bi') {
+        return (
+          /* Power BI workspaces don't fit the five fixed tabs — swap
+             the whole content area for a single Files panel pulled
+             from the generic /snapshots/{id}/files endpoint. */
+          <PowerBiFilesView
+            resourceId={selectedResource.id}
+            snapshots={snapshots}
+            selectedItems={selectedItems}
+            onToggleItem={toggleSelectItem}
+            onSelectAll={(ids, checked) => {
+              if (checked) setSelectedItems(new Set(ids));
+              else setSelectedItems(new Set());
+            }}
+          />
+        );
+      }
+      if (selectedResource.kind === 'entra_directory') {
+        return (
+          /* Azure Active Directory singleton: 8-tab header (Users
+             / Groups / Roles / Security / Audit / Applications /
+             Intune / Administrative Units). Items filtered from
+             the latest snapshot by item_type. */
+          <EntraDirectoryView
+            resourceId={selectedResource.id}
+            tenantId={tenantId || ''}
+            snapshots={snapshots}
+            selectedItems={selectedItems}
+            onToggleItem={toggleSelectItem}
+            onSelectAll={(ids, checked) => {
+              if (checked) setSelectedItems(new Set(ids));
+              else setSelectedItems(new Set());
+            }}
+          />
+        );
+      }
+      if (selectedResource.kind === 'azure_vm') {
+        return (
+          /* Azure VM: Virtual machine / Volumes / Disks / Network
+             interfaces / Public IP addresses. Items filtered from
+             the latest snapshot by AZURE_VM_* item_type. */
+          <AzureVmView
+            ref={vmViewRef}
+            resourceId={selectedResource.id}
+            snapshots={snapshots}
+            selectedItems={selectedItems}
+            onToggleItem={toggleSelectItem}
+            onSelectAll={(ids, checked) => {
+              if (checked) setSelectedItems(new Set(ids));
+              else setSelectedItems(new Set());
+            }}
+            overrideSnapshotId={selectedSnapshotId}
+            onSelectionInfoChange={setVmSelectionInfo}
+          />
+        );
+      }
+      if ((selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql' || selectedResource.kind === 'azure_postgresql_single')) {
+        return (
+          /* Azure SQL + PostgreSQL: Configuration / Data / Schema
+             tabs filtered by item_type suffix. Same shape handles
+             AZURE_SQL_DB + AZURE_POSTGRESQL + AZURE_POSTGRESQL_SINGLE. */
+          <AzureDbView
+            resourceId={selectedResource.id}
+            snapshots={snapshots}
+            selectedItems={selectedItems}
+            onToggleItem={toggleSelectItem}
+            onSelectAll={(ids, checked) => {
+              if (checked) setSelectedItems(new Set(ids));
+              else setSelectedItems(new Set());
+            }}
+            overrideSnapshotId={selectedSnapshotId}
+          />
+        );
+      }
+      if ((selectedResource.kind === 'm365_group' || selectedResource.kind === 'teams_channel' || selectedResource.kind === 'entra_group')) {
+        return (
+          /* Microsoft 365 Groups + Teams + Entra groups: three content
+             surfaces — Site (SharePoint-backing site items), Mail
+             (group mailbox threads/posts), Team Channels (channel
+             messages). Items filtered client-side from the latest
+             snapshot by item_type prefix. */
+          <GroupTeamsView
+            resourceId={selectedResource.id}
+            snapshots={snapshots}
+            selectedItems={selectedItems}
+            onToggleItem={toggleSelectItem}
+            onSelectAll={(ids, checked) => {
+              if (checked) setSelectedItems(new Set(ids));
+              else setSelectedItems(new Set());
+            }}
+            activeTab={groupTeamsTab}
+            onTabChange={setGroupTeamsTab}
+          />
+        );
+      }
+      function renderContentPanels() {
+        function renderFolderItemsPanel() {
+          return <>
+            {/* Left Panel: tab-aware groupings.
+                    - Mail / OneDrive / Contacts → folder tree.
+                    - Chats → list of chats (display name + message count).
+                    Clicking a row filters the items list via the `group`
+                    parameter. "All" resets the filter. */}
+            <div className="panel-left" ref={folderListRef} onScroll={handleFolderListScroll}>
+              <div className="folder-list">
+                {/* "All" aggregates across every folder — useful on mail /
+                        onedrive / contacts to see the flat stream. On the
+                        chats tab we skip it: each chat is a standalone
+                        conversation, so "all messages from every chat mixed
+                        together" isn't useful — the top chat is auto-
+                        selected in the folders-load effect instead.
+
+                        Scroll handler note: this used to live on .folder-list,
+                        but .folder-list is a non-scrolling content wrapper —
+                        the actual scroll viewport is .panel-left
+                        (overflow-y: auto in Recovery.css). React onScroll
+                        doesn't bubble, so attaching the handler to the
+                        non-scrolling child meant it never fired, and the
+                        infinite-scroll page advancement was dead. Moving it
+                        up to the real scroller restores the loading-more
+                        indicator + page fetch at the rail bottom. With the
+                        first-load size also bumped to 500, this code path is
+                        now mostly a safety net for >500-folder tenants. */}
+                {activeContentType !== 'chats' && (
+                  <button
+                    className={`folder-item ${selectedFolder === 'all' && !archiveSelected ? 'active' : ''}`}
+                    onClick={() => { setArchiveSelected(false); patchSearchParams({ folder: null }); }}
+                  >
+                    <span className="folder-twisty folder-twisty--leaf" aria-hidden="true" />
+                    <span className="folder-glyph">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+                    </span>
+                    <span className="folder-name">All</span>
+                  </button>
+                )}
+                {foldersLoading && (
+                  <div className="folder-loading">
+                    <div className="spinner-sm" />
+                  </div>
+                )}
+                {(() => {
+                  // Apply the toolbar search to the left-panel folder
+                  // list too — chat name typed in the search box
+                  // narrows the chat list alongside filtering the
+                  // messages view, and mail/onedrive/contacts folders
+                  // filter the same way. Match case-insensitively on
+                  // the full folder_path (so "vinay" matches
+                  // "chats/Vinay Chauhan" and "/Inbox/Subfolder").
+                  const q = debouncedSearch.toLowerCase();
+                  const visibleFolders = q
+                    ? folders.filter(f => f.path && f.path.toLowerCase().includes(q))
+                    : folders.filter(f => f.path);
+
+                  // OneDrive is handled by its own dedicated branch
+                  // above (OneDriveLeftPanel), so by this point the tab
+                  // is mail / contacts / chats — a flat list works.
+
+                  // Chats are flat conversation threads; mail / contacts
+                  // get the Outlook-style nested tree (leaf names, system-
+                  // folder icons, depth indent, collapsible subtrees).
+                  const isChats = activeContentType === 'chats';
+                  const rows: FolderRow[] = isChats
+                    ? visibleFolders.map(folder => ({ folder, depth: 0, hasChildren: false }))
+                    : buildFolderRows(visibleFolders, collapsedFolders, q.length > 0);
+
+                  return (
+                    <>
+                      {rows.map(({ folder, depth, hasChildren }) => {
+                        const collapsed = collapsedFolders.has(folder.path);
+                        const folderActive = isChats ? selectedChatId === folder.chatId : selectedFolder === folder.path;
+                        return (
+                          <div
+                            key={isChats ? folder.chatId ?? folder.path : folder.path}
+                            className={`folder-item has-check ${folderActive && !archiveSelected ? 'active' : ''}`}
+                            style={!isChats ? { paddingLeft: `${16 + depth * 15}px` } : undefined}
+                          >
+                            {!isChats && (hasChildren ? (
+                              <button
+                                type="button"
+                                className={`folder-twisty${collapsed ? '' : ' folder-twisty--open'}`}
+                                onClick={(e) => { e.stopPropagation(); toggleFolderCollapse(folder.path); }}
+                                aria-label={collapsed ? 'Expand folder' : 'Collapse folder'}
+                                title={collapsed ? 'Expand' : 'Collapse'}
+                              >
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+                              </button>
+                            ) : (
+                              <span className="folder-twisty folder-twisty--leaf" aria-hidden="true" />
+                            ))}
+                            {isChats ? (
+                              <input
+                                type="checkbox"
+                                className="folder-check"
+                                checked={!!folder.chatId && threadChatId === folder.chatId}
+                                disabled={!folder.chatId}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setThreadChatId(e.target.checked ? folder.chatId ?? null : null)}
+                                title="Select this thread for export"
+                              />
+                            ) : (
+                              <input
+                                type="checkbox"
+                                className="folder-check"
+                                checked={
+                                  // Either: bulk-selected via this
+                                  // checkbox / via the master select-
+                                  // all (genericFolderSelected flips
+                                  // immediately), OR every item in
+                                  // this folder is currently in
+                                  // selectedItems — so manually
+                                  // ticking each row also lights up
+                                  // the folder. We only trust the
+                                  // derived check when the folder is
+                                  // the active view AND fully loaded
+                                  // (recoveryItems.length ===
+                                  // folder.count) — otherwise an
+                                  // unloaded page might hide unticked
+                                  // items and we'd lie to the user.
+                                  genericFolderSelected.has(folder.path)
+                                  || (
+                                    selectedFolder === folder.path
+                                    && folder.count > 0
+                                    && recoveryItems.length === folder.count
+                                    && recoveryItems.every(i => selectedItems.has(i.id))
+                                  )
+                                }
+                                disabled={genericFolderBusy.has(folder.path)}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => handleGenericFolderCheck(folder.path)}
+                                title="Select every item in this folder"
+                              />
+                            )}
+                            <button
+                              className="folder-name-btn"
+                              onClick={() => {
+                                // Chats: opening a thread out of a set of
+                                // search hits shows the WHOLE
+                                // conversation, not just the matching
+                                // messages (Teams/Slack behaviour). This
+                                // used to clear the search box outright,
+                                // which ALSO reset the filtered thread
+                                // list in this rail — so the user lost
+                                // their place after every single result
+                                // (QA TMV-011). Narrow the scope instead
+                                // of destroying the query: the rail stays
+                                // filtered, the thread opens in full, and
+                                // typing in the box re-arms it.
+                                if (activeContentType === 'chats') {
+                                  setSearchNarrowsItems(false);
+                                }
+                                setArchiveSelected(false);
+                                patchSearchParams(isChats && folder.chatId
+                                  ? { chatId: folder.chatId, folder: null }
+                                  : { folder: folder.path, chatId: null });
+                              }}
+                              title={folder.path}
+                            >
+                              {!isChats && (
+                                <span className="folder-glyph"><FolderGlyph path={folder.path} tab={activeContentType} /></span>
+                              )}
+                              <span className="folder-name">{isChats ? folder.displayName || folder.path : (folderLeaf(folder.path) || folder.path)}</span>
+                              {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {!foldersLoading && visibleFolders.length === 0 && (
+                        <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>
+                      )}
+                    </>
+                  );
+                })()}
+                {foldersLoadingMore && (
+                  <div className="folder-loading"><div className="spinner-sm" /></div>
+                )}
+                {!foldersLoadingMore && !foldersHasMore && folders.length > 50 && (
+                  <div className="folder-empty"><p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>End of list</p></div>
+                )}
+                {/* Online Archive — a folder section below the primary
+                        folders (AFI convention). Shows only on Mail/Contacts
+                        when the resource has an archive backup; the item fetch
+                        reroutes to the archive child's snapshot, filtered to
+                        this tab's kind. "All items" shows the flat union; each
+                        archive folder below preserves the RETAINED nested
+                        hierarchy (full path, indented by depth). */}
+                {(activeContentType === 'mail' || activeContentType === 'contacts')
+                  && contentSnapshots?.byContent?.archive
+                  && archiveTree.length > 0 && (
+                    <>
+                      <div className="folder-section-label">Online Archive</div>
+                      <button
+                        className={`folder-item archive-folder-item ${archiveSelected && archiveFolder === null ? 'active' : ''}`}
+                        onClick={() => { setArchiveSelected(true); setArchiveFolder(null); }}
+                        title="All Exchange Online Archive items"
+                      >
+                        <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                          strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="4" width="18" height="4" rx="1" />
+                          <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+                          <path d="M10 12h4" />
+                        </svg>
+                        <span className="folder-name">All items</span>
+                      </button>
+                      {archiveTree.map(f => {
+                        const depth = f.path.split('/').length - 1;
+                        const leaf = f.path.split('/').pop() || f.path;
+                        return (
+                          <div
+                            key={f.path}
+                            className={`folder-item archive-folder-item has-check ${archiveSelected && archiveFolder === f.path ? 'active' : ''}`}
+                            style={{ paddingLeft: `${20 + depth * 16}px` }}
+                          >
+                            {/* Checkbox = pick this whole folder for export/
+                                  recover (folder-level PST). Independent of the
+                                  name button, which only navigates to view the
+                                  folder's items so individual items can be
+                                  ticked (item-level PST). */}
+                            <input
+                              type="checkbox"
+                              className="folder-check"
+                              checked={archiveFolderChecked.has(f.path)}
+                              disabled={archiveFolderBusy.has(f.path)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => handleArchiveFolderCheck(f.path)}
+                              title="Select every item in this archive folder"
+                            />
+                            <button
+                              className="folder-name-btn"
+                              onClick={() => { setArchiveSelected(true); setArchiveFolder(f.path); }}
+                              title={f.path}
+                            >
+                              <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                                strokeLinejoin="round" aria-hidden="true">
+                                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                              </svg>
+                              <span className="folder-name">{leaf}</span>
+                              {f.count > 0 && <span className="folder-count">{f.count}</span>}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+              </div>
+            </div>
+
+            {/* Middle Panel: Item List */}
+            <div className="panel-middle">
+              {(() => {
+                // Selection coverage for the header checkbox, shared
+                // by its checked / indeterminate / click-intent
+                // logic so the three can never disagree.
+                const folderTicked = activeContentType !== 'chats'
+                  && !!selectedFolder
+                  && selectedFolder !== 'all'
+                  && genericFolderSelected.has(selectedFolder);
+                const covered = itemCount > 0 && selectedItems.size >= itemCount;
+                const partial = !covered && (selectedItems.size > 0 || folderTicked);
+                return (
+                  <div className="item-list-header">
+                    <label className="select-all-wrap" title="Select all">
+                      <input
+                        type="checkbox"
+                        // FULLY checked only when the selection really
+                        // does cover the whole folder.
+                        //
+                        // 2026-08-11 (QA TMV-013): ticking select-all in
+                        // /Deleted Items (2,951 messages) selected the 50
+                        // loaded rows and painted a solid check, so the
+                        // box claimed 2,951 items were selected while the
+                        // counter beside it read "50 / 2951" — and the
+                        // next click is Recover. The folder-walk that
+                        // hydrates the remaining ids is asynchronous and
+                        // can come back empty, so "I ticked the folder"
+                        // is not evidence the ids are in hand: coverage
+                        // is measured against itemCount, and anything
+                        // short of it shows the indeterminate dash.
+                        checked={covered}
+                        ref={(el) => { if (el) el.indeterminate = partial; }}
+                        aria-label="Select all items on this page"
+                        onChange={() => {
+                          // Intent comes from what the box is SHOWING,
+                          // not from the browser's checked flip. An
+                          // indeterminate box reports checked=true when
+                          // clicked, so a partial selection that never
+                          // reaches full coverage (the folder walk can
+                          // legitimately return zero rows) could only
+                          // ever be re-selected, never cleared. Partial
+                          // or full → clear; empty → select. Clearing is
+                          // also the safe direction to guess wrong in.
+                          const want = !(covered || partial);
+                          // (a) Set selectedItems to the visible page
+                          // immediately. Keeps the toolbar count
+                          // showing "(N)" the moment the user clicks
+                          // — same feel as manually ticking each row
+                          // — and doesn't depend on the async
+                          // searchItems walk, which can occasionally
+                          // return zero rows due to backend folderPath
+                          // indexing nuances and would otherwise leave
+                          // the count stuck at 0.
+                          if (activeContentType === 'chats') setThreadChatId(null);
+                          if (want) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
+                          else setSelectedItems(new Set());
+
+                          // (b) Sync the left-panel folder checkbox.
+                          // handleGenericFolderCheck flips
+                          // genericFolderSelected immediately AND
+                          // fetches every id under the folder
+                          // (paginated items not yet on screen),
+                          // which then merges into selectedItems.
+                          // Chats use a per-thread (threadPath) model
+                          // and skip this. OneDrive has its own
+                          // panel above with separate handling.
+                          if (activeContentType === 'chats') return;
+                          if (selectedFolder && selectedFolder !== 'all') {
+                            const inSet = genericFolderSelected.has(selectedFolder);
+                            if (want !== inSet) handleGenericFolderCheck(selectedFolder);
+                            return;
+                          }
+                          // "All" view: every folder containing items
+                          // should flip too, so each left-panel folder
+                          // checkbox reflects the master selection.
+                          for (const folder of folders) {
+                            if (!folder.path) continue;
+                            const inSet = genericFolderSelected.has(folder.path);
+                            if (want !== inSet) handleGenericFolderCheck(folder.path);
+                          }
+                        }}
+                      />
+                    </label>
+                    {/* "Showing 0 of 0" is what an EMPTY folder looks
+                            like, and the header rendered it for the whole
+                            ~8 s the page spends resolving resource →
+                            snapshots → folders → items — so a slow load was
+                            indistinguishable from "this backup has nothing
+                            in it", including while a search was mid-flight
+                            (QA TMV-012, TMV-024). Say "Loading…" while it is
+                            loading, and use one locale-aware formatter for
+                            every number here. */}
+                    <span className="item-count">
+                      {itemsLoading
+                        ? 'Loading…'
+                        : selectedItems.size > 0
+                          ? `${selectedItems.size.toLocaleString()} / ${itemCount.toLocaleString()} selected`
+                          : `Showing ${recoveryItems.length.toLocaleString()} of ${itemCount.toLocaleString()}`}
+                    </span>
+                    {/* Pagination replaced by infinite scroll — scroll the
+                            list past 60% to auto-load the next page. */}
+                  </div>
+                );
+              })()}
+
+              <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
+                {/* Chats load older messages ABOVE the visible list when
+                        the user scrolls up. Loader is sticky-positioned at
+                        the top of the scroll viewport (not flow) so the
+                        scroll-anchor math in the page-append effect doesn't
+                        need to compensate for the loader appearing/dis-
+                        appearing — there's no layout shift. */}
+                {activeContentType === 'chats' && loadingMore && (
+                  <div
+                    className="item-list-loading-more item-list-loading-more--sticky"
+                  >
+                    <div className="spinner-sm" />
+                    <span>Loading older messages…</span>
+                  </div>
+                )}
+                {activeContentType === 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && (
+                  <div className="item-list-end">Start of conversation</div>
+                )}
+                {itemsLoading ? (
+                  <div className="loading-container">
+                    <div className="spinner" />
+                    <p>Loading items...</p>
+                  </div>
+                ) : recoveryItems.length === 0 ? (
+                  <div className="empty-state">
+                    {/* Name the query when there is one — "No items
+                            found" over a search that IS filtering the
+                            left rail reads as "your backup is empty"
+                            (QA TMV-012). */}
+                    <p>{itemSearch ? `No items match “${itemSearch}”` : 'No items found'}</p>
+                  </div>
+                ) : (
+                  (() => {
+                    // Item-level types still flow through (server returns
+                    // EMAIL / TEAMS_CHAT_MESSAGE / etc.) — pick the right
+                    // row component from the active tab.
+                    const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
+                    const isChatContentType = activeContentType === 'chats';
+                    // Archive rows render like mail — once enriched they ARE
+                    // email JSON; before that EmailItemRow shows the kind +
+                    // a "processing" pill.
+                    const isEmailType = activeContentType === 'mail' || activeContentType === 'archive';
+                    const isContactsContentType = activeContentType === 'contacts';
+                    return recoveryItems.map(item => {
+                      const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
+                      const isEmailItem = isEmailType || item.itemType === 'EMAIL' || item.itemType === 'ARCHIVE_ITEM';
+                      const isContactItem = isContactsContentType || item.itemType === 'USER_CONTACT' || item.itemType === 'CONTACT';
+                      return isChatItem ? (
+                        <ChatItemRow
+                          key={item.id}
+                          item={item}
+                          selected={selectedItem?.id === item.id}
+                          checked={selectedItems.has(item.id)}
+                          onSelect={() => handleItemSelect(item)}
+                          onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
+                        />
+                      ) : isEmailItem ? (
+                        <EmailItemRow
+                          key={item.id}
+                          item={item}
+                          selected={selectedItem?.id === item.id}
+                          checked={selectedItems.has(item.id)}
+                          onSelect={() => handleItemSelect(item)}
+                          onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
+                        />
+                      ) : isContactItem ? (
+                        <ContactItemRow
+                          key={item.id}
+                          item={item}
+                          selected={selectedItem?.id === item.id}
+                          checked={selectedItems.has(item.id)}
+                          onSelect={() => handleItemSelect(item)}
+                          onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
+                        />
+                      ) : (
+                        <div
+                          key={item.id}
+                          className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
+                          onClick={() => handleItemSelect(item)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.has(item.id)}
+                            onChange={() => toggleSelectItem(item.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="item-content">
+                            <div className="item-subject">{item.subject || item.name}</div>
+                            <div className="item-preview">{item.preview || ''}</div>
+                          </div>
+                          <div className="item-date">
+                            {item.date ? fmtLocalDate(item.date, { month: 'short', day: 'numeric' }) : ''}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()
+                )}
+                {/* Bottom indicator — only for non-chat tabs, where new
+                        pages append below the visible list. Chats render
+                        their indicator at the top (above this block). */}
+                {activeContentType !== 'chats' && loadingMore && (
+                  <div className="item-list-loading-more">
+                    <div className="spinner-sm" />
+                    <span>Loading more…</span>
+                  </div>
+                )}
+                {/* End-of-list marker when the scroll can't advance but
+                        the visible count trails the total — happens when
+                        the server caps page count. Lets the user know we
+                        hit the end rather than looking like a stuck load. */}
+                {activeContentType !== 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                  <div className="item-list-end">End of list</div>
+                )}
+              </div>
+            </div>
+          </>;
+        }
+
+        if (activeContentType === 'calendar') {
+          return (
+            /* Calendar Month View — replaces folder tree + item list */
+            <div className="panel-calendar">
+              {itemsLoading ? (
+                <div className="loading-container"><div className="spinner" /><p>Loading events...</p></div>
+              ) : (
+                <CalendarMonthView
+                  // Keyed on the snapshot so switching account (or
+                  // snapshot version) REMOUNTS the calendar. Without
+                  // this the component stayed mounted across account
+                  // clicks — itemsLoading is forced false for the
+                  // calendar tab, so nothing unmounted it — and kept
+                  // the previous account's events, per-calendar filter
+                  // set and month position on screen while the new
+                  // account's events loaded.
+                  key={selectedSnapshotId}
+                  snapshotId={selectedSnapshotId}
+                  selectedItems={selectedItems}
+                  onItemCheck={toggleSelectItem}
+                  onFilteredScopeChange={setCalendarScope}
+                  onCalendarFilterChange={setSelectedCalendarPaths}
+                  onFilterActiveChange={setCalendarFilterActive}
+                />
+              )}
+            </div>
+          );
+        }
+        if (activeContentType === 'onedrive') {
+          return renderOneDrivePanel();
+        }
+        function renderOneDrivePanel() {
+          function oneDriveCountLabel() {
+            if (itemsLoading) return 'Loading…';
+            if (oneDriveView === 'recent') {
+              // Recent is a bounded window, not the whole drive total.
+              return recoveryItems.length ? `${recoveryItems.length.toLocaleString()} most recently modified` : '';
+            }
+            return itemCount ? `${itemCount.toLocaleString()} items` : '';
+          }
+
+          return (
+            /* OneDrive Drive-style view — left rail (My Drive tree /
+                Recent) + full-width file table. No right preview panel. */
+            <>
+              <div className="panel-left od-panel-left">
+                <OneDriveLeftPanel
+                  view={oneDriveView}
+                  setView={(v) => {
+                    // View toggle pushes a new history entry so
+                    // back/forward walks through My Drive ↔ Recent.
+                    // Recent drops the folder filter entirely;
+                    // My Drive resets to root.
+                    patchSearchParams(
+                      v === 'recent'
+                        ? { view: 'recent', folder: null }
+                        : { view: 'my-drive', folder: '/' }
+                    );
+                  }}
+                />
+              </div>
+              <div className="panel-middle od-panel-middle">
+                <div className="od-main-header">
+                  {/* Clickable path, same shape (and the same
+                            already-themed classes) as the SharePoint
+                            content breadcrumb above. Browsing into
+                            /Documents/_Archive used to print the path as
+                            dead text with no way back short of
+                            re-clicking a root entry in the sidebar, so
+                            deep trees were a dead end (QA TMV-015). Each
+                            segment navigates to its own prefix, and
+                            because it goes through patchSearchParams the
+                            browser Back button walks the same trail. */}
+                  <span className="od-breadcrumb">
+                    {oneDriveView === 'recent' ? 'Recent' : (() => {
+                      const parts = (selectedFolder === 'all' || selectedFolder === '/' || !selectedFolder)
+                        ? []
+                        : selectedFolder.split('/').filter(Boolean);
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            className="od-breadcrumb-link"
+                            onClick={() => patchSearchParams({ view: 'my-drive', folder: '/' })}
+                            disabled={parts.length === 0}
+                          >My Drive</button>
+                          {parts.map((seg, i) => {
+                            const prefix = '/' + parts.slice(0, i + 1).join('/');
+                            const isLast = i === parts.length - 1;
+                            return (
+                              <span key={prefix}>
+                                <span className="od-breadcrumb-sep"> / </span>
+                                <button
+                                  type="button"
+                                  className="od-breadcrumb-link"
+                                  onClick={() => patchSearchParams({ view: 'my-drive', folder: prefix })}
+                                  disabled={isLast}
+                                  title={prefix}
+                                >{seg}</button>
+                              </span>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
+                  </span>
+                  <span className="od-count">
+                    {oneDriveCountLabel()}
+                  </span>
+                </div>
+                {itemsLoading ? (
+                  <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
+                ) : (
+                  <div
+                    className="item-list od-list"
+                    ref={itemListRef}
+                    onScroll={handleItemListScroll}
+                  >
+                    <OneDriveTable
+                      items={recoveryItems}
+                      folders={folders}
+                      view={oneDriveView}
+                      selectedFolder={selectedFolder}
+                      onOpenFolder={(p) => { patchSearchParams({ view: 'my-drive', folder: p }); }}
+                      selectedItems={selectedItems}
+                      onToggleItem={toggleSelectItem}
+                      onSelectAll={(checked) => {
+                        // Set selectedItems to the visible page
+                        // immediately so the toolbar count
+                        // shows "(N)" right on click — same as
+                        // the manual-select feel — without
+                        // waiting on the async folder-walk
+                        // (which may return 0 due to backend
+                        // folderPath indexing nuances).
+                        if (checked) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
+                        else setSelectedItems(new Set());
+
+                        // Sync the folder bulk-select state.
+                        // handleOneDriveFolderCheck flips
+                        // oneDriveFolderSelected immediately
+                        // (left-panel checkbox flips) AND
+                        // fetches every recursive file id under
+                        // the folder, merging into
+                        // selectedItems. Root / Recent has no
+                        // folder context, so visible-page only.
+                        const isFolderContext =
+                          !!selectedFolder
+                          && selectedFolder !== 'all'
+                          && selectedFolder !== '/';
+                        if (isFolderContext) {
+                          const inSet = oneDriveFolderSelected.has(selectedFolder);
+                          if (checked !== inSet) handleOneDriveFolderCheck(selectedFolder);
+                        }
+                      }}
+                      allChecked={
+                        (!!selectedFolder
+                          && selectedFolder !== 'all'
+                          && selectedFolder !== '/'
+                          && oneDriveFolderSelected.has(selectedFolder))
+                        || (recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
+                      }
+                      // Same honesty rule as the mail header
+                      // (QA TMV-013): a tick over one loaded page
+                      // of a larger folder is a PARTIAL selection.
+                      allIndeterminate={
+                        selectedItems.size > 0
+                        && !(recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
+                      }
+                      onFolderCheck={handleOneDriveFolderCheck}
+                      folderBusy={oneDriveFolderBusy}
+                      folderSelected={oneDriveFolderSelected}
+                      snapshotId={selectedSnapshotId}
+                      sort={oneDriveSort}
+                      onSortChange={setOneDriveSort}
+                    />
+                    {loadingMore && (
+                      <div className="item-list-loading-more">
+                        <div className="spinner-sm" />
+                        <span>Loading more…</span>
+                      </div>
+                    )}
+                    {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
+                      <div className="item-list-end">End of list</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        }
+
+        return renderFolderItemsPanel();
+      }
+
+      return <>
+        {/* Content Type Tabs — fixed five (Mail / OneDrive / Contacts / Calendar / Chats).
+                  Each tab shows its backed-up item count from the content-
+                  snapshots resolver; tabs with no snapshot yet stay clickable
+                  but render an empty state on click. */}
+        <div className="content-type-tabs">
+          {contentTypes
+            .filter(type => {
+              // Shared + room mailboxes are Exchange-only — no OneDrive
+              // provisioning in M365, so hide the tab.
+              const kind = selectedResource.kind;
+              if (type === 'onedrive' && (kind === 'shared_mailbox' || kind === 'room_mailbox')) return false;
+              return true;
+            })
+            .map(type => {
+              const entry = contentSnapshots?.byContent[type] || null;
+              const count = entry?.itemCount ?? 0;
+              const hasBackup = !!entry;
+              return (
+                <button
+                  key={type}
+                  className={`content-tab ${activeContentType === type ? 'active' : ''}${hasBackup ? '' : ' content-tab-empty'}`}
+                  onClick={() => {
+                    // Tab switch — drop folder/view from URL so the
+                    // new tab starts clean. patchSearchParams pushes
+                    // a new history entry; the sync effect above
+                    // then updates local state.
+                    setArchiveSelected(false);
+                    patchSearchParams({ tab: type, folder: null, view: null, chatId: null });
+                  }}
+                  title={hasBackup ? `${count.toLocaleString()} item${count === 1 ? '' : 's'} backed up` : 'No backup yet'}
+                >
+                  {CONTENT_TAB_LABELS[type]}
+                  {hasBackup && <span className="content-tab-count">{count.toLocaleString()}</span>}
+                </button>
+              );
+            })}
+        </div>
+
+        {/* Search / Download / Recover all live in the global
+                  <RecoveryToolbar /> above — the old inline toolbar here
+                  is gone so the affordances are shown exactly once per
+                  resource view. */}
+
+        {/* Three Panel Layout */}
+        <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}${activeContentType === 'onedrive' ? ' od-layout-mode' : ''}${activeContentType === 'mail' ? ' mail-layout-mode' : ''}`}>
+          {renderContentPanels()}
+
+          {/* Right Panel: Item Preview — hidden for Chats, Calendar, and
+                    OneDrive. Calendar shows events in the month view; chats
+                    render inline in the middle panel; OneDrive uses the full
+                    width for its Drive-style table. */}
+          {!['chats', 'calendar', 'onedrive'].includes(activeContentType) && (
+            <div className="panel-right">
+              {selectedItem
+                ? <ItemPreview item={selectedItem} />
+                : <div className="empty-preview"><p>Select an item to preview</p></div>
+              }
+            </div>
+          )}
+        </div>
+      </>;
+    }
+
+    return (
+      <>
+        {/* Header */}
+        <div className="recovery-header">
+          <div className="header-left">
+            <div className="resource-avatar">{getInitials(selectedResource.name)}</div>
+            <div className="resource-info">
+              <div className="resource-name">{selectedResource.name}</div>
+              {selectedResource.email && <div className="resource-email">{selectedResource.email}</div>}
+            </div>
+            {selectedResource.last_backup_at && (
+              <div className="last-backup-info">
+                <span className="label">Last backup:</span>
+                <span className="value">
+                  {fmtLocalDate(selectedResource.last_backup_at, { month: 'short', day: 'numeric', year: 'numeric' })}, {fmtLocalTime(selectedResource.last_backup_at, { hour: 'numeric', minute: '2-digit', hour12: true })}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="header-stats">
+            {/* afi-style size panel: total + 1w/1m/1y deltas + 7-day sparkline
+                      centered on today. All derived client-side from the `snapshots`
+                      array already loaded for this resource. */}
+            {/* Backend computes the rollup (sum of bytes_added
+                      across the resource subtree's non-failed snapshots
+                      = true on-disk footprint). FE just renders. */}
+            <BackupSizeSummary
+              resourceId={selectedResource.id}
+            />
+
+            {/* AFI-style "versions" = distinct backup attempts
+                      (job_ids) across this identity's parent + Tier-2
+                      child subtree. One "Backup now" click for a user
+                      is ONE version, even though the worker fans it out
+                      into per-surface snapshot rows internally. Falls
+                      back to snapshotCount for older API responses that
+                      pre-date versionCount (defensive — backend always
+                      returns it now). */}
+            <div className="snapshot-count">
+              <div className="snapshot-count-num">
+                {contentSnapshots?.versionCount
+                  ?? contentSnapshots?.snapshotCount
+                  ?? (snapshotsLoading ? '…' : 0)}
+              </div>
+              <div className="snapshot-count-label">
+                version{(contentSnapshots?.versionCount ?? contentSnapshots?.snapshotCount ?? 0) === 1 ? '' : 's'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Recovery toolbar — sits between the content
+                  header (above) and the content-type tabs (below) so
+                  every resource + content-type gets the same Version /
+                  Download / Recover affordances. Search is shown only
+                  for content types that actually search a list (mail,
+                  onedrive, contacts, calendar, chats, site, team
+                  channels, the 8 Entra Directory tabs, and Azure DB
+                  configuration files). Other kinds — Power BI, Azure
+                  VM, plain users/groups listings — don't have a list
+                  to filter, so we hide the search instead of showing
+                  a no-op input. */}
+        {(() => {
+          const kind = selectedResource.kind;
+          // M365 user content types — tied to activeContentType.
+          // Gate by resource kind too, because activeContentType
+          // can linger as 'mail' / 'onedrive' etc. after the user
+          // switches to a non-M365 resource. Without this, the
+          // search would wrongly stay on for Azure DB's Database
+          // and Schema tabs.
+          const isAzureDb = kind === 'azure_sql' || kind === 'azure_postgresql' || kind === 'azure_postgresql_single';
+          const rawTab = searchParams.get('tab') || '';
+          const azureDbTab = (rawTab === 'database' || rawTab === 'schema') ? rawTab : 'configuration';
+          const isAzureVm = kind === 'azure_vm';
+          function shouldShowSearch() {
+            const M365_SEARCH_TABS = new Set([
+              'mail', 'onedrive', 'contacts', 'calendar', 'chats',
+            ]);
+            const isM365UserKind = [
+              'user', 'entra_user', 'mailbox', 'shared_mailbox', 'room_mailbox',
+            ].includes(kind);
+            const showForM365 = isM365UserKind
+              && M365_SEARCH_TABS.has(activeContentType as string);
+            // Resource kinds whose entire UI supports search across
+            // every inner tab (Site / Mail / Team Channels / the
+            // 8 Entra Directory tabs).
+            const KINDS_WITH_SEARCH = new Set([
+              'sharepoint_site',
+              'm365_group', 'entra_group', 'teams_channel',
+              'entra_directory',
+            ]);
+            const showForKind = KINDS_WITH_SEARCH.has(kind);
+            // Azure SQL + Postgres — only the Configuration tab
+            // surfaces a searchable list (configuration files in
+            // the left panel). Database and Schema don't, so hide
+            // the search input there. AzureDbView syncs its tab to
+            // ?tab=configuration|database|schema in the URL.
+            const showForAzureDb = isAzureDb && azureDbTab === 'configuration';
+            // Azure VM view manages its own per-tab layouts; the
+            // global search doesn't apply anywhere inside it.
+            return !isAzureVm && (showForM365 || showForKind || showForAzureDb);
+          }
+          const showSearch = shouldShowSearch();
+          // Azure DB Configuration has a single implicit target
+          // (the config JSON) — let Download work without the
+          // user ticking anything. Same rationale for the VM
+          // Virtual machine tab (single config blob).
+          const vmTab = isAzureVm ? (rawTab || 'virtual_machine') : '';
+          // VM Virtual-machine / Disks / NICs / Public-IPs all
+          // have an implicit download target (the active row's
+          // ARM JSON) so the user doesn't need to tick anything
+          // in the left rail. Volumes needs an explicit file /
+          // folder pick IN THE RIGHT PANE — the AzureVmView
+          // reports that count here via onSelectionInfoChange.
+          const vmVolumesHasPick = isAzureVm && vmTab === 'volumes'
+            && (vmSelectionInfo?.count ?? 0) > 0;
+          // Calendar tab: the sidebar's Event Type / Calendar
+          // filters define a "soft" selection stored in
+          // calendarScope. Keep the buttons enabled when a
+          // filter has narrowed the view even if the user hasn't
+          // ticked individual events — handleDownload /
+          // handleRecover both apply that scope on click, so the
+          // action still targets exactly what the grid is showing.
+          //
+          // `calendarFilterActive` is the load-bearing half.
+          // 2026-08-11 (QA TMV-001): an UNTOUCHED sidebar reports
+          // a scope of every event in the calendar, so this read
+          // `count > 0` as consent and left Download AND Recover
+          // live, aimed at all 5,418 events, with the counter
+          // showing "0 selected" — a full-calendar restore one
+          // click away from a user who had selected nothing. A
+          // filter the user applied is a scoping gesture; the
+          // default view is not.
+          const calendarFilterScoped =
+            activeContentType === 'calendar'
+            && calendarFilterActive
+            && calendarScope.count > 0;
+          // Chat thread scope: when the user ticks a thread in
+          // the left rail but hasn't clicked into any individual
+          // messages, `threadPath` is set and `selectedItems` is
+          // empty. The toolbar was leaving Download greyed out
+          // in that state; handleDownload then forwards
+          // threadPath to the chat-export modal, so a click
+          // WOULD work if we let it through. Treat a ticked
+          // thread as implicit selection so Download lights up.
+          const chatThreadScoped =
+            activeContentType === 'chats' && !!threadChatId;
+          // Generic-folder scope: mail / contacts / site tabs let
+          // the user tick an entire folder (e.g. `/Inbox`, or
+          // `Contacts`) in the left rail. That selection lives in
+          // `genericFolderSelected` — selectedItems only fills
+          // after the async pagination walk, which leaves the
+          // toolbar greyed out until the walk finishes and the
+          // user gets a button that never lights up when the
+          // backend returns zero rows. Treat any ticked folder as
+          // implicit selection and pass folderPaths to the modal,
+          // which forwards them to the backend folder_resolver.
+          const genericFolderScoped =
+            activeContentType !== 'chats' && genericFolderSelected.size > 0;
+          // Online Archive folder checkboxes are their own selection set
+          // (kept separate from nav) — a ticked archive folder is a valid
+          // empty-item selection for folder-level export/recover.
+          const archiveFolderScoped =
+            archiveSelected && archiveFolderChecked.size > 0;
+          const allowEmptyDownload =
+            (isAzureDb && azureDbTab === 'configuration') ||
+            (isAzureVm && vmTab !== 'volumes') ||
+            vmVolumesHasPick ||
+            calendarFilterScoped ||
+            chatThreadScoped ||
+            genericFolderScoped ||
+            archiveFolderScoped;
+          // Azure DB + VM Recover always rebuild the full resource,
+          // so no checkbox selection is needed regardless of tab.
+          // Chat Recover stays blocked by toolbarIsChat below —
+          // Graph has no app-only chat-post API, so enabling
+          // thread scope there would just open a dead modal.
+          const allowEmptyRecover =
+            isAzureDb || isAzureVm || calendarFilterScoped || genericFolderScoped || archiveFolderScoped;
+          // Chat restore is a Microsoft platform limit — no
+          // app-only API to post chat/channel messages as another
+          // user. Grey out Recover so users don't submit a no-op
+          // job. Affects: user Chats tab AND the Channels tab
+          // inside Group / Teams Channel resources (where we
+          // remap effectiveContentType='chats' for modal routing).
+          const isGroupLikeForTb = !!selectedResource && [
+            'm365_group', 'entra_group', 'teams_channel',
+          ].includes(selectedResource.kind);
+          const toolbarIsChat =
+            activeContentType === 'chats'
+            || (isGroupLikeForTb && groupTeamsTab === 'channels');
+          return (
+            <RecoveryToolbar
+              // Tab-scoped, NOT the whole 110-snapshot list —
+              // see tabSnapshots (QA TMV-002).
+              snapshots={tabSnapshots}
+              selectedSnapshotId={selectedSnapshotId}
+              onSelectSnapshot={handleSelectVersion}
+              onDownload={handleDownload}
+              onRecover={handleRecover}
+              selectedCount={selectedItems.size}
+              downloadError={inlineDownloadError || downloadError}
+              downloadDisabled={inlineDownloadRunning}
+              recoverDisabled={toolbarIsChat}
+              allowEmptyDownload={allowEmptyDownload}
+              allowEmptyRecover={allowEmptyRecover}
+              searchValue={showSearch ? searchQuery : undefined}
+              onSearchChange={showSearch ? setSearchQuery : undefined}
+              // The magnifier looked broken because it did
+              // literally nothing — search is debounced, so by
+              // the time anyone clicked it the results were
+              // already on screen (QA TMV-032). Make it flush the
+              // pending debounce instead: pressing Enter or
+              // clicking it now applies the current text
+              // immediately rather than 300 ms later, which is a
+              // real (if small) behaviour a user can feel.
+              onSearchSubmit={showSearch ? () => {
+                setSearchNarrowsItems(true);
+                setDebouncedSearch(searchQuery.trim());
+              } : undefined}
+              searchPlaceholder="Search"
+            />
+          );
+        })()}
+
+        {renderResourceContent()}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="recovery-page">
@@ -8701,1053 +9820,7 @@ export default function Recovery() {
             <div className="empty-selection">
               <p>Select a resource to browse backups</p>
             </div>
-          ) : (
-            <>
-              {/* Header */}
-              <div className="recovery-header">
-                <div className="header-left">
-                  <div className="resource-avatar">{getInitials(selectedResource.name)}</div>
-                  <div className="resource-info">
-                    <div className="resource-name">{selectedResource.name}</div>
-                    {selectedResource.email && <div className="resource-email">{selectedResource.email}</div>}
-                  </div>
-                  {selectedResource.last_backup_at && (
-                    <div className="last-backup-info">
-                      <span className="label">Last backup:</span>
-                      <span className="value">
-                        {fmtLocalDate(selectedResource.last_backup_at, { month: 'short', day: 'numeric', year: 'numeric' })}, {fmtLocalTime(selectedResource.last_backup_at, { hour: 'numeric', minute: '2-digit', hour12: true })}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="header-stats">
-                  {/* afi-style size panel: total + 1w/1m/1y deltas + 7-day sparkline
-                      centered on today. All derived client-side from the `snapshots`
-                      array already loaded for this resource. */}
-                  {/* Backend computes the rollup (sum of bytes_added
-                      across the resource subtree's non-failed snapshots
-                      = true on-disk footprint). FE just renders. */}
-                  <BackupSizeSummary
-                    resourceId={selectedResource.id}
-                  />
-
-                  {/* AFI-style "versions" = distinct backup attempts
-                      (job_ids) across this identity's parent + Tier-2
-                      child subtree. One "Backup now" click for a user
-                      is ONE version, even though the worker fans it out
-                      into per-surface snapshot rows internally. Falls
-                      back to snapshotCount for older API responses that
-                      pre-date versionCount (defensive — backend always
-                      returns it now). */}
-                  <div className="snapshot-count">
-                    <div className="snapshot-count-num">
-                      {contentSnapshots?.versionCount
-                        ?? contentSnapshots?.snapshotCount
-                        ?? (snapshotsLoading ? '…' : 0)}
-                    </div>
-                    <div className="snapshot-count-label">
-                      version{(contentSnapshots?.versionCount ?? contentSnapshots?.snapshotCount ?? 0) === 1 ? '' : 's'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Global Recovery toolbar — sits between the content
-                  header (above) and the content-type tabs (below) so
-                  every resource + content-type gets the same Version /
-                  Download / Recover affordances. Search is shown only
-                  for content types that actually search a list (mail,
-                  onedrive, contacts, calendar, chats, site, team
-                  channels, the 8 Entra Directory tabs, and Azure DB
-                  configuration files). Other kinds — Power BI, Azure
-                  VM, plain users/groups listings — don't have a list
-                  to filter, so we hide the search instead of showing
-                  a no-op input. */}
-              {(() => {
-                const kind = selectedResource.kind;
-                // M365 user content types — tied to activeContentType.
-                // Gate by resource kind too, because activeContentType
-                // can linger as 'mail' / 'onedrive' etc. after the user
-                // switches to a non-M365 resource. Without this, the
-                // search would wrongly stay on for Azure DB's Database
-                // and Schema tabs.
-                const M365_SEARCH_TABS = new Set([
-                  'mail', 'onedrive', 'contacts', 'calendar', 'chats',
-                ]);
-                const isM365UserKind = [
-                  'user', 'entra_user', 'mailbox', 'shared_mailbox', 'room_mailbox',
-                ].includes(kind);
-                const showForM365 = isM365UserKind
-                  && M365_SEARCH_TABS.has(activeContentType as string);
-                // Resource kinds whose entire UI supports search across
-                // every inner tab (Site / Mail / Team Channels / the
-                // 8 Entra Directory tabs).
-                const KINDS_WITH_SEARCH = new Set([
-                  'sharepoint_site',
-                  'm365_group', 'entra_group', 'teams_channel',
-                  'entra_directory',
-                ]);
-                const showForKind = KINDS_WITH_SEARCH.has(kind);
-                // Azure SQL + Postgres — only the Configuration tab
-                // surfaces a searchable list (configuration files in
-                // the left panel). Database and Schema don't, so hide
-                // the search input there. AzureDbView syncs its tab to
-                // ?tab=configuration|database|schema in the URL.
-                const isAzureDb = kind === 'azure_sql' || kind === 'azure_postgresql' || kind === 'azure_postgresql_single';
-                const rawTab = searchParams.get('tab') || '';
-                const azureDbTab = (rawTab === 'database' || rawTab === 'schema') ? rawTab : 'configuration';
-                const showForAzureDb = isAzureDb && azureDbTab === 'configuration';
-                // Azure VM view manages its own per-tab layouts; the
-                // global search doesn't apply anywhere inside it.
-                const isAzureVm = kind === 'azure_vm';
-                const showSearch = !isAzureVm && (showForM365 || showForKind || showForAzureDb);
-                // Azure DB Configuration has a single implicit target
-                // (the config JSON) — let Download work without the
-                // user ticking anything. Same rationale for the VM
-                // Virtual machine tab (single config blob).
-                const vmTab = isAzureVm ? (rawTab || 'virtual_machine') : '';
-                // VM Virtual-machine / Disks / NICs / Public-IPs all
-                // have an implicit download target (the active row's
-                // ARM JSON) so the user doesn't need to tick anything
-                // in the left rail. Volumes needs an explicit file /
-                // folder pick IN THE RIGHT PANE — the AzureVmView
-                // reports that count here via onSelectionInfoChange.
-                const vmVolumesHasPick = isAzureVm && vmTab === 'volumes'
-                  && (vmSelectionInfo?.count ?? 0) > 0;
-                // Calendar tab: the sidebar's Event Type / Calendar
-                // filters define a "soft" selection stored in
-                // calendarScope. Keep the buttons enabled when a
-                // filter has narrowed the view even if the user hasn't
-                // ticked individual events — handleDownload /
-                // handleRecover both apply that scope on click, so the
-                // action still targets exactly what the grid is showing.
-                //
-                // `calendarFilterActive` is the load-bearing half.
-                // 2026-08-11 (QA TMV-001): an UNTOUCHED sidebar reports
-                // a scope of every event in the calendar, so this read
-                // `count > 0` as consent and left Download AND Recover
-                // live, aimed at all 5,418 events, with the counter
-                // showing "0 selected" — a full-calendar restore one
-                // click away from a user who had selected nothing. A
-                // filter the user applied is a scoping gesture; the
-                // default view is not.
-                const calendarFilterScoped =
-                  activeContentType === 'calendar'
-                  && calendarFilterActive
-                  && calendarScope.count > 0;
-                // Chat thread scope: when the user ticks a thread in
-                // the left rail but hasn't clicked into any individual
-                // messages, `threadPath` is set and `selectedItems` is
-                // empty. The toolbar was leaving Download greyed out
-                // in that state; handleDownload then forwards
-                // threadPath to the chat-export modal, so a click
-                // WOULD work if we let it through. Treat a ticked
-                // thread as implicit selection so Download lights up.
-                const chatThreadScoped =
-                  activeContentType === 'chats' && !!threadChatId;
-                // Generic-folder scope: mail / contacts / site tabs let
-                // the user tick an entire folder (e.g. `/Inbox`, or
-                // `Contacts`) in the left rail. That selection lives in
-                // `genericFolderSelected` — selectedItems only fills
-                // after the async pagination walk, which leaves the
-                // toolbar greyed out until the walk finishes and the
-                // user gets a button that never lights up when the
-                // backend returns zero rows. Treat any ticked folder as
-                // implicit selection and pass folderPaths to the modal,
-                // which forwards them to the backend folder_resolver.
-                const genericFolderScoped =
-                  activeContentType !== 'chats' && genericFolderSelected.size > 0;
-                // Online Archive folder checkboxes are their own selection set
-                // (kept separate from nav) — a ticked archive folder is a valid
-                // empty-item selection for folder-level export/recover.
-                const archiveFolderScoped =
-                  archiveSelected && archiveFolderChecked.size > 0;
-                const allowEmptyDownload =
-                  (isAzureDb && azureDbTab === 'configuration') ||
-                  (isAzureVm && vmTab !== 'volumes') ||
-                  vmVolumesHasPick ||
-                  calendarFilterScoped ||
-                  chatThreadScoped ||
-                  genericFolderScoped ||
-                  archiveFolderScoped;
-                // Azure DB + VM Recover always rebuild the full resource,
-                // so no checkbox selection is needed regardless of tab.
-                // Chat Recover stays blocked by toolbarIsChat below —
-                // Graph has no app-only chat-post API, so enabling
-                // thread scope there would just open a dead modal.
-                const allowEmptyRecover =
-                  isAzureDb || isAzureVm || calendarFilterScoped || genericFolderScoped || archiveFolderScoped;
-                // Chat restore is a Microsoft platform limit — no
-                // app-only API to post chat/channel messages as another
-                // user. Grey out Recover so users don't submit a no-op
-                // job. Affects: user Chats tab AND the Channels tab
-                // inside Group / Teams Channel resources (where we
-                // remap effectiveContentType='chats' for modal routing).
-                const isGroupLikeForTb = !!selectedResource && [
-                  'm365_group', 'entra_group', 'teams_channel',
-                ].includes(selectedResource.kind);
-                const toolbarIsChat =
-                  activeContentType === 'chats'
-                  || (isGroupLikeForTb && groupTeamsTab === 'channels');
-                return (
-                  <RecoveryToolbar
-                    // Tab-scoped, NOT the whole 110-snapshot list —
-                    // see tabSnapshots (QA TMV-002).
-                    snapshots={tabSnapshots}
-                    selectedSnapshotId={selectedSnapshotId}
-                    onSelectSnapshot={handleSelectVersion}
-                    onDownload={handleDownload}
-                    onRecover={handleRecover}
-                    selectedCount={selectedItems.size}
-                    downloadError={inlineDownloadError || downloadError}
-                    downloadDisabled={inlineDownloadRunning}
-                    recoverDisabled={toolbarIsChat}
-                    allowEmptyDownload={allowEmptyDownload}
-                    allowEmptyRecover={allowEmptyRecover}
-                    searchValue={showSearch ? searchQuery : undefined}
-                    onSearchChange={showSearch ? setSearchQuery : undefined}
-                    // The magnifier looked broken because it did
-                    // literally nothing — search is debounced, so by
-                    // the time anyone clicked it the results were
-                    // already on screen (QA TMV-032). Make it flush the
-                    // pending debounce instead: pressing Enter or
-                    // clicking it now applies the current text
-                    // immediately rather than 300 ms later, which is a
-                    // real (if small) behaviour a user can feel.
-                    onSearchSubmit={showSearch ? () => {
-                      setSearchNarrowsItems(true);
-                      setDebouncedSearch(searchQuery.trim());
-                    } : undefined}
-                    searchPlaceholder="Search"
-                  />
-                );
-              })()}
-
-              {selectedResource.kind === 'sharepoint_site' ? (
-                /* SharePoint sites: a single "Site" content-type tab at the
-                   top (parity with the Mail/OneDrive/... tab bar on other
-                   kinds) plus a two-option left rail (Site content / Subsites)
-                   in a full-width middle panel. Reuses OneDrive's
-                   od-layout-mode so the middle panel absorbs the right-
-                   preview space. */
-                <>
-                  <div className="content-type-tabs">
-                    <button className="content-tab active" type="button">Site</button>
-                  </div>
-                  <div className="three-panel-layout od-layout-mode">
-                    <SharePointView
-                      resourceId={selectedResource.id}
-                      snapshots={snapshots}
-                      selectedItems={selectedItems}
-                      onToggleItem={toggleSelectItem}
-                      onSelectAll={(ids, checked) => {
-                        if (checked) setSelectedItems(new Set(ids));
-                        else setSelectedItems(new Set());
-                      }}
-                    />
-                  </div>
-                </>
-              ) : selectedResource.kind === 'power_bi' ? (
-                /* Power BI workspaces don't fit the five fixed tabs — swap
-                   the whole content area for a single Files panel pulled
-                   from the generic /snapshots/{id}/files endpoint. */
-                <PowerBiFilesView
-                  resourceId={selectedResource.id}
-                  snapshots={snapshots}
-                  selectedItems={selectedItems}
-                  onToggleItem={toggleSelectItem}
-                  onSelectAll={(ids, checked) => {
-                    if (checked) setSelectedItems(new Set(ids));
-                    else setSelectedItems(new Set());
-                  }}
-                />
-              ) : selectedResource.kind === 'entra_directory' ? (
-                /* Azure Active Directory singleton: 8-tab header (Users
-                   / Groups / Roles / Security / Audit / Applications /
-                   Intune / Administrative Units). Items filtered from
-                   the latest snapshot by item_type. */
-                <EntraDirectoryView
-                  resourceId={selectedResource.id}
-                  tenantId={tenantId || ''}
-                  snapshots={snapshots}
-                  selectedItems={selectedItems}
-                  onToggleItem={toggleSelectItem}
-                  onSelectAll={(ids, checked) => {
-                    if (checked) setSelectedItems(new Set(ids));
-                    else setSelectedItems(new Set());
-                  }}
-                />
-              ) : selectedResource.kind === 'azure_vm' ? (
-                /* Azure VM: Virtual machine / Volumes / Disks / Network
-                   interfaces / Public IP addresses. Items filtered from
-                   the latest snapshot by AZURE_VM_* item_type. */
-                <AzureVmView
-                  ref={vmViewRef}
-                  resourceId={selectedResource.id}
-                  snapshots={snapshots}
-                  selectedItems={selectedItems}
-                  onToggleItem={toggleSelectItem}
-                  onSelectAll={(ids, checked) => {
-                    if (checked) setSelectedItems(new Set(ids));
-                    else setSelectedItems(new Set());
-                  }}
-                  overrideSnapshotId={selectedSnapshotId}
-                  onSelectionInfoChange={setVmSelectionInfo}
-                />
-              ) : (selectedResource.kind === 'azure_sql' || selectedResource.kind === 'azure_postgresql' || selectedResource.kind === 'azure_postgresql_single') ? (
-                /* Azure SQL + PostgreSQL: Configuration / Data / Schema
-                   tabs filtered by item_type suffix. Same shape handles
-                   AZURE_SQL_DB + AZURE_POSTGRESQL + AZURE_POSTGRESQL_SINGLE. */
-                <AzureDbView
-                  resourceId={selectedResource.id}
-                  snapshots={snapshots}
-                  selectedItems={selectedItems}
-                  onToggleItem={toggleSelectItem}
-                  onSelectAll={(ids, checked) => {
-                    if (checked) setSelectedItems(new Set(ids));
-                    else setSelectedItems(new Set());
-                  }}
-                  overrideSnapshotId={selectedSnapshotId}
-                />
-              ) : (selectedResource.kind === 'm365_group' || selectedResource.kind === 'teams_channel' || selectedResource.kind === 'entra_group') ? (
-                /* Microsoft 365 Groups + Teams + Entra groups: three content
-                   surfaces — Site (SharePoint-backing site items), Mail
-                   (group mailbox threads/posts), Team Channels (channel
-                   messages). Items filtered client-side from the latest
-                   snapshot by item_type prefix. */
-                <GroupTeamsView
-                  resourceId={selectedResource.id}
-                  snapshots={snapshots}
-                  selectedItems={selectedItems}
-                  onToggleItem={toggleSelectItem}
-                  onSelectAll={(ids, checked) => {
-                    if (checked) setSelectedItems(new Set(ids));
-                    else setSelectedItems(new Set());
-                  }}
-                  activeTab={groupTeamsTab}
-                  onTabChange={setGroupTeamsTab}
-                />
-              ) : (
-                <>
-              {/* Content Type Tabs — fixed five (Mail / OneDrive / Contacts / Calendar / Chats).
-                  Each tab shows its backed-up item count from the content-
-                  snapshots resolver; tabs with no snapshot yet stay clickable
-                  but render an empty state on click. */}
-              <div className="content-type-tabs">
-                {contentTypes
-                  .filter(type => {
-                    // Shared + room mailboxes are Exchange-only — no OneDrive
-                    // provisioning in M365, so hide the tab.
-                    const kind = selectedResource.kind;
-                    if (type === 'onedrive' && (kind === 'shared_mailbox' || kind === 'room_mailbox')) return false;
-                    return true;
-                  })
-                  .map(type => {
-                  const entry = contentSnapshots?.byContent[type] || null;
-                  const count = entry?.itemCount ?? 0;
-                  const hasBackup = !!entry;
-                  return (
-                    <button
-                      key={type}
-                      className={`content-tab ${activeContentType === type ? 'active' : ''}${hasBackup ? '' : ' content-tab-empty'}`}
-                      onClick={() => {
-                        // Tab switch — drop folder/view from URL so the
-                        // new tab starts clean. patchSearchParams pushes
-                        // a new history entry; the sync effect above
-                        // then updates local state.
-                        setArchiveSelected(false);
-                        patchSearchParams({ tab: type, folder: null, view: null, chatId: null });
-                      }}
-                      title={hasBackup ? `${count.toLocaleString()} item${count === 1 ? '' : 's'} backed up` : 'No backup yet'}
-                    >
-                      {CONTENT_TAB_LABELS[type]}
-                      {hasBackup && <span className="content-tab-count">{count.toLocaleString()}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Search / Download / Recover all live in the global
-                  <RecoveryToolbar /> above — the old inline toolbar here
-                  is gone so the affordances are shown exactly once per
-                  resource view. */}
-
-              {/* Three Panel Layout */}
-              <div className={`three-panel-layout${activeContentType === 'calendar' ? ' cal-layout-mode' : ''}${activeContentType === 'onedrive' ? ' od-layout-mode' : ''}${activeContentType === 'mail' ? ' mail-layout-mode' : ''}`}>
-                {activeContentType === 'calendar' ? (
-                  /* Calendar Month View — replaces folder tree + item list */
-                  <div className="panel-calendar">
-                    {itemsLoading ? (
-                      <div className="loading-container"><div className="spinner" /><p>Loading events...</p></div>
-                    ) : (
-                      <CalendarMonthView
-                        // Keyed on the snapshot so switching account (or
-                        // snapshot version) REMOUNTS the calendar. Without
-                        // this the component stayed mounted across account
-                        // clicks — itemsLoading is forced false for the
-                        // calendar tab, so nothing unmounted it — and kept
-                        // the previous account's events, per-calendar filter
-                        // set and month position on screen while the new
-                        // account's events loaded.
-                        key={selectedSnapshotId}
-                        snapshotId={selectedSnapshotId}
-                        selectedItems={selectedItems}
-                        onItemCheck={toggleSelectItem}
-                        onFilteredScopeChange={setCalendarScope}
-                        onCalendarFilterChange={setSelectedCalendarPaths}
-                        onFilterActiveChange={setCalendarFilterActive}
-                      />
-                    )}
-                  </div>
-                ) : activeContentType === 'onedrive' ? (
-                  /* OneDrive Drive-style view — left rail (My Drive tree /
-                      Recent) + full-width file table. No right preview panel. */
-                  <>
-                    <div className="panel-left od-panel-left">
-                      <OneDriveLeftPanel
-                        view={oneDriveView}
-                        setView={(v) => {
-                          // View toggle pushes a new history entry so
-                          // back/forward walks through My Drive ↔ Recent.
-                          // Recent drops the folder filter entirely;
-                          // My Drive resets to root.
-                          patchSearchParams(
-                            v === 'recent'
-                              ? { view: 'recent', folder: null }
-                              : { view: 'my-drive', folder: '/' }
-                          );
-                        }}
-                      />
-                    </div>
-                    <div className="panel-middle od-panel-middle">
-                      <div className="od-main-header">
-                        {/* Clickable path, same shape (and the same
-                            already-themed classes) as the SharePoint
-                            content breadcrumb above. Browsing into
-                            /Documents/_Archive used to print the path as
-                            dead text with no way back short of
-                            re-clicking a root entry in the sidebar, so
-                            deep trees were a dead end (QA TMV-015). Each
-                            segment navigates to its own prefix, and
-                            because it goes through patchSearchParams the
-                            browser Back button walks the same trail. */}
-                        <span className="od-breadcrumb">
-                          {oneDriveView === 'recent' ? 'Recent' : (() => {
-                            const parts = (selectedFolder === 'all' || selectedFolder === '/' || !selectedFolder)
-                              ? []
-                              : selectedFolder.split('/').filter(Boolean);
-                            return (
-                              <>
-                                <button
-                                  type="button"
-                                  className="od-breadcrumb-link"
-                                  onClick={() => patchSearchParams({ view: 'my-drive', folder: '/' })}
-                                  disabled={parts.length === 0}
-                                >My Drive</button>
-                                {parts.map((seg, i) => {
-                                  const prefix = '/' + parts.slice(0, i + 1).join('/');
-                                  const isLast = i === parts.length - 1;
-                                  return (
-                                    <span key={prefix}>
-                                      <span className="od-breadcrumb-sep"> / </span>
-                                      <button
-                                        type="button"
-                                        className="od-breadcrumb-link"
-                                        onClick={() => patchSearchParams({ view: 'my-drive', folder: prefix })}
-                                        disabled={isLast}
-                                        title={prefix}
-                                      >{seg}</button>
-                                    </span>
-                                  );
-                                })}
-                              </>
-                            );
-                          })()}
-                        </span>
-                        <span className="od-count">
-                          {itemsLoading
-                            ? 'Loading…'
-                            : oneDriveView === 'recent'
-                              // Recent is a bounded window, so the drive
-                              // total would be a lie here.
-                              ? (recoveryItems.length
-                                ? `${recoveryItems.length.toLocaleString()} most recently modified`
-                                : '')
-                              : (itemCount ? `${itemCount.toLocaleString()} items` : '')}
-                        </span>
-                      </div>
-                      {itemsLoading ? (
-                        <div className="loading-container"><div className="spinner" /><p>Loading files...</p></div>
-                      ) : (
-                        <div
-                          className="item-list od-list"
-                          ref={itemListRef}
-                          onScroll={handleItemListScroll}
-                        >
-                          <OneDriveTable
-                            items={recoveryItems}
-                            folders={folders}
-                            view={oneDriveView}
-                            selectedFolder={selectedFolder}
-                            onOpenFolder={(p) => { patchSearchParams({ view: 'my-drive', folder: p }); }}
-                            selectedItems={selectedItems}
-                            onToggleItem={toggleSelectItem}
-                            onSelectAll={(checked) => {
-                              // Set selectedItems to the visible page
-                              // immediately so the toolbar count
-                              // shows "(N)" right on click — same as
-                              // the manual-select feel — without
-                              // waiting on the async folder-walk
-                              // (which may return 0 due to backend
-                              // folderPath indexing nuances).
-                              if (checked) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
-                              else setSelectedItems(new Set());
-
-                              // Sync the folder bulk-select state.
-                              // handleOneDriveFolderCheck flips
-                              // oneDriveFolderSelected immediately
-                              // (left-panel checkbox flips) AND
-                              // fetches every recursive file id under
-                              // the folder, merging into
-                              // selectedItems. Root / Recent has no
-                              // folder context, so visible-page only.
-                              const isFolderContext =
-                                !!selectedFolder
-                                && selectedFolder !== 'all'
-                                && selectedFolder !== '/';
-                              if (isFolderContext) {
-                                const inSet = oneDriveFolderSelected.has(selectedFolder);
-                                if (checked !== inSet) handleOneDriveFolderCheck(selectedFolder);
-                              }
-                            }}
-                            allChecked={
-                              (!!selectedFolder
-                                && selectedFolder !== 'all'
-                                && selectedFolder !== '/'
-                                && oneDriveFolderSelected.has(selectedFolder))
-                              || (recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
-                            }
-                            // Same honesty rule as the mail header
-                            // (QA TMV-013): a tick over one loaded page
-                            // of a larger folder is a PARTIAL selection.
-                            allIndeterminate={
-                              selectedItems.size > 0
-                              && !(recoveryItems.length > 0 && recoveryItems.every(i => selectedItems.has(i.id)))
-                            }
-                            onFolderCheck={handleOneDriveFolderCheck}
-                            folderBusy={oneDriveFolderBusy}
-                            folderSelected={oneDriveFolderSelected}
-                            snapshotId={selectedSnapshotId}
-                            sort={oneDriveSort}
-                            onSortChange={setOneDriveSort}
-                          />
-                          {loadingMore && (
-                            <div className="item-list-loading-more">
-                              <div className="spinner-sm" />
-                              <span>Loading more…</span>
-                            </div>
-                          )}
-                          {!loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
-                            <div className="item-list-end">End of list</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                {/* Left Panel: tab-aware groupings.
-                    - Mail / OneDrive / Contacts → folder tree.
-                    - Chats → list of chats (display name + message count).
-                    Clicking a row filters the items list via the `group`
-                    parameter. "All" resets the filter. */}
-                <div className="panel-left" ref={folderListRef} onScroll={handleFolderListScroll}>
-                  <div className="folder-list">
-                    {/* "All" aggregates across every folder — useful on mail /
-                        onedrive / contacts to see the flat stream. On the
-                        chats tab we skip it: each chat is a standalone
-                        conversation, so "all messages from every chat mixed
-                        together" isn't useful — the top chat is auto-
-                        selected in the folders-load effect instead.
-
-                        Scroll handler note: this used to live on .folder-list,
-                        but .folder-list is a non-scrolling content wrapper —
-                        the actual scroll viewport is .panel-left
-                        (overflow-y: auto in Recovery.css). React onScroll
-                        doesn't bubble, so attaching the handler to the
-                        non-scrolling child meant it never fired, and the
-                        infinite-scroll page advancement was dead. Moving it
-                        up to the real scroller restores the loading-more
-                        indicator + page fetch at the rail bottom. With the
-                        first-load size also bumped to 500, this code path is
-                        now mostly a safety net for >500-folder tenants. */}
-                    {activeContentType !== 'chats' && (
-                      <button
-                        className={`folder-item ${selectedFolder === 'all' && !archiveSelected ? 'active' : ''}`}
-                        onClick={() => { setArchiveSelected(false); patchSearchParams({ folder: null }); }}
-                      >
-                        <span className="folder-twisty folder-twisty--leaf" aria-hidden="true" />
-                        <span className="folder-glyph">
-                          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
-                        </span>
-                        <span className="folder-name">All</span>
-                      </button>
-                    )}
-                    {foldersLoading && (
-                      <div className="folder-loading">
-                        <div className="spinner-sm" />
-                      </div>
-                    )}
-                    {(() => {
-                      // Apply the toolbar search to the left-panel folder
-                      // list too — chat name typed in the search box
-                      // narrows the chat list alongside filtering the
-                      // messages view, and mail/onedrive/contacts folders
-                      // filter the same way. Match case-insensitively on
-                      // the full folder_path (so "vinay" matches
-                      // "chats/Vinay Chauhan" and "/Inbox/Subfolder").
-                      const q = debouncedSearch.toLowerCase();
-                      const visibleFolders = q
-                        ? folders.filter(f => f.path && f.path.toLowerCase().includes(q))
-                        : folders.filter(f => f.path);
-
-                      // OneDrive is handled by its own dedicated branch
-                      // above (OneDriveLeftPanel), so by this point the tab
-                      // is mail / contacts / chats — a flat list works.
-
-                      // Chats are flat conversation threads; mail / contacts
-                      // get the Outlook-style nested tree (leaf names, system-
-                      // folder icons, depth indent, collapsible subtrees).
-                      const isChats = activeContentType === 'chats';
-                      const rows: FolderRow[] = isChats
-                        ? visibleFolders.map(folder => ({ folder, depth: 0, hasChildren: false }))
-                        : buildFolderRows(visibleFolders, collapsedFolders, q.length > 0);
-
-                      return (
-                        <>
-                          {rows.map(({ folder, depth, hasChildren }) => {
-                            const collapsed = collapsedFolders.has(folder.path);
-                            return (
-                            <div
-                              key={isChats ? folder.chatId ?? folder.path : folder.path}
-                              className={`folder-item has-check ${(isChats ? selectedChatId === folder.chatId : selectedFolder === folder.path) && !archiveSelected ? 'active' : ''}`}
-                              style={!isChats ? { paddingLeft: `${16 + depth * 15}px` } : undefined}
-                            >
-                              {!isChats && (hasChildren ? (
-                                <button
-                                  type="button"
-                                  className={`folder-twisty${collapsed ? '' : ' folder-twisty--open'}`}
-                                  onClick={(e) => { e.stopPropagation(); toggleFolderCollapse(folder.path); }}
-                                  aria-label={collapsed ? 'Expand folder' : 'Collapse folder'}
-                                  title={collapsed ? 'Expand' : 'Collapse'}
-                                >
-                                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
-                                </button>
-                              ) : (
-                                <span className="folder-twisty folder-twisty--leaf" aria-hidden="true" />
-                              ))}
-                              {isChats ? (
-                                <input
-                                  type="checkbox"
-                                  className="folder-check"
-                                  checked={!!folder.chatId && threadChatId === folder.chatId}
-                                  disabled={!folder.chatId}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => setThreadChatId(e.target.checked ? folder.chatId ?? null : null)}
-                                  title="Select this thread for export"
-                                />
-                              ) : (
-                                <input
-                                  type="checkbox"
-                                  className="folder-check"
-                                  checked={
-                                    // Either: bulk-selected via this
-                                    // checkbox / via the master select-
-                                    // all (genericFolderSelected flips
-                                    // immediately), OR every item in
-                                    // this folder is currently in
-                                    // selectedItems — so manually
-                                    // ticking each row also lights up
-                                    // the folder. We only trust the
-                                    // derived check when the folder is
-                                    // the active view AND fully loaded
-                                    // (recoveryItems.length ===
-                                    // folder.count) — otherwise an
-                                    // unloaded page might hide unticked
-                                    // items and we'd lie to the user.
-                                    genericFolderSelected.has(folder.path)
-                                    || (
-                                      selectedFolder === folder.path
-                                      && folder.count > 0
-                                      && recoveryItems.length === folder.count
-                                      && recoveryItems.every(i => selectedItems.has(i.id))
-                                    )
-                                  }
-                                  disabled={genericFolderBusy.has(folder.path)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={() => handleGenericFolderCheck(folder.path)}
-                                  title="Select every item in this folder"
-                                />
-                              )}
-                              <button
-                                className="folder-name-btn"
-                                onClick={() => {
-                                  // Chats: opening a thread out of a set of
-                                  // search hits shows the WHOLE
-                                  // conversation, not just the matching
-                                  // messages (Teams/Slack behaviour). This
-                                  // used to clear the search box outright,
-                                  // which ALSO reset the filtered thread
-                                  // list in this rail — so the user lost
-                                  // their place after every single result
-                                  // (QA TMV-011). Narrow the scope instead
-                                  // of destroying the query: the rail stays
-                                  // filtered, the thread opens in full, and
-                                  // typing in the box re-arms it.
-                                  if (activeContentType === 'chats') {
-                                    setSearchNarrowsItems(false);
-                                  }
-                                  setArchiveSelected(false);
-                                  patchSearchParams(isChats && folder.chatId
-                                    ? { chatId: folder.chatId, folder: null }
-                                    : { folder: folder.path, chatId: null });
-                                }}
-                                title={folder.path}
-                              >
-                                {!isChats && (
-                                  <span className="folder-glyph"><FolderGlyph path={folder.path} tab={activeContentType} /></span>
-                                )}
-                                <span className="folder-name">{isChats ? folder.displayName || folder.path : (folderLeaf(folder.path) || folder.path)}</span>
-                                {folder.count > 0 && <span className="folder-count">{folder.count}</span>}
-                              </button>
-                            </div>
-                            );
-                          })}
-                          {!foldersLoading && visibleFolders.length === 0 && (
-                            <div className="folder-empty"><p>{q ? 'No matching folders' : 'No folders found'}</p></div>
-                          )}
-                        </>
-                      );
-                    })()}
-                    {foldersLoadingMore && (
-                      <div className="folder-loading"><div className="spinner-sm" /></div>
-                    )}
-                    {!foldersLoadingMore && !foldersHasMore && folders.length > 50 && (
-                      <div className="folder-empty"><p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>End of list</p></div>
-                    )}
-                    {/* Online Archive — a folder section below the primary
-                        folders (AFI convention). Shows only on Mail/Contacts
-                        when the resource has an archive backup; the item fetch
-                        reroutes to the archive child's snapshot, filtered to
-                        this tab's kind. "All items" shows the flat union; each
-                        archive folder below preserves the RETAINED nested
-                        hierarchy (full path, indented by depth). */}
-                    {(activeContentType === 'mail' || activeContentType === 'contacts')
-                      && contentSnapshots?.byContent?.archive
-                      && archiveTree.length > 0 && (
-                      <>
-                        <div className="folder-section-label">Online Archive</div>
-                        <button
-                          className={`folder-item archive-folder-item ${archiveSelected && archiveFolder === null ? 'active' : ''}`}
-                          onClick={() => { setArchiveSelected(true); setArchiveFolder(null); }}
-                          title="All Exchange Online Archive items"
-                        >
-                          <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
-                               stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                               strokeLinejoin="round" aria-hidden="true">
-                            <rect x="3" y="4" width="18" height="4" rx="1" />
-                            <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
-                            <path d="M10 12h4" />
-                          </svg>
-                          <span className="folder-name">All items</span>
-                        </button>
-                        {archiveTree.map(f => {
-                          const depth = f.path.split('/').length - 1;
-                          const leaf = f.path.split('/').pop() || f.path;
-                          return (
-                            <div
-                              key={f.path}
-                              className={`folder-item archive-folder-item has-check ${archiveSelected && archiveFolder === f.path ? 'active' : ''}`}
-                              style={{ paddingLeft: `${20 + depth * 16}px` }}
-                            >
-                              {/* Checkbox = pick this whole folder for export/
-                                  recover (folder-level PST). Independent of the
-                                  name button, which only navigates to view the
-                                  folder's items so individual items can be
-                                  ticked (item-level PST). */}
-                              <input
-                                type="checkbox"
-                                className="folder-check"
-                                checked={archiveFolderChecked.has(f.path)}
-                                disabled={archiveFolderBusy.has(f.path)}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={() => handleArchiveFolderCheck(f.path)}
-                                title="Select every item in this archive folder"
-                              />
-                              <button
-                                className="folder-name-btn"
-                                onClick={() => { setArchiveSelected(true); setArchiveFolder(f.path); }}
-                                title={f.path}
-                              >
-                                <svg className="archive-folder-icon" viewBox="0 0 24 24" fill="none"
-                                     stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                                     strokeLinejoin="round" aria-hidden="true">
-                                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                                </svg>
-                                <span className="folder-name">{leaf}</span>
-                                {f.count > 0 && <span className="folder-count">{f.count}</span>}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Middle Panel: Item List */}
-                <div className="panel-middle">
-                  {(() => {
-                    // Selection coverage for the header checkbox, shared
-                    // by its checked / indeterminate / click-intent
-                    // logic so the three can never disagree.
-                    const folderTicked = activeContentType !== 'chats'
-                      && !!selectedFolder
-                      && selectedFolder !== 'all'
-                      && genericFolderSelected.has(selectedFolder);
-                    const covered = itemCount > 0 && selectedItems.size >= itemCount;
-                    const partial = !covered && (selectedItems.size > 0 || folderTicked);
-                    return (
-                      <div className="item-list-header">
-                        <label className="select-all-wrap" title="Select all">
-                          <input
-                            type="checkbox"
-                            // FULLY checked only when the selection really
-                            // does cover the whole folder.
-                            //
-                            // 2026-08-11 (QA TMV-013): ticking select-all in
-                            // /Deleted Items (2,951 messages) selected the 50
-                            // loaded rows and painted a solid check, so the
-                            // box claimed 2,951 items were selected while the
-                            // counter beside it read "50 / 2951" — and the
-                            // next click is Recover. The folder-walk that
-                            // hydrates the remaining ids is asynchronous and
-                            // can come back empty, so "I ticked the folder"
-                            // is not evidence the ids are in hand: coverage
-                            // is measured against itemCount, and anything
-                            // short of it shows the indeterminate dash.
-                            checked={covered}
-                            ref={(el) => { if (el) el.indeterminate = partial; }}
-                            aria-label="Select all items on this page"
-                            onChange={() => {
-                              // Intent comes from what the box is SHOWING,
-                              // not from the browser's checked flip. An
-                              // indeterminate box reports checked=true when
-                              // clicked, so a partial selection that never
-                              // reaches full coverage (the folder walk can
-                              // legitimately return zero rows) could only
-                              // ever be re-selected, never cleared. Partial
-                              // or full → clear; empty → select. Clearing is
-                              // also the safe direction to guess wrong in.
-                              const want = !(covered || partial);
-                              // (a) Set selectedItems to the visible page
-                              // immediately. Keeps the toolbar count
-                              // showing "(N)" the moment the user clicks
-                              // — same feel as manually ticking each row
-                              // — and doesn't depend on the async
-                              // searchItems walk, which can occasionally
-                              // return zero rows due to backend folderPath
-                              // indexing nuances and would otherwise leave
-                              // the count stuck at 0.
-                              if (activeContentType === 'chats') setThreadChatId(null);
-                              if (want) setSelectedItems(new Set(recoveryItems.map(i => i.id)));
-                              else setSelectedItems(new Set());
-
-                              // (b) Sync the left-panel folder checkbox.
-                              // handleGenericFolderCheck flips
-                              // genericFolderSelected immediately AND
-                              // fetches every id under the folder
-                              // (paginated items not yet on screen),
-                              // which then merges into selectedItems.
-                              // Chats use a per-thread (threadPath) model
-                              // and skip this. OneDrive has its own
-                              // panel above with separate handling.
-                              if (activeContentType === 'chats') return;
-                              if (selectedFolder && selectedFolder !== 'all') {
-                                const inSet = genericFolderSelected.has(selectedFolder);
-                                if (want !== inSet) handleGenericFolderCheck(selectedFolder);
-                                return;
-                              }
-                              // "All" view: every folder containing items
-                              // should flip too, so each left-panel folder
-                              // checkbox reflects the master selection.
-                              for (const folder of folders) {
-                                if (!folder.path) continue;
-                                const inSet = genericFolderSelected.has(folder.path);
-                                if (want !== inSet) handleGenericFolderCheck(folder.path);
-                              }
-                            }}
-                          />
-                        </label>
-                        {/* "Showing 0 of 0" is what an EMPTY folder looks
-                            like, and the header rendered it for the whole
-                            ~8 s the page spends resolving resource →
-                            snapshots → folders → items — so a slow load was
-                            indistinguishable from "this backup has nothing
-                            in it", including while a search was mid-flight
-                            (QA TMV-012, TMV-024). Say "Loading…" while it is
-                            loading, and use one locale-aware formatter for
-                            every number here. */}
-                        <span className="item-count">
-                          {itemsLoading
-                            ? 'Loading…'
-                            : selectedItems.size > 0
-                              ? `${selectedItems.size.toLocaleString()} / ${itemCount.toLocaleString()} selected`
-                              : `Showing ${recoveryItems.length.toLocaleString()} of ${itemCount.toLocaleString()}`}
-                        </span>
-                        {/* Pagination replaced by infinite scroll — scroll the
-                            list past 60% to auto-load the next page. */}
-                      </div>
-                    );
-                  })()}
-
-                  <div className="item-list" ref={itemListRef} onScroll={handleItemListScroll}>
-                    {/* Chats load older messages ABOVE the visible list when
-                        the user scrolls up. Loader is sticky-positioned at
-                        the top of the scroll viewport (not flow) so the
-                        scroll-anchor math in the page-append effect doesn't
-                        need to compensate for the loader appearing/dis-
-                        appearing — there's no layout shift. */}
-                    {activeContentType === 'chats' && loadingMore && (
-                      <div
-                        className="item-list-loading-more item-list-loading-more--sticky"
-                      >
-                        <div className="spinner-sm" />
-                        <span>Loading older messages…</span>
-                      </div>
-                    )}
-                    {activeContentType === 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && (
-                      <div className="item-list-end">Start of conversation</div>
-                    )}
-                    {itemsLoading ? (
-                      <div className="loading-container">
-                        <div className="spinner" />
-                        <p>Loading items...</p>
-                      </div>
-                    ) : recoveryItems.length === 0 ? (
-                      <div className="empty-state">
-                        {/* Name the query when there is one — "No items
-                            found" over a search that IS filtering the
-                            left rail reads as "your backup is empty"
-                            (QA TMV-012). */}
-                        <p>{itemSearch ? `No items match “${itemSearch}”` : 'No items found'}</p>
-                      </div>
-                    ) : (
-                      (() => {
-                        // Item-level types still flow through (server returns
-                        // EMAIL / TEAMS_CHAT_MESSAGE / etc.) — pick the right
-                        // row component from the active tab.
-                        const CHAT_TYPES = new Set(['TEAMS_CHAT_MESSAGE', 'TEAMS_MESSAGE', 'TEAMS_MESSAGE_REPLY']);
-                        const isChatContentType = activeContentType === 'chats';
-                        // Archive rows render like mail — once enriched they ARE
-                        // email JSON; before that EmailItemRow shows the kind +
-                        // a "processing" pill.
-                        const isEmailType = activeContentType === 'mail' || activeContentType === 'archive';
-                        const isContactsContentType = activeContentType === 'contacts';
-                        return recoveryItems.map(item => {
-                          const isChatItem = isChatContentType || CHAT_TYPES.has(item.itemType || '');
-                          const isEmailItem = isEmailType || item.itemType === 'EMAIL' || item.itemType === 'ARCHIVE_ITEM';
-                          const isContactItem = isContactsContentType || item.itemType === 'USER_CONTACT' || item.itemType === 'CONTACT';
-                          return isChatItem ? (
-                          <ChatItemRow
-                            key={item.id}
-                            item={item}
-                            selected={selectedItem?.id === item.id}
-                            checked={selectedItems.has(item.id)}
-                            onSelect={() => handleItemSelect(item)}
-                            onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
-                          />
-                        ) : isEmailItem ? (
-                          <EmailItemRow
-                            key={item.id}
-                            item={item}
-                            selected={selectedItem?.id === item.id}
-                            checked={selectedItems.has(item.id)}
-                            onSelect={() => handleItemSelect(item)}
-                            onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
-                          />
-                        ) : isContactItem ? (
-                          <ContactItemRow
-                            key={item.id}
-                            item={item}
-                            selected={selectedItem?.id === item.id}
-                            checked={selectedItems.has(item.id)}
-                            onSelect={() => handleItemSelect(item)}
-                            onCheck={(e) => { e.stopPropagation(); toggleSelectItem(item.id); }}
-                          />
-                        ) : (
-                        <div
-                          key={item.id}
-                          className={`item-row ${selectedItem?.id === item.id ? 'selected' : ''}`}
-                            onClick={() => handleItemSelect(item)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedItems.has(item.id)}
-                            onChange={() => toggleSelectItem(item.id)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <div className="item-content">
-                            <div className="item-subject">{item.subject || item.name}</div>
-                            <div className="item-preview">{item.preview || ''}</div>
-                          </div>
-                          <div className="item-date">
-                            {item.date ? fmtLocalDate(item.date, { month: 'short', day: 'numeric' }) : ''}
-                          </div>
-                        </div>
-                        );
-                        });
-                      })()
-                    )}
-                    {/* Bottom indicator — only for non-chat tabs, where new
-                        pages append below the visible list. Chats render
-                        their indicator at the top (above this block). */}
-                    {activeContentType !== 'chats' && loadingMore && (
-                      <div className="item-list-loading-more">
-                        <div className="spinner-sm" />
-                        <span>Loading more…</span>
-                      </div>
-                    )}
-                    {/* End-of-list marker when the scroll can't advance but
-                        the visible count trails the total — happens when
-                        the server caps page count. Lets the user know we
-                        hit the end rather than looking like a stuck load. */}
-                    {activeContentType !== 'chats' && !loadingMore && !hasMore && recoveryItems.length > 0 && recoveryItems.length < itemCount && (
-                      <div className="item-list-end">End of list</div>
-                    )}
-                  </div>
-                </div>
-                  </>
-                )}
-
-                {/* Right Panel: Item Preview — hidden for Chats, Calendar, and
-                    OneDrive. Calendar shows events in the month view; chats
-                    render inline in the middle panel; OneDrive uses the full
-                    width for its Drive-style table. */}
-                {!['chats', 'calendar', 'onedrive'].includes(activeContentType) && (
-                <div className="panel-right">
-                  {selectedItem
-                    ? <ItemPreview item={selectedItem} />
-                    : <div className="empty-preview"><p>Select an item to preview</p></div>
-                  }
-                          </div>
-                        )}
-              </div>
-                </>
-              )}
-            </>
-          )}
+          ) : renderResourceRecovery(selectedResource)}
         </div>
       </div>
       </div>
@@ -9809,6 +9882,11 @@ export default function Recovery() {
         // un-tick — the resolver subtracts exclusions from the union, so
         // an id in both lists would be dropped).
         const folderExclusions = Array.from(folderExcludedIds).filter(id => !selectedItems.has(id));
+        let restoreFolderPaths: string[] | undefined;
+        if (archiveSelected && archiveFolderChecked.size > 0) restoreFolderPaths = Array.from(archiveFolderChecked);
+        else if (calendarFolderScope) restoreFolderPaths = calendarFolderScope;
+        else if (activeContentType !== 'chats' && genericFolderSelected.size > 0) restoreFolderPaths = Array.from(genericFolderSelected);
+
         return (
           <>
             <RestoreModal
@@ -9827,18 +9905,7 @@ export default function Recovery() {
               itemType={restoreItemType}
               resourceKind={effectiveResourceKind}
               chatRestoreUnsupported={isChatRestoreUnsupported}
-              folderPaths={
-                // Online Archive: recover every item in the TICKED folders
-                // (folder-level). Navigation no longer scopes recover, so
-                // ticking individual items gives item-level recover.
-                archiveSelected && archiveFolderChecked.size > 0
-                  ? Array.from(archiveFolderChecked)
-                  : calendarFolderScope
-                  ? calendarFolderScope
-                  : activeContentType !== 'chats' && genericFolderSelected.size > 0
-                  ? Array.from(genericFolderSelected)
-                  : undefined
-              }
+              folderPaths={restoreFolderPaths}
               excludedItemIds={folderExclusions.length > 0 ? folderExclusions : undefined}
               snapshotDate={snapshots.find(s => s.id === selectedSnapshotId)?.createdAt}
             />
