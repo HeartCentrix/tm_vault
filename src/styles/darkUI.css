@@ -930,13 +930,10 @@
 [data-theme="dark"] .chart-legend-item.failure            { color: var(--tm-failure) !important; }
 [data-theme="dark"] .chart-legend-item.failure::before    { background: var(--tm-failure) !important; }
 
-/* audit-modal-compact / mini-modal: lock running-state glyphs and the
-   percent label to the brand crimson #b80e38 in dark mode too, matching
-   the light-theme spec. The failed-glyph keeps its existing #dc2626
-   (unchanged from before) so the two states stay visually distinct. */
+/* Running text and glyphs need the lighter accent on dark modal surfaces. */
 [data-theme="dark"] .mini-status.glyph-running,
 [data-theme="dark"] .mini-glyph.glyph-running,
-[data-theme="dark"] .mini-pct { color: #b80e38 !important; }
+[data-theme="dark"] .mini-pct { color: var(--tm-accent-soft) !important; }
 
 [data-theme="dark"] .status-summary-title.success         { color: var(--tm-success) !important; }
 [data-theme="dark"] .status-summary-title.warning         { color: var(--tm-warning) !important; }
