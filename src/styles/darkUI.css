@@ -938,9 +938,11 @@
 [data-theme="dark"] .status-summary-title.success         { color: var(--tm-success) !important; }
 [data-theme="dark"] .status-summary-title.warning         { color: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-title.failure         { color: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-title.running         { color: #60a5fa !important; }
 [data-theme="dark"] .status-summary-row.success span::before { background: var(--tm-success) !important; }
 [data-theme="dark"] .status-summary-row.warning span::before { background: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-row.failure span::before { background: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row.running span::before { background: #60a5fa !important; }
 [data-theme="dark"] .status-summary-row,
 [data-theme="dark"] .status-summary-row.success,
 [data-theme="dark"] .status-summary-row.warning,
@@ -2420,6 +2422,8 @@
 [data-theme="dark"] .status-summary-row.warning span { color: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-row.failure,
 [data-theme="dark"] .status-summary-row.failure span { color: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row.running,
+[data-theme="dark"] .status-summary-row.running span { color: #60a5fa !important; }
 [data-theme="dark"] .status-summary-row.success strong,
 [data-theme="dark"] .status-summary-row.warning strong,
 [data-theme="dark"] .status-summary-row.failure strong { color: var(--tm-text) !important; }
