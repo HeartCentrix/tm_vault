@@ -12,6 +12,9 @@ export function statusGlyph(status?: string): { ch: string; cls: string; label: 
     case 'EXPIRED':     return { ch: '⌛', cls: 'glyph-pending', label: 'Expired' };
     case 'SKIPPED_NO_LICENSE':
                         return { ch: '⊘', cls: 'glyph-skipped', label: 'Skipped — no license' };
+    // Snapshot status SKIPPED: another run already held this resource, so
+    // this run captured nothing for it. Settled and neutral, not a failure.
+    case 'SKIPPED':     return { ch: '⊘', cls: 'glyph-skipped', label: 'Skipped — another run was backing it up' };
     // Scoped into the batch but no snapshot was ever recorded for it:
     // overlap-held, policy-excluded, or the dispatch never landed. The
     // backend stamps this explicitly on SETTLED batches only (audit-
@@ -53,7 +56,7 @@ export function rollupParentStatus(
     if (s === 'COMPLETED') anyCompleted = true;
     else if (s === 'FAILED') anyFailed = true;
     else if (s === 'PARTIAL') anyPartial = true;
-    else if (s === 'SKIPPED_NO_LICENSE') continue;
+    else if (s === 'SKIPPED_NO_LICENSE' || s === 'SKIPPED') continue;
     else anyPending = true; // IN_PROGRESS, PENDING, unknown
   }
   if (anyPending) return 'IN_PROGRESS';

@@ -68,6 +68,12 @@ describe('rollupParentStatus', () => {
     ])).toBe('IN_PROGRESS');
   });
 
+  it('a concurrency-SKIPPED child is settled, never pending', () => {
+    expect(rollupParentStatus('COMPLETED', [kid('COMPLETED'), kid('SKIPPED')])).toBe('COMPLETED');
+    expect(rollupParentStatus('COMPLETED', [kid('SKIPPED'), kid('SKIPPED')])).toBe('COMPLETED');
+    expect(rollupParentStatus('COMPLETED', [kid('FAILED'), kid('SKIPPED')])).toBe('FAILED');
+  });
+
   it('NOT_IN_RUN does not mask a real in-progress child', () => {
     expect(rollupParentStatus('COMPLETED', [
       kid('NOT_IN_RUN'), kid('IN_PROGRESS'), kid('COMPLETED'),

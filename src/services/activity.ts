@@ -1,5 +1,6 @@
 import { API } from '../config/api';
 import { collectIncompleteResourceIds, RETRY_DISPATCH_LIMIT } from '../utils/retryEligibility';
+import { copyWorkProgress } from '../utils/copyWorkProgress';
 
 export interface CopyWorkSummary {
   state: string;
@@ -129,7 +130,10 @@ export async function getActivities(
   const data = await res.json();
 
   return {
-    items: data.items || [],
+    // All consumers share Activity's copy/provider-aware status presentation.
+    items: (data.items || []).map((item: ActivityItem) => ({
+      ...item, status: copyWorkProgress(item).status,
+    })),
     total: data.total || 0,
     page: data.page || 1,
     size: data.size || 50,
