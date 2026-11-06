@@ -52,6 +52,9 @@ export interface RiskSignalParams {
   minRiskScore?: number;
   page?: number;
   size?: number;
+  /** Server-side ordering — must match pagination, so never sort client-side. */
+  sort?: 'date' | 'risk_score';
+  order?: 'asc' | 'desc';
 }
 
 export interface RiskSignalResponse {
@@ -129,6 +132,8 @@ export async function getRiskSignals(params?: RiskSignalParams): Promise<RiskSig
   if (params?.minRiskScore) queryParams.append('min_risk_score', params.minRiskScore.toString());
   if (params?.page) queryParams.append('page', params.page.toString());
   if (params?.size) queryParams.append('size', params.size.toString());
+  if (params?.sort) queryParams.append('sort', params.sort);
+  if (params?.order) queryParams.append('order', params.order);
 
   const queryString = queryParams.toString();
   if (queryString) url += `?${queryString}`;

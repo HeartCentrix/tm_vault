@@ -23,6 +23,8 @@ interface BackupItem {
 
 const M365_BACKUP_ITEMS_LEFT: BackupItem[] = [
   { formKey: 'backup_exchange', policyKey: 'backupExchange', label: 'Emails', checked: true, hasSettings: true },
+  { formKey: 'backup_exchange_archive', policyKey: 'backupExchangeArchive', label: 'Online Archive', checked: false },
+  { formKey: 'backup_exchange_recoverable', policyKey: 'backupExchangeRecoverable', label: 'Recoverable Items', checked: false },
   { formKey: 'backup_teams_chats', policyKey: 'backupTeamsChats', label: 'Chats', checked: true },
   { formKey: 'contacts', policyKey: 'contacts', label: 'Contacts', checked: true },
   { formKey: 'calendars', policyKey: 'calendars', label: 'Calendars', checked: true },

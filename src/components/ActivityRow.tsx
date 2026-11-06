@@ -2,6 +2,9 @@ import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchBatchChildren } from '../services/activity';
 import type { ActivityItem, BatchChildResource, BatchChildren } from '../services/activity';
+import { shouldShowRetry } from '../utils/retryEligibility';
+import { statusGlyph, rollupParentStatus } from '../utils/activityGlyphs';
+import { copyWorkProgress } from '../utils/copyWorkProgress';
 
 interface Props {
   item: ActivityItem;
@@ -12,6 +15,10 @@ interface Props {
   renderStatusIcon: (status: string, jobId?: string, jobIds?: string[]) => React.ReactNode;
   formatDate: (iso: string) => string;
   formatBytes?: (n: number) => string;
+  // Re-run only the resources in this run that did not complete. Omitted
+  // for rows that can't be retried.
+  onRetry?: (item: ActivityItem) => void;
+  retrying?: boolean;
 }
 
 const defaultFmtBytes = (n: number): string => {
@@ -39,35 +46,9 @@ const TYPE_LABEL: Record<string, string> = {
   SHAREPOINT_SITE: 'SharePoint',
 };
 
-function statusGlyph(status?: string): { ch: string; cls: string; label: string } {
-  switch ((status || '').toUpperCase()) {
-    case 'COMPLETED':   return { ch: '✓', cls: 'glyph-done',    label: 'Completed' };
-    case 'IN_PROGRESS': return { ch: '◐', cls: 'glyph-running', label: 'In progress' };
-    case 'FAILED':      return { ch: '✗', cls: 'glyph-failed',  label: 'Failed' };
-    case 'PARTIAL':     return { ch: '⚠', cls: 'glyph-partial', label: 'Partial' };
-    // A backup that succeeded but whose restore point later aged out under the
-    // SLA retention policy. Neutral (muted) treatment — it is NOT a failure.
-    case 'EXPIRED':     return { ch: '⌛', cls: 'glyph-pending', label: 'Expired' };
-    // Workload the user has no M365 license for — deliberately skipped, not
-    // pending/failed. Neutral shield-slash glyph.
-    case 'SKIPPED_NO_LICENSE':
-                        return { ch: '⊘', cls: 'glyph-skipped', label: 'Skipped — no license' };
-    default:            return { ch: '⋯', cls: 'glyph-pending', label: 'Pending' };
-  }
-}
+// statusGlyph / rollupParentStatus live in ../utils/activityGlyphs so
+// the rollup rules are unit-testable.
 
-// Roll up a parent's status from its children. The backend's parent row
-// is the Tier-1 ENTRA_USER snapshot, which COMPLETES as soon as the
-// user-metadata fetch finishes — long before per-workload Tier-2
-// snapshots (Mail / OneDrive / Chats / Calendar / Contacts) settle. If
-// we surface the raw parent.status, the operator sees a ✓ next to the
-// user name while every workload row still shows ⋯ — the original
-// 2026-05-16 UX complaint. Aggregate so the parent glyph reflects the
-// WHOLE user.
-//   - any child PENDING / IN_PROGRESS / unknown  → IN_PROGRESS
-//   - all children COMPLETED                     → COMPLETED
-//   - all children FAILED                        → FAILED
-//   - mix of COMPLETED + FAILED/PARTIAL          → PARTIAL
 /** Why a resource ended PARTIAL or FAILED, under its row (TM #35). Text says which, not colour alone. */
 function ResourceReason({ resource }: { resource: BatchChildResource }) {
   if (!resource.reason || (resource.status !== 'PARTIAL' && resource.status !== 'FAILED')) return null;
@@ -79,28 +60,6 @@ function ResourceReason({ resource }: { resource: BatchChildResource }) {
   );
 }
 
-function rollupParentStatus(
-  parentStatus: string | undefined,
-  kids: { status?: string }[],
-): string {
-  if (!kids.length) return (parentStatus || '').toUpperCase();
-  let anyPending = false, anyCompleted = false, anyFailed = false, anyPartial = false;
-  for (const k of kids) {
-    const s = (k.status || '').toUpperCase();
-    if (s === 'COMPLETED') anyCompleted = true;
-    else if (s === 'FAILED') anyFailed = true;
-    else if (s === 'PARTIAL') anyPartial = true;
-    // License-skipped workloads are terminal, not pending — they must NOT
-    // hold the parent at ◐ In Progress (the whole point of the fix). Treat
-    // like a benign no-op: neither pending nor a success/failure signal.
-    else if (s === 'SKIPPED_NO_LICENSE') continue;
-    else anyPending = true; // IN_PROGRESS, PENDING, unknown
-  }
-  if (anyPending) return 'IN_PROGRESS';
-  if (anyFailed && !anyCompleted && !anyPartial) return 'FAILED';
-  if (anyFailed || anyPartial) return 'PARTIAL';
-  return 'COMPLETED';
-}
 
 const LEAF_PAGE_SIZE = 50;
 
@@ -110,6 +69,8 @@ export function ActivityRow({
   renderStatusIcon,
   formatDate,
   formatBytes,
+  onRetry,
+  retrying,
 }: Props) {
   const fmtBytes = formatBytes || defaultFmtBytes;
   const [open, setOpen] = useState(false);
@@ -117,6 +78,10 @@ export function ActivityRow({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(LEAF_PAGE_SIZE);
+  const copyProgress = copyWorkProgress(item);
+  const displayStatus = copyProgress.status;
+  const progressPct = copyProgress.pending && displayedProgressPct != null
+    ? Math.min(displayedProgressPct, 99) : displayedProgressPct;
 
   const canOpen = !!item.batchId;
 
@@ -162,7 +127,7 @@ export function ActivityRow({
   //   * tear down on close / status flip to terminal so we don't
   //     poll forever on a Done row that can't change.
   useEffect(() => {
-    if (!open || !item.batchId || item.status !== 'In Progress') return;
+    if (!open || !item.batchId || displayStatus !== 'In Progress') return;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -178,7 +143,7 @@ export function ActivityRow({
       cancelled = true;
       clearInterval(id);
     };
-  }, [open, item.status, item.batchId]);
+  }, [open, displayStatus, item.batchId]);
 
   const warnings = item.warnings;
   const hasWarnings = !!warnings && ((warnings.partial || 0) + (warnings.failed || 0) > 0);
@@ -198,11 +163,40 @@ export function ActivityRow({
         <td>{formatDate(item.start_time)}</td>
         <td><span className="operation-badge">{item.operation}</span></td>
         <td className="object-cell">{item.object}</td>
-        <td>{renderStatusIcon(item.status, item.id, item.jobIds)}</td>
+        <td>
+          <span className="status-cell">
+            {renderStatusIcon(displayStatus, item.id, item.jobIds)}
+            {/* Retry re-runs ONLY the resources that did not complete.
+                Hidden on a clean run and while the run is still going —
+                see shouldShowRetry. It does not mutate this row: the
+                re-run surfaces as its own Activity entry, because
+                rewriting history here is how rows got stuck reading
+                "In Progress" forever. */}
+            {onRetry && shouldShowRetry({ ...item, status: displayStatus }) && (
+              <button
+                type="button"
+                className="status-badge-retry"
+                title="Re-run the resources that did not complete"
+                aria-label="Retry incomplete resources"
+                disabled={retrying}
+                onClick={(e) => { e.stopPropagation(); onRetry(item); }}
+              >
+                {retrying ? (
+                  <span className="spinner-small" aria-hidden />
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </span>
+        </td>
         <td>{formatDate(item.finish_time)}</td>
         <td className="details-cell">
           <div className="activity-row-details">
-            <span>{item.details || '—'}</span>
+            <span>{copyProgress.message || item.details || '—'}{copyProgress.records && ` · ${copyProgress.records}`}</span>
             {hasWarnings && (
               <span
                 className="activity-row-warning-chip"
@@ -228,9 +222,9 @@ export function ActivityRow({
               </span>
             )}
           </div>
-          {item.status === 'In Progress' && (
+          {displayStatus === 'In Progress' && (
             <div className="activity-row-progress">
-              {displayedProgressPct == null ? (
+              {progressPct == null ? (
                 <span className="activity-row-progress-unknown">—</span>
               ) : (
                 <>
@@ -242,11 +236,11 @@ export function ActivityRow({
                   <div className="activity-row-progress-track">
                     <div
                       className="activity-row-progress-bar"
-                      style={{ width: `${displayedProgressPct}%` }}
+                      style={{ width: `${progressPct}%` }}
                     />
                   </div>
                   <span className="activity-row-progress-label">
-                    {displayedProgressPct}%
+                    {progressPct}%
                   </span>
                 </>
               )}
@@ -269,14 +263,14 @@ export function ActivityRow({
               <div className="mini-header">
                 <span className="mini-operation">{item.operation}</span>
                 <span className="mini-sep">·</span>
-                <span className={`mini-status ${statusGlyph(item.status === 'In Progress' ? 'IN_PROGRESS' : item.status === 'Done' ? 'COMPLETED' : item.status === 'Failed' ? 'FAILED' : item.status === 'Partial' ? 'PARTIAL' : item.status === 'Expired' ? 'EXPIRED' : 'PENDING').cls}`}>
-                  {item.status}
+                <span className={`mini-status ${statusGlyph(displayStatus === 'In Progress' ? 'IN_PROGRESS' : displayStatus === 'Done' ? 'COMPLETED' : displayStatus === 'Failed' ? 'FAILED' : displayStatus === 'Partial' ? 'PARTIAL' : displayStatus === 'Expired' ? 'EXPIRED' : 'PENDING').cls}`}>
+                  {displayStatus}
                 </span>
-                {item.status === 'In Progress' && (
+                {displayStatus === 'In Progress' && (
                   <>
                     <span className="mini-sep">·</span>
                     <span className="mini-pct">
-                      {displayedProgressPct == null ? '—' : `${displayedProgressPct}%`}
+                      {progressPct == null ? '—' : `${progressPct}%`}
                     </span>
                   </>
                 )}

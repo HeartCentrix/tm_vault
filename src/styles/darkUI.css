@@ -237,11 +237,17 @@
 [data-theme="dark"] .activity-section,
 [data-theme="dark"] .storage-state-card,
 [data-theme="dark"] .storage-table-wrap,
-[data-theme="dark"] .storage-history-empty {
+[data-theme="dark"] .storage-usage-card {
   background: var(--tm-surface) !important;
   border: 1px solid var(--tm-border) !important;
   color: var(--tm-text) !important;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3) !important;
+}
+/* Its caption color is set with the storage text styles below. */
+[data-theme="dark"] .storage-history-empty {
+  background: var(--tm-surface);
+  border: 1px solid var(--tm-border);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 [data-theme="dark"] .status-card:hover,
 [data-theme="dark"] .chart-card:hover,
@@ -249,7 +255,8 @@
 [data-theme="dark"] .panel:hover,
 [data-theme="dark"] .summary-card:hover,
 [data-theme="dark"] .info-card:hover,
-[data-theme="dark"] .storage-state-card:hover {
+[data-theme="dark"] .storage-state-card:hover,
+[data-theme="dark"] .storage-usage-card:hover {
   border-color: var(--tm-accent) !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
 }
@@ -923,20 +930,19 @@
 [data-theme="dark"] .chart-legend-item.failure            { color: var(--tm-failure) !important; }
 [data-theme="dark"] .chart-legend-item.failure::before    { background: var(--tm-failure) !important; }
 
-/* audit-modal-compact / mini-modal: lock running-state glyphs and the
-   percent label to the brand crimson #b80e38 in dark mode too, matching
-   the light-theme spec. The failed-glyph keeps its existing #dc2626
-   (unchanged from before) so the two states stay visually distinct. */
+/* Running text and glyphs need the lighter accent on dark modal surfaces. */
 [data-theme="dark"] .mini-status.glyph-running,
 [data-theme="dark"] .mini-glyph.glyph-running,
-[data-theme="dark"] .mini-pct { color: #b80e38 !important; }
+[data-theme="dark"] .mini-pct { color: var(--tm-accent-soft) !important; }
 
 [data-theme="dark"] .status-summary-title.success         { color: var(--tm-success) !important; }
 [data-theme="dark"] .status-summary-title.warning         { color: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-title.failure         { color: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-title.running         { color: #60a5fa !important; }
 [data-theme="dark"] .status-summary-row.success span::before { background: var(--tm-success) !important; }
 [data-theme="dark"] .status-summary-row.warning span::before { background: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-row.failure span::before { background: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row.running span::before { background: #60a5fa !important; }
 [data-theme="dark"] .status-summary-row,
 [data-theme="dark"] .status-summary-row.success,
 [data-theme="dark"] .status-summary-row.warning,
@@ -1086,19 +1092,27 @@
 [data-theme="dark"] .storage-title,
 [data-theme="dark"] .storage-state-name,
 [data-theme="dark"] .storage-history-title,
+[data-theme="dark"] .storage-usage-title,
+[data-theme="dark"] .storage-usage-value,
 [data-theme="dark"] .storage-modal-title   { color: var(--tm-text) !important; }
 [data-theme="dark"] .storage-eyebrow,
+[data-theme="dark"] .storage-usage-label,
 [data-theme="dark"] .storage-state-label   { color: var(--tm-accent-soft) !important; }
 [data-theme="dark"] .storage-desc,
 [data-theme="dark"] .storage-state-kind,
 [data-theme="dark"] .storage-state-meta,
 [data-theme="dark"] .storage-history-count,
-[data-theme="dark"] .storage-history-empty { color: var(--tm-body-2) !important; }
+[data-theme="dark"] .storage-history-empty,
+[data-theme="dark"] .storage-usage-caption { color: var(--tm-body-2); }
 [data-theme="dark"] .storage-state-meta strong { color: var(--tm-text) !important; }
 [data-theme="dark"] .storage-state-cooldown,
 [data-theme="dark"] .storage-no-alt,
 [data-theme="dark"] .storage-hash,
+[data-theme="dark"] .storage-usage-value.pending,
 [data-theme="dark"] .storage-modal-field-hint { color: var(--tm-body) !important; }
+
+/* Status / error text — dark-mode lifted out of #c62828 (unreadable on dark bg).
+   #ff8a8a / #ffb86b / #7ee787 chosen for WCAG-AA contrast against --tm-surface. */
 [data-theme="dark"] .storage-table th,
 [data-theme="dark"] .storage-table td     { color: var(--tm-text) !important; border-bottom-color: var(--tm-border) !important; }
 [data-theme="dark"] .storage-arrow        { color: var(--tm-accent-soft) !important; }
@@ -1115,6 +1129,7 @@
 [data-theme="dark"] .storage-err {
   color: #ff8a8a !important;
 }
+[data-theme="dark"] .storage-usage-error,
 [data-theme="dark"] .storage-error-msg {
   color: #ff8a8a !important;
   background: rgba(211, 18, 69, 0.12) !important;
@@ -2407,6 +2422,8 @@
 [data-theme="dark"] .status-summary-row.warning span { color: var(--tm-warning) !important; }
 [data-theme="dark"] .status-summary-row.failure,
 [data-theme="dark"] .status-summary-row.failure span { color: var(--tm-failure) !important; }
+[data-theme="dark"] .status-summary-row.running,
+[data-theme="dark"] .status-summary-row.running span { color: #60a5fa !important; }
 [data-theme="dark"] .status-summary-row.success strong,
 [data-theme="dark"] .status-summary-row.warning strong,
 [data-theme="dark"] .status-summary-row.failure strong { color: var(--tm-text) !important; }
