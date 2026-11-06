@@ -551,7 +551,9 @@ export default function Overview() {
 
     setTriggeringBackupAll(true);
     try {
-      await triggerDatasourceBackup(tenantId, serviceType, true);
+      // Not forced full: resources with no prior backup still get a complete first
+      // backup, resources that already have one run incremental.
+      await triggerDatasourceBackup(tenantId, serviceType, false);
       const refreshedActivities = await getActivities({
         tenantId,
         serviceType: serviceType === 'm365' || serviceType === 'azure' ? serviceType : undefined,
