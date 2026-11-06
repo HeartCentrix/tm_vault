@@ -73,6 +73,8 @@ export interface BatchChildResource {
   // === 'SKIPPED_NO_LICENSE'). licenseHint names the missing service.
   skippedNoLicense?: boolean;
   licenseHint?: string | null;
+  // Why the resource ended PARTIAL or FAILED (snapshot failure reason); set only then.
+  reason?: string;
   children?: BatchChildResource[];
 }
 

@@ -1295,7 +1295,7 @@ export function DataModelSection() {
           <tr><td><code>ResourceType</code></td><td>40+ values — see file</td><td>Workload kind (USER_MAIL, ONEDRIVE, USER_CHATS, TEAMS_CHANNEL, AZURE_VM, …)</td></tr>
           <tr><td><code>ResourceStatus</code></td><td>DISCOVERED, ACTIVE, ARCHIVED, SUSPENDED, PENDING_DELETION, INACCESSIBLE</td><td>Per-resource state</td></tr>
           <tr><td><code>JobType</code></td><td>BACKUP, RESTORE, EXPORT, DISCOVERY, DELETE</td><td>Top-level job kind</td></tr>
-          <tr><td><code>JobStatus</code></td><td>QUEUED, PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, CANCELLING, RETRYING</td><td>Job lifecycle</td></tr>
+          <tr><td><code>JobStatus</code></td><td>QUEUED, PENDING, RUNNING, COMPLETED, PARTIAL, FAILED, CANCELLED, CANCELLING, RETRYING</td><td>Job lifecycle</td></tr>
           <tr><td><code>SnapshotType</code></td><td>FULL, INCREMENTAL, PREEMPTIVE, MANUAL</td><td>Per-snapshot kind</td></tr>
           <tr><td><code>SnapshotStatus</code></td><td>IN_PROGRESS, COMPLETED, FAILED, PARTIAL, PENDING_DELETION</td><td>Note: no CANCELLED — cancelled snapshots are marked FAILED + <code>extra_data.cancelled_at</code></td></tr>
           <tr><td><code>StorageBackendKind</code></td><td>azure_blob, seaweedfs</td><td>Pluggable backend selector</td></tr>

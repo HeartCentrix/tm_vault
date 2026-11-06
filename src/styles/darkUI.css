@@ -3221,6 +3221,12 @@
 [data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-child {
   color: var(--tm-text) !important;
 }
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-reason.is-partial {
+  color: #fbbf24 !important;
+}
+[data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-reason.is-failed {
+  color: #f87171 !important;
+}
 [data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-tree,
 [data-theme="dark"] .modal-overlay .audit-modal-compact.mini-modal .mini-show-more {
   border-color: var(--tm-border) !important;

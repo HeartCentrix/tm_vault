@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchBatchChildren } from '../services/activity';
-import type { ActivityItem, BatchChildren } from '../services/activity';
+import type { ActivityItem, BatchChildResource, BatchChildren } from '../services/activity';
 import { shouldShowRetry } from '../utils/retryEligibility';
 import { statusGlyph, rollupParentStatus } from '../utils/activityGlyphs';
 import { copyWorkProgress } from '../utils/copyWorkProgress';
@@ -48,6 +48,18 @@ const TYPE_LABEL: Record<string, string> = {
 
 // statusGlyph / rollupParentStatus live in ../utils/activityGlyphs so
 // the rollup rules are unit-testable.
+
+/** Why a resource ended PARTIAL or FAILED, under its row (TM #35). Text says which, not colour alone. */
+function ResourceReason({ resource }: { resource: BatchChildResource }) {
+  if (!resource.reason || (resource.status !== 'PARTIAL' && resource.status !== 'FAILED')) return null;
+  const failed = resource.status === 'FAILED';
+  return (
+    <div className={`mini-reason ${failed ? 'is-failed' : 'is-partial'}`}>
+      {failed ? 'Failed' : 'Partial'}: {resource.reason}
+    </div>
+  );
+}
+
 
 const LEAF_PAGE_SIZE = 50;
 
@@ -293,7 +305,8 @@ export function ActivityRow({
                           {kids.map((child) => {
                             const cGlyph = statusGlyph(child.status);
                             return (
-                              <div className="mini-child" key={child.resourceId}>
+                              <Fragment key={child.resourceId}>
+                              <div className="mini-child">
                                 <span className={`mini-glyph ${cGlyph.cls}`} title={cGlyph.label}>{cGlyph.ch}</span>
                                 <span className="mini-type">{TYPE_LABEL[child.type] || child.type}</span>
                                 <span className="mini-count" title={child.skippedNoLicense && child.licenseHint ? `No ${child.licenseHint} license` : undefined}>
@@ -314,6 +327,8 @@ export function ActivityRow({
                                     : '—'}
                                 </span>
                               </div>
+                              <ResourceReason resource={child} />
+                              </Fragment>
                             );
                           })}
                           {/* Tier-1-only resources (no children) render their own metrics inline */}
@@ -336,6 +351,7 @@ export function ActivityRow({
                               </span>
                             </div>
                           )}
+                          {kids.length === 0 && <ResourceReason resource={parent} />}
                         </div>
                       );
                     })}

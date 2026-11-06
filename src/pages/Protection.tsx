@@ -393,12 +393,12 @@ export default function Protection() {
         // state for that resource — either a fresh successful backup
         // (last_backup_at advanced past the trigger time) OR the latest job
         // reaching a terminal/active status (CANCELLED / FAILED / RUNNING /
-        // COMPLETED). Without the status check, a cancelled job leaves the
+        // COMPLETED / PARTIAL). Without the status check, a cancelled job leaves the
         // optimistic "Starting…" flag stuck because last_backup_at never
         // advances.
         setBackingUp(prev => {
           const next = { ...prev };
-          const TERMINAL = new Set(['COMPLETED', 'CANCELLED', 'FAILED', 'RUNNING']);
+          const TERMINAL = new Set(['COMPLETED', 'PARTIAL', 'CANCELLED', 'FAILED', 'RUNNING']);
           for (const r of items) {
             const triggered = next[r.id];
             if (!triggered) continue;
