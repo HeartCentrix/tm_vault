@@ -948,6 +948,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+.mini-reason {
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 0 0 4px 56px;
+  overflow-wrap: anywhere;
+}
+.mini-reason.is-partial { color: #b45309; }
+.mini-reason.is-failed  { color: #b91c1c; }
+
 .mini-glyph {
   font-size: 13px;
   width: 16px;

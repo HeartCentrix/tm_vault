@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchBatchChildren } from '../services/activity';
-import type { ActivityItem, BatchChildren } from '../services/activity';
+import type { ActivityItem, BatchChildResource, BatchChildren } from '../services/activity';
 
 interface Props {
   item: ActivityItem;
@@ -68,6 +68,17 @@ function statusGlyph(status?: string): { ch: string; cls: string; label: string 
 //   - all children COMPLETED                     → COMPLETED
 //   - all children FAILED                        → FAILED
 //   - mix of COMPLETED + FAILED/PARTIAL          → PARTIAL
+/** Why a resource ended PARTIAL or FAILED, under its row (TM #35). Text says which, not colour alone. */
+function ResourceReason({ resource }: { resource: BatchChildResource }) {
+  if (!resource.reason || (resource.status !== 'PARTIAL' && resource.status !== 'FAILED')) return null;
+  const failed = resource.status === 'FAILED';
+  return (
+    <div className={`mini-reason ${failed ? 'is-failed' : 'is-partial'}`}>
+      {failed ? 'Failed' : 'Partial'}: {resource.reason}
+    </div>
+  );
+}
+
 function rollupParentStatus(
   parentStatus: string | undefined,
   kids: { status?: string }[],
@@ -300,7 +311,8 @@ export function ActivityRow({
                           {kids.map((child) => {
                             const cGlyph = statusGlyph(child.status);
                             return (
-                              <div className="mini-child" key={child.resourceId}>
+                              <Fragment key={child.resourceId}>
+                              <div className="mini-child">
                                 <span className={`mini-glyph ${cGlyph.cls}`} title={cGlyph.label}>{cGlyph.ch}</span>
                                 <span className="mini-type">{TYPE_LABEL[child.type] || child.type}</span>
                                 <span className="mini-count" title={child.skippedNoLicense && child.licenseHint ? `No ${child.licenseHint} license` : undefined}>
@@ -321,6 +333,8 @@ export function ActivityRow({
                                     : '—'}
                                 </span>
                               </div>
+                              <ResourceReason resource={child} />
+                              </Fragment>
                             );
                           })}
                           {/* Tier-1-only resources (no children) render their own metrics inline */}
@@ -343,6 +357,7 @@ export function ActivityRow({
                               </span>
                             </div>
                           )}
+                          {kids.length === 0 && <ResourceReason resource={parent} />}
                         </div>
                       );
                     })}
