@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getActivities, type ActivityItem } from './activity';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ActivityRow } from '../components/ActivityRow';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -23,7 +26,8 @@ describe('shared activity status for Overview and Activity', () => {
   it('reports captured-but-incomplete work as Partial on both pages', async () => {
     const input = { ...row, provider_work: { state: 'INCOMPLETE', failed_units: 1 } };
     const result = await load(input);
-    expect(result.items[0]).toEqual({ ...input, status: 'Partial' });
+    expect(result.items[0]).toEqual({ ...input, status: 'Partial',
+      details: 'Some backup content could not be captured' });
     expect(input.status).toBe('In Progress');
     expect(result).toMatchObject({ total: 42, page: 2, size: 10, has_more: true });
   });
@@ -32,6 +36,18 @@ describe('shared activity status for Overview and Activity', () => {
     const result = await load({ ...row, data_backed_up: 0, counts: undefined,
       provider_work: { state: 'INCOMPLETE' } });
     expect(result.items[0].status).toBe('Failed');
+  });
+
+  it('preserves the failure explanation when Activity renders the normalized row again', async () => {
+    const result = await load({ ...row, status: 'Done', details: 'Completed',
+      data_backed_up: 0, counts: undefined, provider_work: { state: 'INCOMPLETE' } });
+    const html = renderToStaticMarkup(createElement('table', null,
+      createElement('tbody', null, createElement(ActivityRow, {
+        item: result.items[0], displayedProgressPct: 100,
+        formatDate: value => value, renderStatusIcon: status => createElement('span', null, status),
+      }))));
+    expect(html).toContain('Some backup content could not be captured');
+    expect(html).not.toContain('Completed');
   });
 
   it.each(['WAITING', 'RUNNING', 'SETTLING'])('keeps %s work running despite a terminal raw status', async state => {

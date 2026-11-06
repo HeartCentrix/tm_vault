@@ -131,9 +131,11 @@ export async function getActivities(
 
   return {
     // All consumers share Activity's copy/provider-aware status presentation.
-    items: (data.items || []).map((item: ActivityItem) => ({
-      ...item, status: copyWorkProgress(item).status,
-    })),
+    items: (data.items || []).map((item: ActivityItem) => {
+      const progress = copyWorkProgress(item);
+      return { ...item, status: progress.status,
+        ...(progress.message ? { details: progress.message } : {}) };
+    }),
     total: data.total || 0,
     page: data.page || 1,
     size: data.size || 50,
